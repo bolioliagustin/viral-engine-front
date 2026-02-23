@@ -4,3 +4,5 @@ pydantic
 python-dotenv
 watchdog
 supabase>=2.10.0
+sentry-sdk
+boto3
