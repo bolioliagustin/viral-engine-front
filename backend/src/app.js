@@ -29,18 +29,21 @@ app.use(compression());  // Q2: Gzip response compression
 // Configure CORS
 app.use(cors({
     origin: function (origin, callback) {
+        const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
         const allowedOrigins = [
             'http://localhost:3001',
             'http://localhost:3000',
-            process.env.FRONTEND_URL
+            frontendUrl
         ].filter(Boolean);
 
+        // Allow requests with no origin (server-to-server, health checks)
         if (!origin) return callback(null, true);
 
-        if (allowedOrigins.indexOf(origin) !== -1) {
+        // Allow exact match or any *.vercel.app origin (preview deploys)
+        if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app')) {
             callback(null, true);
         } else {
-            logger.warn('CORS blocked origin', { origin });
+            logger.warn('CORS blocked origin', { origin, allowedOrigins });
             callback(new Error('Not allowed by CORS'));
         }
     },
