@@ -1,0 +1,259 @@
+const express = require('express');
+const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const { supabase } = require('../lib/supabase');
+const rateLimit = require('express-rate-limit');
+const { requireAuth } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Rate limiter for /process endpoint
+// Uses IP by default (with proper IPv6 support)
+// For authenticated users, we could add userId to headers for better tracking
+const processLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 requests per window
+    keyGenerator: (req) => req.user?.id || 'anonymous', // Use verified user ID (set by requireAuth which runs before this)
+    message: {
+        error: 'Too many requests',
+        message: 'Has excedido el límite de solicitudes. Por favor espera 15 minutos.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: false, // Disable built-in validation (we manage keys via requireAuth)
+});
+
+/**
+ * POST /process
+ * Receives a YouTube URL, creates a Job, and queues it for processing
+ */
+router.post('/process', requireAuth, processLimiter, async (req, res) => {
+    try {
+        // userId is now guaranteed to be the verified user's ID (set by requireAuth middleware)
+        const { videoUrl, userId } = req.body;
+
+        // Validate YouTube URL
+        if (!videoUrl) {
+            return res.status(400).json({ error: 'videoUrl is required' });
+        }
+
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)[\w-]+/;
+        if (!youtubeRegex.test(videoUrl)) {
+            return res.status(400).json({ error: 'Invalid YouTube URL' });
+        }
+
+        const jobId = uuidv4();
+
+        // Check if Supabase is configured
+        if (process.env.SUPABASE_URL) {
+            // Check user credits if userId provided
+            if (userId) {
+                // Check for duplicate job in last 7 days
+                const { data: duplicateCheck } = await supabase
+                    .rpc('check_duplicate_job', {
+                        p_user_id: userId,
+                        p_video_url: videoUrl,
+                        p_days_back: 7
+                    });
+
+                if (duplicateCheck && duplicateCheck[0]?.has_duplicate) {
+                    return res.status(409).json({
+                        error: 'Duplicate job',
+                        message: 'Este video ya fue procesado recientemente',
+                        existingJobId: duplicateCheck[0].existing_job_id
+                    });
+                }
+
+                const { data: user, error: userError } = await supabase
+                    .from('users')
+                    .select('credits')
+                    .eq('id', userId)
+                    .single();
+
+                if (userError) {
+                    console.error('Error fetching user:', userError);
+                    // Decide if we block or allow on error. Blocking is safer for SaaS.
+                    return res.status(500).json({
+                        error: 'Server error',
+                        message: 'Error al verificar tus créditos. Por favor intenta de nuevo.'
+                    });
+                } else if (!user || user.credits <= 0) {
+                    return res.status(402).json({
+                        error: 'Insufficient credits',
+                        message: 'No tienes créditos disponibles. Por favor recarga para continuar.'
+                    });
+                }
+
+                // IMPORTANT: We do NOT deduct credits here. 
+                // Credits should be deducted by the worker ONLY upon SUCCESSFUL completion.
+                // Here we just validate availability.
+            }
+
+            // Create job in Supabase
+            const { error: jobError } = await supabase.from('jobs').insert({
+                id: jobId,
+                user_id: userId || null,
+                video_url: videoUrl,
+                status: 'pending'
+            });
+
+            if (jobError) {
+                console.error('Error creating job:', jobError);
+                return res.status(500).json({ error: 'Failed to create job' });
+            }
+        } else {
+            // Fallback to SQLite (legacy)
+            const { statements } = require('../db/database');
+            statements.createJob.run(jobId, userId || null, videoUrl);
+        }
+
+        // S1: Queue is now Supabase — no filesystem writes needed
+        // The job insert above (line ~97) IS the queue entry
+
+        res.status(201).json({
+            success: true,
+            jobId,
+            status: 'pending',
+            message: 'Job queued for processing'
+        });
+
+    } catch (error) {
+        console.error('Error creating job:', error);
+        res.status(500).json({ error: 'Failed to create job' });
+    }
+});
+
+/**
+ * GET /status/:jobId
+ * Returns the status and results of a job
+ */
+router.get('/status/:jobId', async (req, res) => {
+    try {
+        const { jobId } = req.params;
+
+        if (process.env.SUPABASE_URL) {
+            // Get job from Supabase
+            const { data: job, error: jobError } = await supabase
+                .from('jobs')
+                .select('*')
+                .eq('id', jobId)
+                .single();
+
+            if (jobError || !job) {
+                return res.status(404).json({ error: 'Job not found' });
+            }
+
+            // Get results
+            const { data: results, error: resultsError } = await supabase
+                .from('content_results')
+                .select('*')
+                .eq('job_id', jobId)
+                .order('moment_index', { ascending: true });
+
+            res.json({
+                id: job.id,
+                videoUrl: job.video_url,
+                videoTitle: job.video_title,
+                status: job.status,
+                current_step: job.current_step,  // NEW: for ProcessingScreen
+                progress_percentage: job.progress_percentage,  // NEW: for progress bar
+                errorMessage: job.error_message,
+                createdAt: job.created_at,
+                updatedAt: job.updated_at,
+                results: results || []
+            });
+        } else {
+            // Fallback to SQLite
+            const { statements } = require('../db/database');
+            const row = statements.getJobWithResults.get(jobId);
+
+            if (!row) {
+                return res.status(404).json({ error: 'Job not found' });
+            }
+
+            let results = [];
+            try {
+                const parsed = JSON.parse(row.results);
+                results = parsed.filter(r => r.id !== null);
+            } catch (e) {
+                results = [];
+            }
+
+            res.json({
+                id: row.id,
+                videoUrl: row.video_url,
+                status: row.status,
+                errorMessage: row.error_message,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at,
+                results
+            });
+        }
+
+    } catch (error) {
+        console.error('Error getting job status:', error);
+        res.status(500).json({ error: 'Failed to get job status' });
+    }
+});
+
+/**
+ * GET /jobs
+ * Returns all jobs (for debugging/admin)
+ */
+router.get('/jobs', async (req, res) => {
+    try {
+        if (process.env.SUPABASE_URL) {
+            const { data: jobs, error } = await supabase
+                .from('jobs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (error) throw error;
+            res.json(jobs);
+        } else {
+            const { db } = require('../db/database');
+            const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 50').all();
+            res.json(jobs);
+        }
+    } catch (error) {
+        console.error('Error listing jobs:', error);
+        res.status(500).json({ error: 'Failed to list jobs' });
+    }
+});
+
+/**
+ * GET /user/:userId/credits
+ * Returns user credits
+ */
+router.get('/user/:userId/credits', requireAuth, async (req, res) => {
+    try {
+        // Use verified user ID from auth middleware, not URL param (prevents enumeration)
+        const userId = req.user.id;
+
+        if (!process.env.SUPABASE_URL) {
+            return res.status(501).json({ error: 'Supabase not configured' });
+        }
+
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('credits, subscription_status')
+            .eq('id', userId)
+            .single();
+
+        if (error || !user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({
+            credits: user.credits,
+            subscription: user.subscription_status
+        });
+
+    } catch (error) {
+        console.error('Error getting credits:', error);
+        res.status(500).json({ error: 'Failed to get credits' });
+    }
+});
+
+module.exports = router;

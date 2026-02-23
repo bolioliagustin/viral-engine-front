@@ -1,0 +1,552 @@
+"""
+YouTube Viral Content Engine - AI Worker
+Watches the queue folder and processes video analysis jobs.
+Now with video clipping and Supabase integration.
+"""
+import os
+import sys
+import json
+import time
+import threading
+from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
+import sentry_sdk
+
+# Load environment variables
+load_dotenv(Path(__file__).parent.parent / ".env")
+
+# C4: Initialize Sentry error tracking
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN_WORKER", "https://fa1819fcd1c305c1966bc49de239c99b@o4510909878632448.ingest.us.sentry.io/4510909933092864"),
+    send_default_pii=True,
+    environment=os.getenv("ENVIRONMENT", "development"),
+    traces_sample_rate=0.2,
+)
+
+# Validate environment variables before proceeding
+sys.path.insert(0, str(Path(__file__).parent))
+from config.validate_env import validate_env
+validate_env()
+
+# Add parent to path for imports
+
+from services.downloader import download_audio, download_video, cleanup_all
+from services.processor import analyze_with_gemini, cleanup_uploaded_file
+from services.clipper import extract_clip, cleanup_clips
+from services.supabase_client import (
+    update_job_status, 
+    update_job_error, 
+    save_content_result,
+    upload_clip_to_storage,
+    get_supabase
+)
+
+DOWNLOADS_DIR = Path(__file__).parent / "downloads"
+CLIPS_DIR = Path(__file__).parent / "clips"
+POLL_INTERVAL = 3  # seconds between Supabase polls
+
+
+def cleanup_old_files(max_age_hours: int = 24) -> None:
+    """
+    Q3: Remove files older than max_age_hours from downloads/ and clips/.
+    Prevents disk from filling up with leftover media files.
+    """
+    import time as _time
+    cutoff = _time.time() - (max_age_hours * 3600)
+    cleaned = 0
+    
+    for directory in [DOWNLOADS_DIR, CLIPS_DIR]:
+        if not directory.exists():
+            continue
+        for file_path in directory.iterdir():
+            if file_path.is_file() and file_path.stat().st_mtime < cutoff:
+                try:
+                    file_path.unlink()
+                    cleaned += 1
+                except Exception as e:
+                    print(f"⚠️ Could not delete {file_path.name}: {e}")
+    
+    if cleaned > 0:
+        print(f"🧹 Cleanup: removed {cleaned} file(s) older than {max_age_hours}h")
+
+
+def recover_stale_jobs(max_age_minutes: int = 30) -> None:
+    """
+    C5: Recover jobs stuck in 'processing' for longer than max_age_minutes.
+    S1: Now just resets status to 'pending' in Supabase (no filesystem queue files).
+    Runs at worker startup.
+    """
+    supabase = get_supabase()
+    if not supabase:
+        return
+    
+    try:
+        threshold = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
+        result = supabase.table("jobs").select("id") \
+            .eq("status", "processing") \
+            .lt("updated_at", threshold) \
+            .execute()
+        
+        if not result.data:
+            return
+        
+        for job in result.data:
+            supabase.table("jobs").update({"status": "pending"}).eq("id", job["id"]).execute()
+            print(f"♻️ Recovered stale job: {job['id']}")
+        
+        print(f"♻️ Recovered {len(result.data)} stale job(s)")
+    except Exception as e:
+        print(f"⚠️ Stale job recovery failed: {e}")
+
+
+JOB_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+
+
+def process_job(job_data: dict) -> None:
+    """
+    Process a single job: download, analyze, clip, upload, save results.
+    C5: Includes a 30-minute timeout to prevent stuck jobs.
+    """
+    job_id = job_data["id"]
+    video_url = job_data["videoUrl"]
+    audio_path = None
+    video_path = None
+    video_id = None
+    timed_out = threading.Event()  # C5: timeout flag
+    
+    # C5: Start a timeout timer (Windows-compatible, using threading instead of signal)
+    def _on_timeout():
+        timed_out.set()
+        print(f"⏰ Job {job_id} exceeded {JOB_TIMEOUT_SECONDS // 60} minute timeout!")
+    
+    timeout_timer = threading.Timer(JOB_TIMEOUT_SECONDS, _on_timeout)
+    timeout_timer.daemon = True
+    timeout_timer.start()
+    
+    print(f"\n{'='*60}")
+    print(f"🎬 Processing job: {job_id}")
+    print(f"📺 Video URL: {video_url}")
+    print(f"{'='*60}\n")
+    
+    try:
+        # Update status to processing
+        update_job_status(job_id, "processing")
+        
+        # C5: Check timeout between each major step
+        def check_timeout():
+            if timed_out.is_set():
+                raise TimeoutError(f"Job exceeded {JOB_TIMEOUT_SECONDS // 60} minute limit")
+        
+        # S3: Check transcription cache first
+        from services.transcript_cache import get_cached_transcript, save_transcript
+        
+        # We need the video_id for cache lookup — extract from URL
+        import re
+        yt_match = re.search(r'(?:v=|youtu\.be/|shorts/)([a-zA-Z0-9_-]{11})', video_url)
+        pre_video_id = yt_match.group(1) if yt_match else None
+        
+        cached_transcript = get_cached_transcript(pre_video_id) if pre_video_id else None
+        
+        if cached_transcript:
+            # Cache HIT — skip download + transcription
+            print(f"\n💾 Cache HIT for video {pre_video_id} — skipping download + Whisper")
+            transcript = cached_transcript
+            
+            # Still need video_info for analysis — download just metadata (no audio)
+            print("\n📥 Step 1: Fetching video metadata (cached mode)...")
+            update_job_progress(job_id, current_step="downloading", progress_percentage=10)
+            audio_path, video_info = download_audio(video_url)
+            video_id = video_info['id']
+            update_job_status(job_id, "processing", video_info['title'])
+            update_job_progress(job_id, progress_percentage=40)
+            check_timeout()
+        else:
+            # Cache MISS — full download + transcription
+            # Step 1: Download audio from video URL
+            print("\n📥 Step 1: Downloading audio...")
+            from services.supabase_client import update_job_progress
+            update_job_progress(job_id, current_step="downloading", progress_percentage=10)
+            
+            audio_path, video_info = download_audio(video_url)
+            video_id = video_info['id']
+            print(f"✅ Downloaded: {video_info['title']} ({video_info['duration']}s)")
+            
+            update_job_status(job_id, "processing", video_info['title'])
+            update_job_progress(job_id, progress_percentage=20)
+            check_timeout()  # C5
+            
+            # Step 2: Transcribe audio with Whisper
+            print("\n📝 Step 2: Transcribing audio with Whisper...")
+            update_job_progress(job_id, current_step="transcribing", progress_percentage=30)
+            
+            from services.transcriber import transcribe_with_whisper_openrouter
+            transcript = transcribe_with_whisper_openrouter(audio_path)
+            print(f"✅ Transcribed {len(transcript.get('segments', []))} segments")
+            update_job_progress(job_id, progress_percentage=40)
+            check_timeout()  # C5
+            
+            # S3: Save transcript to cache for future use
+            save_transcript(
+                video_id=video_id,
+                transcript=transcript,
+                language=transcript.get('language'),
+                duration_seconds=video_info.get('duration')
+            )
+            print(f"💾 Transcript cached for video {video_id}")
+        
+        # Step 3: Analyze transcript with AI (via OpenRouter)
+        print("\n🤖 Step 3: Analyzing transcript for viral moments...")
+        update_job_progress(job_id, current_step="analyzing", progress_percentage=50)
+        
+        from services.processor import analyze_with_openrouter
+        result = analyze_with_openrouter(transcript, video_info)
+        update_job_progress(job_id, progress_percentage=65)
+        check_timeout()  # C5
+        
+        # Step 3.5: Quality Filter - Validate durations (Sprint 1)
+        print("\n🔍 Step 3.5: Quality filter (duration validation)...")
+        from services.validation import validate_durations
+        result.viral_moments = validate_durations(result.viral_moments, min_duration=10)
+        
+        if not result.viral_moments:
+            raise Exception("No viral moments passed quality filter (all clips too short)")
+        
+        # Step 3.6: Whisper Validation - Verify against transcript (Sprint 3)
+        # TODO: Implement in Sprint 3
+        # print("\n🎯 Step 3.6: Whisper validation (transcript verification)...")
+        # from services.validation import validate_against_transcript
+        # for moment in result.viral_moments:
+        #     validate_against_transcript(moment, transcript)
+        
+        # Step 4: Download video for clipping (if Supabase is configured)
+        supabase = get_supabase()
+        if supabase:
+            print("\n📹 Step 4: Downloading video for clipping...")
+            update_job_progress(job_id, current_step="clipping", progress_percentage=70)
+            try:
+                video_path = download_video(video_url, video_id)
+                print(f"✅ Video downloaded: {video_path}")
+            except Exception as e:
+                print(f"⚠️ Video download failed, skipping clips: {e}")
+                video_path = None
+        
+        # Step 5: Save results
+        print("\n💾 Step 5: Saving results...")
+        update_job_progress(job_id, current_step="generating", progress_percentage=85)
+        
+        # Summary is now stored in jobs table, not content_results
+        # save_content_result() is only for actual content pieces (twitter, tiktok, etc.)
+
+        
+        # Process each viral moment
+        for i, moment in enumerate(result.viral_moments):
+            moment_index = i + 1
+            clip_url = None
+            
+            # CRITICAL: Populate start_time/end_time from surgical_clipping FIRST (before clip extraction)
+            if moment.start_time is None and hasattr(moment, 'surgical_clipping') and moment.surgical_clipping:
+                moment.start_time = int(moment.surgical_clipping.start_time)
+                moment.end_time = int(moment.surgical_clipping.end_time)
+                print(f"📋 Populated timestamps from surgical_clipping: {moment.start_time}s - {moment.end_time}s")
+            
+            # Extract clip if video is available
+            if video_path:
+                try:
+                    print(f"\n✂️ Extracting clip {moment_index}...")
+                    
+                    # Now moment.start_time and moment.end_time are guaranteed to have values
+                    clip_path = extract_clip(
+                        input_path=video_path,
+                        start_time=moment.start_time,
+                        end_time=moment.end_time,
+                        video_id=video_id,
+                        moment_index=moment_index
+                    )
+                    
+                    # Upload to Supabase Storage
+                    print(f"📤 Uploading clip {moment_index} to storage...")
+                    clip_url = upload_clip_to_storage(clip_path, job_id, moment_index)
+                    if clip_url:
+                        print(f"✅ Clip uploaded: {clip_url[:50]}...")
+                except Exception as e:
+                    print(f"⚠️ Clip {moment_index} failed: {e}")
+            
+            # Extract scores if available
+            scores = moment.scores if hasattr(moment, 'scores') and moment.scores else None
+            pillar_raw = moment.pillar_type if hasattr(moment, 'pillar_type') else None
+            
+            # Sanitize pillar_type - extract first valid value
+            pillar = None
+            if pillar_raw:
+                valid_pillars = ['authority', 'utility', 'connection']
+                for p in pillar_raw.lower().replace('|', ' ').split():
+                    if p.strip() in valid_pillars:
+                        pillar = p.strip()
+                        break
+            
+            # Extract Phase B fields
+            sentiment = getattr(moment, 'sentiment_detected', None)
+            roi_time = getattr(moment, 'roi_time_saved', None)
+            justifications = None
+            if hasattr(moment, 'score_justifications') and moment.score_justifications:
+                justifications = [j.model_dump() if hasattr(j, 'model_dump') else j for j in moment.score_justifications]
+            
+            # Get category for routing (default to entertainment if not set)
+            category = getattr(moment, 'category', 'entertainment')
+            if category is None:
+                category = 'entertainment'
+            
+            # ═══════════════════════════════════════════════════════
+            # 📂 CATEGORY NORMALIZATION & MAPPING
+            # ═══════════════════════════════════════════════════════
+            # Normalize to lowercase
+            category = category.lower().strip()
+            
+            # Category aliases (map variations to canonical categories)
+            CATEGORY_ALIASES = {
+                'finance': 'business',
+                'finanzas': 'business',
+                'inversiones': 'business',
+                'startups': 'tech',
+                'tecnología': 'tech',
+                'comedy': 'entertainment',
+                'humor': 'entertainment',
+                'interview': 'podcast',
+                'entrevista': 'podcast',
+            }
+            
+            # Apply alias mapping
+            if category in CATEGORY_ALIASES:
+                original = category
+                category = CATEGORY_ALIASES[category]
+                print(f"   📝 Category mapped: {original} → {category}")
+            
+            # ═══════════════════════════════════════════════════════
+            # 🎯 CATEGORY ROUTER (Sprint 2 - Phase 4B)
+            # ═══════════════════════════════════════════════════════
+            print(f"\n📊 Category Router: {category.upper()}")
+            
+            # ALWAYS save Twitter thread (universal)
+            save_content_result(
+                job_id=job_id,
+                content_type="twitter_thread",
+                content=moment.content_pieces.twitter_thread,
+                clip_url=clip_url,
+                start_time=moment.start_time,
+                end_time=moment.end_time,
+                hook=moment.hook,
+                emotional_trigger=moment.emotional_trigger,
+                moment_index=moment_index,
+                pillar_type=pillar,
+                score_hook=scores.hook if scores else None,
+                score_retention=scores.retention if scores else None,
+                score_shareability=scores.shareability if scores else None,
+                sentiment_detected=sentiment,
+                roi_time_saved=roi_time,
+                score_justifications=justifications
+            )
+            
+            # Route platform-specific content based on category
+            if category in ['business', 'tech']:
+                # B2B Strategy: LinkedIn + Twitter
+                print(f"   → Routing to LinkedIn (B2B)")
+                if moment.content_pieces.linkedin_post:
+                    save_content_result(
+                        job_id=job_id,
+                        content_type="linkedin_post",
+                        content=moment.content_pieces.linkedin_post,
+                        clip_url=clip_url,
+                        start_time=moment.start_time,
+                        end_time=moment.end_time,
+                        hook=moment.hook,
+                        moment_index=moment_index,
+                        pillar_type=pillar,
+                        score_hook=scores.hook if scores else None,
+                        score_retention=scores.retention if scores else None,
+                        score_shareability=scores.shareability if scores else None,
+                        sentiment_detected=sentiment,
+                        roi_time_saved=roi_time,
+                        score_justifications=justifications
+                    )
+                    
+            elif category in ['entertainment', 'podcast', 'lifestyle']:
+                # Viral Strategy: TikTok + Twitter
+                print(f"   → Routing to TikTok (Viral)")
+                if hasattr(moment.content_pieces, 'tiktok_caption') and moment.content_pieces.tiktok_caption:
+                    save_content_result(
+                        job_id=job_id,
+                        content_type="tiktok_caption",
+                        content=moment.content_pieces.tiktok_caption,
+                        clip_url=clip_url,
+                        start_time=moment.start_time,
+                        end_time=moment.end_time,
+                        hook=moment.hook,
+                        moment_index=moment_index,
+                        pillar_type=pillar,
+                        score_hook=scores.hook if scores else None,
+                        score_retention=scores.retention if scores else None,
+                        score_shareability=scores.shareability if scores else None,
+                        sentiment_detected=sentiment,
+                        roi_time_saved=roi_time,
+                        score_justifications=justifications
+                    )
+
+            
+            # Save short script ONLY if not deprecated
+            if moment.content_pieces.short_video_script:
+                if "DEPRECATED" not in moment.content_pieces.short_video_script.upper():
+                    save_content_result(
+                        job_id=job_id,
+                        content_type="short_video_script",
+                        content=moment.content_pieces.short_video_script,
+                        clip_url=clip_url,
+                        start_time=moment.start_time,
+                        end_time=moment.end_time,
+                        moment_index=moment_index,
+                        pillar_type=pillar,
+                        score_hook=scores.hook if scores else None,
+                        score_retention=scores.retention if scores else None,
+                        score_shareability=scores.shareability if scores else None,
+                        sentiment_detected=sentiment,
+                        roi_time_saved=roi_time,
+                        score_justifications=justifications
+                    )
+        
+        # Update status to completed
+        update_job_progress(job_id, current_step="completed", progress_percentage=100)
+        update_job_status(job_id, "completed")
+        print(f"\n✅ Job {job_id} completed successfully!")
+        print(f"   Generated content for {len(result.viral_moments)} viral moments")
+        if video_path and supabase:
+            print(f"   Clips uploaded to Supabase Storage")
+            
+            # Deduct credits (Sprint 3)
+            # Check if job has userId attached
+            user_id = job_data.get("userId")
+            if user_id:
+                try:
+                    print(f"💰 Deducting credit for user {user_id}...")
+                    from services.supabase_client import deduct_credit
+                    deduct_credit(user_id, job_id, video_url)
+                    print(f"✅ Credit deducted successfully")
+                except Exception as e:
+                    print(f"⚠️ Failed to deduct credit: {e}")
+        
+    except Exception as e:
+        print(f"\n❌ Job {job_id} failed: {str(e)}")
+        update_job_error(job_id, str(e))
+        
+    finally:
+        # C5: Cancel timeout timer
+        timeout_timer.cancel()
+        
+        # Cleanup all files
+        if video_id:
+            cleanup_all(video_id)
+            cleanup_clips(video_id)
+        
+        # Cleanup Gemini uploaded files
+        cleanup_uploaded_file(audio_path if audio_path else "")
+
+
+def watch_queue():
+    """
+    S1: Poll Supabase for pending jobs.
+    S2: Process up to MAX_WORKERS jobs in parallel using ThreadPoolExecutor.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    supabase = get_supabase()
+    supabase_status = "✅ Connected" if supabase else "❌ Not configured"
+    max_workers = int(os.getenv("MAX_WORKERS", "2"))
+    
+    print(f"""
+╔════════════════════════════════════════════════════════════╗
+║     YouTube Viral Content Engine - AI Worker v3.0         ║
+╠════════════════════════════════════════════════════════════╣
+║  Queue: Supabase (jobs table)                             ║
+║  Workers: {max_workers} parallel                                      ║
+║  Supabase: {supabase_status:<46} ║
+╚════════════════════════════════════════════════════════════╝
+    """)
+    
+    if not supabase:
+        print("❌ Supabase not configured. Worker cannot start.")
+        sys.exit(1)
+    
+    # Q3: Cleanup old files on startup
+    cleanup_old_files()
+    
+    # C5: Recover stale jobs on startup
+    recover_stale_jobs()
+    
+    active_jobs = set()  # Track job IDs currently being processed
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+        
+        while True:
+            try:
+                # S2: Determine how many slots are available
+                available_slots = max_workers - len(futures)
+                
+                if available_slots > 0:
+                    # S1: Poll Supabase for pending jobs
+                    result = supabase.table("jobs") \
+                        .select("id, video_url, user_id") \
+                        .eq("status", "pending") \
+                        .order("created_at") \
+                        .limit(available_slots) \
+                        .execute()
+                    
+                    if result.data:
+                        for job in result.data:
+                            if job["id"] in active_jobs:
+                                continue
+                            
+                            # Atomically claim the job
+                            supabase.table("jobs") \
+                                .update({"status": "processing"}) \
+                                .eq("id", job["id"]) \
+                                .eq("status", "pending") \
+                                .execute()
+                            
+                            job_data = {
+                                "id": job["id"],
+                                "videoUrl": job["video_url"],
+                                "userId": job.get("user_id"),
+                            }
+                            
+                            active_jobs.add(job["id"])
+                            future = executor.submit(process_job, job_data)
+                            futures[future] = job["id"]
+                
+                # Check for completed futures
+                done_futures = [f for f in futures if f.done()]
+                for future in done_futures:
+                    job_id = futures.pop(future)
+                    active_jobs.discard(job_id)
+                    try:
+                        future.result()  # Raise any exceptions
+                    except Exception as e:
+                        print(f"❌ Job {job_id} failed: {e}")
+                
+                time.sleep(POLL_INTERVAL)
+                
+            except KeyboardInterrupt:
+                print("\n\n👋 Worker stopped by user")
+                executor.shutdown(wait=False)
+                break
+            except Exception as e:
+                print(f"❌ Unexpected error: {e}")
+                time.sleep(5)
+
+
+if __name__ == "__main__":
+    if not os.getenv("OPENROUTER_API_KEY"):
+        print("❌ Error: OPENROUTER_API_KEY not found")
+        print("   Please add it to your .env file")
+        sys.exit(1)
+    
+    watch_queue()

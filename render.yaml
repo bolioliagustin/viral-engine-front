@@ -1,0 +1,60 @@
+# Render Blueprint — auto-deploys backend + worker from GitHub
+# Usage: Connect GitHub repo → Render detects this file → deploys both services
+
+services:
+  # Backend API (Node.js/Express)
+  - type: web
+    name: viralengine-backend
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: SENTRY_DSN_BACKEND
+        sync: false
+    healthCheckPath: /health
+
+  # Worker (Python) — runs as background worker, not a web service
+  - type: worker
+    name: viralengine-worker
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: worker
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: MAX_WORKERS
+        value: 2
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
+      - key: SENTRY_DSN_WORKER
+        sync: false

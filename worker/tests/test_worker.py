@@ -1,0 +1,152 @@
+"""
+C2b: Worker Unit Tests
+Tests core worker functions: env validation, cleanup, recovery, and processing pipeline.
+"""
+import os
+import sys
+import json
+import time
+import pytest
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+# Add worker root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+class TestValidateEnv:
+    """Tests for environment variable validation."""
+
+    @patch.dict(os.environ, {
+        "SUPABASE_URL": "https://test.supabase.co",
+        "SUPABASE_SERVICE_KEY": "test-key",
+        "OPENROUTER_API_KEY": "test-router",
+        "OPENAI_API_KEY": "test-openai",
+    })
+    def test_valid_env_passes(self):
+        from config.validate_env import validate_env
+        # Should not raise
+        validate_env()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_missing_required_vars_exits(self):
+        # Re-import to reset module state
+        import importlib
+        from config import validate_env as ve_module
+        importlib.reload(ve_module)
+        
+        with pytest.raises(SystemExit):
+            ve_module.validate_env()
+
+
+class TestCleanupOldFiles:
+    """Tests for the Q3 cleanup function."""
+
+    def test_removes_old_files(self, tmp_path):
+        """Files older than max_age should be deleted."""
+        # Create an "old" file
+        old_file = tmp_path / "old_video.mp4"
+        old_file.write_text("old data")
+        # Backdate the file mtime by 48 hours
+        old_time = time.time() - (48 * 3600)
+        os.utime(old_file, (old_time, old_time))
+
+        # Create a "new" file
+        new_file = tmp_path / "new_video.mp4"
+        new_file.write_text("new data")
+
+        # Import and call with our dirs
+        from main import cleanup_old_files, DOWNLOADS_DIR, CLIPS_DIR
+        
+        # Patch the dirs to use tmp_path
+        with patch("main.DOWNLOADS_DIR", tmp_path), \
+             patch("main.CLIPS_DIR", tmp_path / "nonexistent"):
+            cleanup_old_files(max_age_hours=24)
+
+        assert not old_file.exists(), "Old file should be deleted"
+        assert new_file.exists(), "New file should be preserved"
+
+    def test_handles_empty_directory(self, tmp_path):
+        """Should not crash if directories don't exist."""
+        from main import cleanup_old_files
+        
+        with patch("main.DOWNLOADS_DIR", tmp_path / "nonexistent"), \
+             patch("main.CLIPS_DIR", tmp_path / "also_nonexistent"):
+            # Should not raise
+            cleanup_old_files()
+
+
+class TestYouTubeUrlValidation:
+    """Tests for YouTube URL validation regex (mirrors backend tests)."""
+
+    def test_valid_youtube_urls(self):
+        import re
+        youtube_regex = re.compile(
+            r'^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[\w-]+'
+        )
+
+        valid_urls = [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+        ]
+        for url in valid_urls:
+            assert youtube_regex.match(url), f"Should match: {url}"
+
+    def test_invalid_youtube_urls(self):
+        import re
+        youtube_regex = re.compile(
+            r'^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[\w-]+'
+        )
+
+        invalid_urls = [
+            "https://vimeo.com/12345",
+            "https://google.com",
+            "not-a-url",
+            "ftp://youtube.com/watch?v=abc123",
+        ]
+        for url in invalid_urls:
+            assert not youtube_regex.match(url), f"Should NOT match: {url}"
+
+
+class TestJobTimeout:
+    """Tests for the C5 timeout mechanism."""
+
+    def test_timeout_event_is_set(self):
+        """The threading.Event should be set when timer fires."""
+        import threading
+
+        timed_out = threading.Event()
+        timer = threading.Timer(0.1, lambda: timed_out.set())
+        timer.start()
+        time.sleep(0.3)
+        assert timed_out.is_set(), "Timeout event should be set"
+
+    def test_timeout_can_be_cancelled(self):
+        """Cancelling timer should prevent event from being set."""
+        import threading
+
+        timed_out = threading.Event()
+        timer = threading.Timer(0.5, lambda: timed_out.set())
+        timer.start()
+        timer.cancel()
+        time.sleep(0.7)
+        assert not timed_out.is_set(), "Cancelled timer should not set event"
+
+
+class TestStructuredLogging:
+    """Tests for S6 logging configuration."""
+
+    def test_logger_creation(self):
+        from config.logging_config import get_logger
+        logger = get_logger("test")
+        assert logger is not None
+
+    def test_logger_with_extra_fields(self, capsys):
+        from config.logging_config import get_logger
+        logger = get_logger("test_extra")
+        logger.info("test message", extra={"job_id": "123", "step": "download"})
+        
+        captured = capsys.readouterr()
+        assert "test message" in captured.out

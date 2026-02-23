@@ -1,0 +1,6 @@
+yt-dlp>=2024.12.13
+openai
+pydantic
+python-dotenv
+watchdog
+supabase>=2.10.0
