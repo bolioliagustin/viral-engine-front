@@ -4,10 +4,31 @@ Downloads both audio (for Gemini) and video (for clipping)
 """
 import yt_dlp
 import os
+import base64
 import shutil
+import tempfile
 from pathlib import Path
 
 DOWNLOADS_DIR = Path(__file__).parent.parent / "downloads"
+COOKIES_FILE = Path(__file__).parent.parent / "cookies.txt"
+
+
+def _get_cookies_path():
+    """Get YouTube cookies file path for yt-dlp authentication.
+    Priority: YOUTUBE_COOKIES env var (base64) > cookies.txt file
+    """
+    # Option 1: Base64-encoded cookies in env var
+    cookies_b64 = os.getenv('YOUTUBE_COOKIES')
+    if cookies_b64:
+        tmp = Path(tempfile.gettempdir()) / 'yt_cookies.txt'
+        tmp.write_bytes(base64.b64decode(cookies_b64))
+        return str(tmp)
+    
+    # Option 2: cookies.txt file in worker dir
+    if COOKIES_FILE.exists():
+        return str(COOKIES_FILE)
+    
+    return None
 
 # FFmpeg location - use env var or find in PATH
 FFMPEG_LOCATION = os.getenv('FFMPEG_PATH')
@@ -28,6 +49,8 @@ def download_audio(video_url: str) -> tuple[str, dict]:
     """
     DOWNLOADS_DIR.mkdir(exist_ok=True)
     
+    cookies_path = _get_cookies_path()
+    
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': str(DOWNLOADS_DIR / '%(id)s_audio.%(ext)s'),
@@ -41,11 +64,15 @@ def download_audio(video_url: str) -> tuple[str, dict]:
         'no_warnings': True,
         'nocheckcertificate': True,
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-us,en;q=0.5',
         }
     }
+    
+    if cookies_path:
+        ydl_opts['cookiefile'] = cookies_path
+        print(f"🍪 Using cookies from: {cookies_path}")
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(video_url, download=True)
@@ -87,6 +114,8 @@ def download_video(video_url: str, video_id: str = None) -> str:
     """
     DOWNLOADS_DIR.mkdir(exist_ok=True)
     
+    cookies_path = _get_cookies_path()
+    
     ydl_opts = {
         'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
         'outtmpl': str(DOWNLOADS_DIR / '%(id)s_video.%(ext)s'),
@@ -96,11 +125,14 @@ def download_video(video_url: str, video_id: str = None) -> str:
         'no_warnings': True,
         'nocheckcertificate': True,
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-us,en;q=0.5',
         }
     }
+    
+    if cookies_path:
+        ydl_opts['cookiefile'] = cookies_path
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         if video_id:
