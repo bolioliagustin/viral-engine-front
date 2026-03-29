@@ -517,24 +517,28 @@ if __name__ == "__main__":
         print("   Please add it to your .env file")
         sys.exit(1)
     
-    # Start a minimal HTTP health server so Render accepts this as a Web Service (free tier)
-    import threading
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    
-    class HealthHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok","service":"viralengine-worker"}')
-        
-        def log_message(self, format, *args):
-            pass  # Silence request logs
-    
-    port = int(os.getenv("PORT", "10000"))
-    health_server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    health_thread = threading.Thread(target=health_server.serve_forever, daemon=True)
-    health_thread.start()
-    print(f"🏥 Health server listening on port {port}")
-    
+    # Start health server only if PORT is explicitly set (e.g. Render)
+    # On Hetzner/systemd, PORT is not set so we skip it
+    port = os.getenv("PORT")
+    if port:
+        import threading
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+
+        class HealthHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok","service":"viralengine-worker"}')
+
+            def log_message(self, format, *args):
+                pass  # Silence request logs
+
+        health_server = HTTPServer(("0.0.0.0", int(port)), HealthHandler)
+        health_thread = threading.Thread(target=health_server.serve_forever, daemon=True)
+        health_thread.start()
+        print(f"🏥 Health server listening on port {port}")
+    else:
+        print("ℹ️  No PORT set — skipping health server (systemd mode)")
+
     watch_queue()
