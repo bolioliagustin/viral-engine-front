@@ -138,62 +138,30 @@ def process_job(job_data: dict) -> None:
             if timed_out.is_set():
                 raise TimeoutError(f"Job exceeded {JOB_TIMEOUT_SECONDS // 60} minute limit")
         
-        # S3: Check transcription cache first
-        from services.transcript_cache import get_cached_transcript, save_transcript
-        
-        # We need the video_id for cache lookup — extract from URL
-        import re
-        yt_match = re.search(r'(?:v=|youtu\.be/|shorts/)([a-zA-Z0-9_-]{11})', video_url)
-        pre_video_id = yt_match.group(1) if yt_match else None
-        
-        cached_transcript = get_cached_transcript(pre_video_id) if pre_video_id else None
-        
-        if cached_transcript:
-            # Cache HIT — skip download + transcription
-            print(f"\n💾 Cache HIT for video {pre_video_id} — skipping download + Whisper")
-            transcript = cached_transcript
-            
-            # Still need video_info for analysis — download just metadata (no audio)
-            print("\n📥 Step 1: Fetching video metadata (cached mode)...")
-            update_job_progress(job_id, current_step="downloading", progress_percentage=10)
-            audio_path, video_info = download_audio(video_url)
-            video_id = video_info['id']
-            update_job_status(job_id, "processing", video_info['title'])
-            update_job_progress(job_id, progress_percentage=40)
-            check_timeout()
-        else:
-            # Cache MISS — full download + transcription
-            # Step 1: Download audio from video URL
-            print("\n📥 Step 1: Downloading audio...")
-            from services.supabase_client import update_job_progress
-            update_job_progress(job_id, current_step="downloading", progress_percentage=10)
-            
-            audio_path, video_info = download_audio(video_url)
-            video_id = video_info['id']
-            print(f"✅ Downloaded: {video_info['title']} ({video_info['duration']}s)")
-            
-            update_job_status(job_id, "processing", video_info['title'])
-            update_job_progress(job_id, progress_percentage=20)
-            check_timeout()  # C5
-            
-            # Step 2: Transcribe audio with Whisper
-            print("\n📝 Step 2: Transcribing audio with Whisper...")
-            update_job_progress(job_id, current_step="transcribing", progress_percentage=30)
-            
-            from services.transcriber import transcribe_with_whisper_openrouter
-            transcript = transcribe_with_whisper_openrouter(audio_path)
-            print(f"✅ Transcribed {len(transcript.get('segments', []))} segments")
-            update_job_progress(job_id, progress_percentage=40)
-            check_timeout()  # C5
-            
-            # S3: Save transcript to cache for future use
-            save_transcript(
-                video_id=video_id,
-                transcript=transcript,
-                language=transcript.get('language'),
-                duration_seconds=video_info.get('duration')
-            )
-            print(f"💾 Transcript cached for video {video_id}")
+        # Steps 1+2: Get transcript via YouTube Transcript API (no download needed)
+        # This bypasses yt-dlp bot detection entirely.
+        print("\n📝 Steps 1+2: Fetching transcript from YouTube...")
+        from services.supabase_client import update_job_progress
+        update_job_progress(job_id, current_step="downloading", progress_percentage=10)
+
+        from services.yt_transcript import get_youtube_transcript
+        transcript, video_info = get_youtube_transcript(video_url)
+        video_id = video_info["id"]
+
+        update_job_status(job_id, "processing", video_info["title"])
+        update_job_progress(job_id, progress_percentage=40)
+        print(f"✅ Transcript ready: {len(transcript.get('segments', []))} segments")
+        check_timeout()  # C5
+
+        # S3: Save transcript to cache
+        from services.transcript_cache import save_transcript
+        save_transcript(
+            video_id=video_id,
+            transcript=transcript,
+            language=transcript.get("language"),
+            duration_seconds=video_info.get("duration"),
+        )
+        print(f"💾 Transcript cached for video {video_id}")
         
         # Step 3: Analyze transcript with AI (via OpenRouter)
         print("\n🤖 Step 3: Analyzing transcript for viral moments...")
