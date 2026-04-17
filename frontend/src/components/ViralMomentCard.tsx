@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CopyTabs } from "./CopyTabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, Download, Sparkles, Loader2, Share2 } from "lucide-react";
+import { ChevronDown, Download, Sparkles, Loader2, Share2, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -89,9 +89,21 @@ export function ViralMomentCard({
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const { toast } = useToast();
-  
+
   const avgScore = ((scores.hook + scores.retention + scores.shareability) / 3).toFixed(1);
   const duration = endTime - startTime;
+
+  // Detect if clipUrl is a YouTube link (worker fallback when video download is blocked)
+  const isYouTubeUrl = Boolean(clipUrl && (clipUrl.includes('youtube.com') || clipUrl.includes('youtu.be')));
+
+  const getYouTubeEmbedUrl = (url: string): string | null => {
+    const videoIdMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+    const timeMatch = url.match(/[?&]t=(\d+)s?/);
+    const videoId = videoIdMatch?.[1];
+    const time = timeMatch?.[1] ?? '0';
+    if (!videoId) return null;
+    return `https://www.youtube.com/embed/${videoId}?start=${time}&rel=0`;
+  };
 
   const handleDownload = async () => {
     try {
@@ -158,33 +170,57 @@ export function ViralMomentCard({
           {/* LEFT: Video & Actions */}
           <div className="p-5 border-r border-slate-800 bg-slate-925 flex flex-col gap-4">
             <div className="relative rounded-xl overflow-hidden bg-black shadow-lg border border-slate-800 aspect-video group">
-              <video
-                src={clipUrl}
-                controls
-                playsInline
-                className="w-full h-full object-contain"
-              />
+              {isYouTubeUrl ? (
+                <iframe
+                  src={getYouTubeEmbedUrl(clipUrl) ?? undefined}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title={`Clip momento ${momentIndex}`}
+                />
+              ) : clipUrl ? (
+                <video
+                  src={clipUrl}
+                  controls
+                  playsInline
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                  Sin clip disponible
+                </div>
+              )}
             </div>
-            
+
             <div className="grid grid-cols-2 gap-3">
-              <Button 
-                variant="outline" 
-                className="w-full border-slate-600 bg-slate-800 text-slate-200 hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all shadow-lg"
-                onClick={handleDownload}
-                disabled={isDownloading}
-              >
-                {isDownloading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="mr-2 h-4 w-4" />
-                )}
-                {isDownloading ? "Bajando..." : "Descargar MP4"}
+              {isYouTubeUrl ? (
+                <Button
+                  variant="outline"
+                  className="w-full border-slate-600 bg-slate-800 text-slate-200 hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all shadow-lg"
+                  onClick={() => window.open(clipUrl, '_blank')}
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Ver en YouTube
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full border-slate-600 bg-slate-800 text-slate-200 hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all shadow-lg"
+                  onClick={handleDownload}
+                  disabled={isDownloading || !clipUrl}
+                >
+                  {isDownloading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  {isDownloading ? "Bajando..." : "Descargar MP4"}
+                </Button>
+              )}
+              <Button variant="ghost" className="w-full hover:bg-slate-800 text-slate-400" disabled>
+                <Share2 className="mr-2 h-4 w-4" />
+                Compartir (Pronto)
               </Button>
-               {/* Placeholder for future share feature */}
-               <Button variant="ghost" className="w-full hover:bg-slate-800 text-slate-400" disabled>
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Compartir (Pronto)
-               </Button>
             </div>
           </div>
 

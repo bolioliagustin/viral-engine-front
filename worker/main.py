@@ -187,17 +187,13 @@ def process_job(job_data: dict) -> None:
         # for moment in result.viral_moments:
         #     validate_against_transcript(moment, transcript)
         
-        # Step 4: Download video for clipping (if Supabase is configured)
+        # Step 4: Prepare clip URLs
+        # Video download via yt-dlp is blocked on most cloud IPs (Render, Railway, etc.)
+        # Instead, we generate YouTube deep links with timestamps — no download needed.
         supabase = get_supabase()
-        if supabase:
-            print("\n📹 Step 4: Downloading video for clipping...")
-            update_job_progress(job_id, current_step="clipping", progress_percentage=70)
-            try:
-                video_path = download_video(video_url, video_id)
-                print(f"✅ Video downloaded: {video_path}")
-            except Exception as e:
-                print(f"⚠️ Video download failed, skipping clips: {e}")
-                video_path = None
+        print("\n📹 Step 4: Preparing clip references...")
+        update_job_progress(job_id, current_step="clipping", progress_percentage=70)
+        video_path = None  # No local download; clips use YouTube timestamp URLs
         
         # Step 5: Save results
         print("\n💾 Step 5: Saving results...")
@@ -218,12 +214,11 @@ def process_job(job_data: dict) -> None:
                 moment.end_time = int(moment.surgical_clipping.end_time)
                 print(f"📋 Populated timestamps from surgical_clipping: {moment.start_time}s - {moment.end_time}s")
             
-            # Extract clip if video is available
+            # Generate clip reference
             if video_path:
+                # Local video available (e.g. running on VPS): extract and upload real clip
                 try:
                     print(f"\n✂️ Extracting clip {moment_index}...")
-                    
-                    # Now moment.start_time and moment.end_time are guaranteed to have values
                     clip_path = extract_clip(
                         input_path=video_path,
                         start_time=moment.start_time,
@@ -231,14 +226,20 @@ def process_job(job_data: dict) -> None:
                         video_id=video_id,
                         moment_index=moment_index
                     )
-                    
-                    # Upload to Supabase Storage
                     print(f"📤 Uploading clip {moment_index} to storage...")
                     clip_url = upload_clip_to_storage(clip_path, job_id, moment_index)
                     if clip_url:
                         print(f"✅ Clip uploaded: {clip_url[:50]}...")
                 except Exception as e:
                     print(f"⚠️ Clip {moment_index} failed: {e}")
+                    # Fallback to YouTube timestamp link
+                    if moment.start_time is not None:
+                        clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
+            else:
+                # No local video — use YouTube deep link with timestamp (works on any hosting)
+                if moment.start_time is not None:
+                    clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
+                    print(f"🔗 Clip {moment_index}: YouTube link at {int(moment.start_time)}s → {clip_url}")
             
             # Extract scores if available
             scores = moment.scores if hasattr(moment, 'scores') and moment.scores else None
@@ -386,20 +387,16 @@ def process_job(job_data: dict) -> None:
         update_job_status(job_id, "completed")
         print(f"\n✅ Job {job_id} completed successfully!")
         print(f"   Generated content for {len(result.viral_moments)} viral moments")
-        if video_path and supabase:
-            print(f"   Clips uploaded to Supabase Storage")
-            
-            # Deduct credits (Sprint 3)
-            # Check if job has userId attached
-            user_id = job_data.get("userId")
-            if user_id:
-                try:
-                    print(f"💰 Deducting credit for user {user_id}...")
-                    from services.supabase_client import deduct_credit
-                    deduct_credit(user_id, job_id, video_url)
-                    print(f"✅ Credit deducted successfully")
-                except Exception as e:
-                    print(f"⚠️ Failed to deduct credit: {e}")
+        # Deduct credits (Sprint 3)
+        user_id = job_data.get("userId")
+        if user_id and supabase:
+            try:
+                print(f"💰 Deducting credit for user {user_id}...")
+                from services.supabase_client import deduct_credit
+                deduct_credit(user_id, job_id, video_url)
+                print(f"✅ Credit deducted successfully")
+            except Exception as e:
+                print(f"⚠️ Failed to deduct credit: {e}")
         
     except Exception as e:
         print(f"\n❌ Job {job_id} failed: {str(e)}")
