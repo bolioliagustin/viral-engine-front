@@ -1,14 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Sparkles, 
-  Zap, 
-  Copy, 
-  Video, 
-  ArrowRight, 
+import {
+  Sparkles,
+  Zap,
+  Copy,
+  Video,
+  ArrowRight,
   Play,
   CheckCircle2,
   Twitter,
@@ -191,6 +194,16 @@ const StepItem = ({
 
 // ===== MAIN LANDING PAGE =====
 export default function LandingPage() {
+  const router = useRouter();
+
+  // If user is already logged in, send them to dashboard
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) router.replace("/dashboard");
+    });
+  }, [router]);
+
   return (
     <div className="relative min-h-screen bg-slate-950 text-white overflow-x-hidden">
       <GradientMesh />
