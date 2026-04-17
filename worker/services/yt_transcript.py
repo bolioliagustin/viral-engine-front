@@ -245,12 +245,18 @@ def get_youtube_transcript(video_url: str) -> tuple[Dict, dict]:
     if not video_id:
         raise ValueError(f"Could not extract video ID from URL: {video_url}")
 
+    supadata_key = os.getenv("SUPADATA_API_KEY")
+    print(f"🔑 SUPADATA_API_KEY: {'SET (' + str(len(supadata_key)) + ' chars)' if supadata_key else 'NOT SET'}")
+
     # 1. Try Supadata API first (reliable from datacenter IPs)
-    if os.getenv("SUPADATA_API_KEY"):
+    if supadata_key:
         try:
             return _get_transcript_via_supadata(video_url, video_id)
         except Exception as e:
             print(f"⚠️ Supadata failed: {e} — falling back to youtube_transcript_api")
+            # If Supadata explicitly says no transcript, don't bother with fallback
+            if "404" in str(e) or "No transcript" in str(e):
+                raise Exception(f"Este video no tiene transcripción disponible: {e}")
 
     # 2. Fallback: youtube_transcript_api (may be blocked on Render/Railway)
     return _get_transcript_via_ytapi(video_url, video_id)
