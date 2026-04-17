@@ -179,39 +179,56 @@ Prioriza momentos con:
 4. **The Curiosity Gap**: Declaraciones que abren loops mentales
 
 ═══════════════════════════════════════
-🐦 TWITTER THREAD - ESTRUCTURA ATÓMICA
+🐦 TWITTER THREAD - ESTRUCTURA VIRAL REAL
 ═══════════════════════════════════════
 
-REGLA DE ORO: Cada tweet debe usar el 90% del límite (240-260 caracteres).
+**REGLA DE ORO**: Un hilo viral NO resume el video. Lo CONVIERTE en una historia
+que el lector quiere terminar aunque no conozca al creador.
 
-**Estructura Obligatoria de 5 Tweets:**
+**CRÍTICO**: Cada tweet va separado por \\n\\n. SIN prefijos "Tweet 1:", "Tweet 2:".
+SIN placeholders como [Link]. Cada tweet debe funcionar SOLO si se ve fuera del hilo.
 
-📌 Tweet 1 - HOOK (240-260 chars)
-- Ataca una creencia común o genera shock
-- Sin hashtags ni emojis innecesarios
-- Debe detener el scroll al instante
-- Ejemplo: "La mayoría de 'expertos' en finanzas están quebrados. Y te voy a explicar por qué sigues sus consejos."
+**Estructura Obligatoria de 7 Tweets:**
 
-🔥 Tweet 2 - PROBLEM (240-260 chars)  
-- Expón el dolor o la consecuencia de ignorar esto
-- Usa datos específicos si están en el audio
-- Genera urgencia emocional
-- Ejemplo: "El 78% de la información financiera en redes viene de gente que nunca ha manejado un negocio real. Solo repiten lo que leyeron."
+📌 **Tweet 1 - HOOK QUE DETIENE EL SCROLL** (240-260 chars)
+- Afirmación contraintuitiva o dato que rompe una creencia
+- Sin contexto previo — funciona completamente solo
+- Sin hashtags, sin emojis de relleno
+- El lector debe pensar "espera, ¿esto es real?" antes de seguir
+- Ejemplo: "Pasé 3 años aplicando lo que todos dicen sobre productividad. Me hizo más lento. Lo que nadie te cuenta es que el problema está en la pregunta, no en la respuesta."
 
-📊 Tweet 3 - DATA/PROOF (240-260 chars)
-- Credibilidad através de números o casos reales
-- Menciona estudios, estadísticas o experiencias del video
-- Ejemplo: "Estudié 120 cuentas de 'gurús'. El 90% nunca mostró pruebas. Los que sí, tenían algo en común: hablaban de fracasos, no solo éxitos."
+🔥 **Tweet 2 - EL DOLOR ESPECÍFICO** (230-260 chars)
+- Expón el problema con detalle real, no genérico
+- Usa el lenguaje exacto del audio cuando puedas
+- Genera urgencia: ¿por qué esto importa AHORA?
+- Ejemplo: "La mayoría optimiza su agenda. Yo optimicé 4 años mi agenda. Resultado: hacía más cosas, pero ninguna de las que importaban. El sistema me estaba usando a mí, no al revés."
 
-💡 Tweet 4 - ANALOGY (240-260 chars)
-- Haz el concepto memorable con una comparación visual
-- Usa metáforas del día a día
-- Ejemplo: "Seguir consejos de alguien sin historial es como pedirle a un chef de Instagram que opere tu corazón. Se ve bien en foto, pero..."
+📊 **Tweet 3 - EL GIRO QUE NADIE VE VENIR** (230-260 chars)
+- La insight central del clip — la idea que cambia el marco
+- Saca la idea del audio y añade tu perspectiva
+- Ejemplo: "El error no es falta de disciplina. Es que optimizamos la ejecución de tareas equivocadas. Como pulir los zapatos antes de una carrera descalzo."
 
-✅ Tweet 5 - CTA INTRÍNSECO (240-260 chars)
-- No digas "sígueme" directamente
-- Crea una declaración que haga querer más
-- Ejemplo: "Si esto te hizo cuestionar a quién escuchas, perfecto. Mañana te cuento cómo identificar a los reales en 3 preguntas."
+💡 **Tweet 4 - LA PRUEBA O EL MECANISMO** (220-260 chars)
+- ¿Por qué funciona esto? Mecanismo, dato o caso concreto
+- Si hay números en el audio, úsalos
+- Si no, usa una analogía concreta y visual
+- Ejemplo: "El sistema límbico procesa información 80.000 veces más rápido que la corteza prefrontal. Tu 'instinto' no es emoción — es procesamiento paralelo masivo que la razón no puede replicar."
+
+🔍 **Tweet 5 - LA APLICACIÓN PRÁCTICA** (220-250 chars)
+- ¿Qué hace diferente quien entiende esto?
+- Algo accionable, no vago
+- Ejemplo: "Lo que cambió todo: antes de planificar mi semana, ahora me hago una sola pregunta: ¿Cuál es la única tarea que haría que todo lo demás sea más fácil o irrelevante? Solo una."
+
+⚡ **Tweet 6 - EL REMATE QUE ESCALA** (220-250 chars)
+- Eleva la idea a algo más grande, más universal
+- Conecta con algo que el lector ya siente pero nunca articuló
+- Ejemplo: "No es productividad. Es claridad. La diferencia entre el que trabaja 12 horas y el que trabaja 4 es que el segundo sabe exactamente qué no tiene que hacer."
+
+✅ **Tweet 7 - CTA CON LOOP MENTAL** (180-220 chars)
+- Pregunta abierta que el lector responde con su propia vida
+- NO "sígueme", NO "dale RT", NO "comenta abajo"
+- La pregunta debe generar incomodidad productiva
+- Ejemplo: "¿Cuántas horas por semana dedicas a optimizar tareas que deberías haber eliminado?"
 
 ═══════════════════════════════════════
 💼 LINKEDIN POST - THOUGHT LEADERSHIP
@@ -354,7 +371,8 @@ En esos momentos, el visual debe REFORZAR con:
 ✅ **{tone_style}**
 ✅ **NUNCA valores null o vacíos - CREA contenido si no existe**
 ✅ **UN SOLO pillar_type por momento: "authority" | "utility" | "connection"**
-✅ **Cada tweet debe tener 240-260 caracteres (usa TODO el espacio)**
+✅ **Twitter: 7 tweets separados por \\n\\n, SIN prefijos "Tweet 1:", SIN "[Link]"**
+✅ **Twitter: cada tweet funciona SOLO fuera del hilo**
 ✅ **LinkedIn debe tener 800-1200 caracteres totales**
 
 FORMATO JSON DE SALIDA:
@@ -403,7 +421,7 @@ FORMATO JSON DE SALIDA:
         "narrative_goal": "[Por qué este fragmento es una idea completa sin contexto previo]"
       }},
       "content_pieces": {{
-        "twitter_thread": "Tweet 1: [240-260 chars]\\n\\nTweet 2: [240-260 chars]\\n\\nTweet 3: [240-260 chars]\\n\\nTweet 4: [240-260 chars]\\n\\nTweet 5: [240-260 chars]",
+        "twitter_thread": "[Hook contraintuitivo 240-260 chars]\\n\\n[El dolor específico 230-260 chars]\\n\\n[El giro que nadie ve venir 230-260 chars]\\n\\n[La prueba o mecanismo 220-260 chars]\\n\\n[La aplicación práctica 220-250 chars]\\n\\n[El remate que escala 220-250 chars]\\n\\n[CTA con loop mental 180-220 chars]",
         "linkedin_post": "[Hook 3 líneas]\\n\\n[Cuerpo 800-1200 chars con white space]\\n\\n[Pregunta engagement]",
         "short_video_script": "[0-3s] VISUAL: ... | AUDIO: ...\\n\\n[3-15s] VISUAL: ... | AUDIO: ...\\n\\n[continuar hasta 60s]"
       }}
