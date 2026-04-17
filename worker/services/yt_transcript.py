@@ -246,17 +246,30 @@ def get_youtube_transcript(video_url: str) -> tuple[Dict, dict]:
         raise ValueError(f"Could not extract video ID from URL: {video_url}")
 
     supadata_key = os.getenv("SUPADATA_API_KEY")
-    print(f"🔑 SUPADATA_API_KEY: {'SET (' + str(len(supadata_key)) + ' chars)' if supadata_key else 'NOT SET'}")
+    environment = os.getenv("ENVIRONMENT", "development")
+    key_status = f"SET ({len(supadata_key)} chars)" if supadata_key else "NOT SET"
+    print(f"🔑 SUPADATA_API_KEY: {key_status} | ENVIRONMENT: {environment}")
 
     # 1. Try Supadata API first (reliable from datacenter IPs)
     if supadata_key:
         try:
             return _get_transcript_via_supadata(video_url, video_id)
         except Exception as e:
-            print(f"⚠️ Supadata failed: {e} — falling back to youtube_transcript_api")
-            # If Supadata explicitly says no transcript, don't bother with fallback
-            if "404" in str(e) or "No transcript" in str(e):
-                raise Exception(f"Este video no tiene transcripción disponible: {e}")
+            err = str(e)
+            # Video has no transcript at all — don't bother with fallback
+            if "404" in err or "No transcript" in err:
+                raise Exception(f"Este video no tiene transcripción disponible en YouTube.")
+            # Supadata failed for another reason
+            if environment == "production":
+                raise Exception(f"Supadata API error: {err}. Verifica tu SUPADATA_API_KEY en Render.")
+            print(f"⚠️ Supadata failed: {err} — falling back to youtube_transcript_api (dev only)")
 
-    # 2. Fallback: youtube_transcript_api (may be blocked on Render/Railway)
+    # 2. Fallback: youtube_transcript_api
+    # In production this will likely be blocked — surface a clear error
+    if environment == "production" and not supadata_key:
+        raise Exception(
+            "SUPADATA_API_KEY no está configurada en las variables de entorno de Render. "
+            "Agregala en: Render → viralengine-worker → Environment → SUPADATA_API_KEY"
+        )
+
     return _get_transcript_via_ytapi(video_url, video_id)
