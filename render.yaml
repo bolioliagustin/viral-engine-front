@@ -58,3 +58,5 @@ services:
         sync: false
       - key: SENTRY_DSN_WORKER
         sync: false
+      - key: SUPADATA_API_KEY
+        sync: false

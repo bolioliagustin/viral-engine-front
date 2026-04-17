@@ -1,9 +1,13 @@
 """
 YouTube Transcript Service
 Gets transcripts directly from YouTube's subtitle API — no download needed.
-Not blocked by bot detection, works from any datacenter IP.
+
+Priority:
+  1. Supadata API (supadata.ai) — works from any IP, including Render/Railway
+  2. youtube_transcript_api — direct scraping, blocked on datacenter IPs
 """
 import re
+import os
 import requests
 from typing import Dict, Optional
 
@@ -70,58 +74,8 @@ def get_video_metadata(video_id: str) -> dict:
     }
 
 
-def get_youtube_transcript(video_url: str) -> tuple[Dict, dict]:
-    """
-    Get transcript from YouTube subtitle API + video metadata.
-    Returns transcript in same format as Whisper transcriber.
-
-    Returns:
-        (transcript_dict, video_info_dict)
-        transcript format: {"text": "...", "segments": [...], "language": "..."}
-        segments format:   [{"id": 0, "start": 0.5, "end": 3.2, "text": "..."}, ...]
-    """
-    from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
-
-    video_id = get_video_id(video_url)
-    if not video_id:
-        raise ValueError(f"Could not extract video ID from URL: {video_url}")
-
-    print(f"📝 Getting transcript for video {video_id} via YouTube Transcript API...")
-
-    # Try to get transcript (prefers manual captions, falls back to auto-generated)
-    transcript_list = None
-    language_used = None
-
-    try:
-        # Get available transcripts
-        available = YouTubeTranscriptApi.list_transcripts(video_id)
-
-        # Priority: manual > auto-generated, any language
-        try:
-            transcript_obj = available.find_manually_created_transcript(
-                ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh']
-            )
-        except Exception:
-            try:
-                transcript_obj = available.find_generated_transcript(
-                    ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh']
-                )
-            except Exception:
-                # Take whatever is available
-                transcript_obj = next(iter(available))
-
-        language_used = transcript_obj.language_code
-        raw_transcript = transcript_obj.fetch()
-        print(f"✅ Transcript found: {len(raw_transcript)} entries, language: {language_used}")
-
-    except TranscriptsDisabled:
-        raise Exception("This video has transcripts/captions disabled — cannot process without download.")
-    except NoTranscriptFound:
-        raise Exception("No transcript found for this video. Try a video with captions enabled.")
-    except Exception as e:
-        raise Exception(f"Failed to fetch transcript: {e}")
-
-    # Convert to Whisper-compatible format
+def _segments_from_raw(raw_transcript: list, language: str) -> tuple[list, str]:
+    """Convert raw transcript entries to Whisper-compatible segments."""
     segments = []
     full_text_parts = []
 
@@ -142,22 +96,161 @@ def get_youtube_transcript(video_url: str) -> tuple[Dict, dict]:
         })
         full_text_parts.append(text)
 
+    return segments, " ".join(full_text_parts)
+
+
+def _get_transcript_via_supadata(video_url: str, video_id: str) -> tuple[Dict, dict]:
+    """
+    Fetch transcript via Supadata API (supadata.ai).
+    Works from any IP — Render, Railway, Fly.io, etc.
+    Requires SUPADATA_API_KEY env var.
+    """
+    api_key = os.getenv("SUPADATA_API_KEY")
+    if not api_key:
+        raise Exception("SUPADATA_API_KEY not configured")
+
+    print(f"🌐 Fetching transcript via Supadata API for {video_id}...")
+
+    resp = requests.get(
+        "https://api.supadata.ai/v1/youtube/transcript",
+        params={"url": video_url, "text": "false"},
+        headers={"x-api-key": api_key},
+        timeout=30,
+    )
+
+    if resp.status_code == 401:
+        raise Exception("Invalid SUPADATA_API_KEY — check your key at supadata.ai")
+    if resp.status_code == 404:
+        raise Exception("No transcript available for this video (Supadata: 404)")
+    if resp.status_code == 429:
+        raise Exception("Supadata rate limit reached — try again later")
+    if not resp.ok:
+        raise Exception(f"Supadata API error {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
+    language_used = data.get("lang", "unknown")
+    raw_entries = data.get("content", [])
+
+    if not raw_entries:
+        raise Exception("Supadata returned empty transcript")
+
+    # Supadata format: [{text, offset (ms), duration (ms), lang}, ...]
+    raw_transcript = [
+        {
+            "text": e.get("text", ""),
+            "start": e.get("offset", 0) / 1000.0,      # ms → seconds
+            "duration": e.get("duration", 2000) / 1000.0,
+        }
+        for e in raw_entries
+    ]
+
+    segments, full_text = _segments_from_raw(raw_transcript, language_used)
+
+    if not segments:
+        raise Exception("Transcript empty after filtering (Supadata)")
+
+    print(f"✅ Supadata transcript: {len(segments)} segments, language: {language_used}")
+
+    transcript = {
+        "text": full_text,
+        "segments": segments,
+        "language": language_used,
+    }
+
+    video_info = get_video_metadata(video_id)
+    if video_info["duration"] == 0 and segments:
+        video_info["duration"] = int(segments[-1]["end"]) + 5
+
+    return transcript, video_info
+
+
+def _get_transcript_via_ytapi(video_url: str, video_id: str) -> tuple[Dict, dict]:
+    """
+    Fetch transcript via youtube_transcript_api.
+    Works from residential/home IPs; often blocked on datacenters.
+    """
+    from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+
+    print(f"📝 Fetching transcript via youtube_transcript_api for {video_id}...")
+
+    try:
+        available = YouTubeTranscriptApi.list_transcripts(video_id)
+
+        try:
+            transcript_obj = available.find_manually_created_transcript(
+                ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh']
+            )
+        except Exception:
+            try:
+                transcript_obj = available.find_generated_transcript(
+                    ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh']
+                )
+            except Exception:
+                transcript_obj = next(iter(available))
+
+        language_used = transcript_obj.language_code
+        raw_transcript_data = transcript_obj.fetch()
+        print(f"✅ Transcript found: {len(raw_transcript_data)} entries, language: {language_used}")
+
+    except TranscriptsDisabled:
+        raise Exception("This video has transcripts/captions disabled.")
+    except NoTranscriptFound:
+        raise Exception("No transcript found for this video.")
+    except Exception as e:
+        raise Exception(f"YouTube is blocking requests from this IP. Please configure SUPADATA_API_KEY (supadata.ai) or a residential proxy.")
+
+    raw_transcript = [
+        {
+            "text": e.get("text", ""),
+            "start": e.get("start", 0),
+            "duration": e.get("duration", 2.0),
+        }
+        for e in raw_transcript_data
+    ]
+
+    segments, full_text = _segments_from_raw(raw_transcript, language_used)
+
     if not segments:
         raise Exception("Transcript is empty after filtering — no usable text found.")
 
     transcript = {
-        "text": " ".join(full_text_parts),
+        "text": full_text,
         "segments": segments,
-        "language": language_used or "unknown",
+        "language": language_used,
     }
 
-    # Get video metadata
-    print("📋 Fetching video metadata...")
     video_info = get_video_metadata(video_id)
-
-    # Estimate duration from transcript if yt-dlp metadata failed
     if video_info["duration"] == 0 and segments:
         video_info["duration"] = int(segments[-1]["end"]) + 5
 
     print(f"✅ Transcript ready: {len(segments)} segments, {video_info['duration']}s, '{video_info['title']}'")
     return transcript, video_info
+
+
+def get_youtube_transcript(video_url: str) -> tuple[Dict, dict]:
+    """
+    Get transcript from YouTube + video metadata.
+    Returns transcript in Whisper-compatible format.
+
+    Strategy:
+      1. Supadata API (if SUPADATA_API_KEY is set) — works from any IP
+      2. youtube_transcript_api — direct, works on residential IPs only
+
+    Returns:
+        (transcript_dict, video_info_dict)
+        transcript format: {"text": "...", "segments": [...], "language": "..."}
+        segments format:   [{"id": 0, "start": 0.5, "end": 3.2, "text": "..."}, ...]
+    """
+    video_id = get_video_id(video_url)
+    if not video_id:
+        raise ValueError(f"Could not extract video ID from URL: {video_url}")
+
+    # 1. Try Supadata API first (reliable from datacenter IPs)
+    if os.getenv("SUPADATA_API_KEY"):
+        try:
+            return _get_transcript_via_supadata(video_url, video_id)
+        except Exception as e:
+            print(f"⚠️ Supadata failed: {e} — falling back to youtube_transcript_api")
+
+    # 2. Fallback: youtube_transcript_api (may be blocked on Render/Railway)
+    return _get_transcript_via_ytapi(video_url, video_id)
