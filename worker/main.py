@@ -173,10 +173,19 @@ def process_job(job_data: dict) -> None:
         check_timeout()  # C5
         
         # Step 3.5: Quality Filter - Validate durations (Sprint 1)
-        print("\n🔍 Step 3.5: Quality filter (duration validation)...")
+        # IMPORTANT: Populate start_time/end_time from surgical_clipping FIRST.
+        # Podcast/entertainment prompts use surgical_clipping instead of direct timestamps.
+        # If we validate before populating, all moments appear to have None timestamps and get dropped.
+        print("\n🔍 Step 3.5: Populating timestamps + quality filter...")
+        for moment in result.viral_moments:
+            if moment.start_time is None and hasattr(moment, 'surgical_clipping') and moment.surgical_clipping:
+                moment.start_time = int(moment.surgical_clipping.start_time)
+                moment.end_time = int(moment.surgical_clipping.end_time)
+                print(f"📋 Pre-populated timestamps from surgical_clipping: {moment.start_time}s - {moment.end_time}s")
+
         from services.validation import validate_durations
         result.viral_moments = validate_durations(result.viral_moments, min_duration=10)
-        
+
         if not result.viral_moments:
             raise Exception("No viral moments passed quality filter (all clips too short)")
         
@@ -208,13 +217,7 @@ def process_job(job_data: dict) -> None:
             moment_index = i + 1
             clip_url = None
             
-            # CRITICAL: Populate start_time/end_time from surgical_clipping FIRST (before clip extraction)
-            if moment.start_time is None and hasattr(moment, 'surgical_clipping') and moment.surgical_clipping:
-                moment.start_time = int(moment.surgical_clipping.start_time)
-                moment.end_time = int(moment.surgical_clipping.end_time)
-                print(f"📋 Populated timestamps from surgical_clipping: {moment.start_time}s - {moment.end_time}s")
-            
-            # Generate clip reference
+            # Generate clip reference (timestamps already populated in Step 3.5)
             if video_path:
                 # Local video available (e.g. running on VPS): extract and upload real clip
                 try:
