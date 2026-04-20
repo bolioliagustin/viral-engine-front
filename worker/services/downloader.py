@@ -15,11 +15,33 @@ import subprocess
 import tempfile
 import urllib.parse
 from pathlib import Path
-from urllib.request import urlopen, Request
+from urllib.request import urlopen, Request, build_opener, ProxyHandler
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 DOWNLOADS_DIR = Path(__file__).parent.parent / "downloads"
 COOKIES_FILE = Path(__file__).parent.parent / "cookies.txt"
+
+
+def _get_proxy_url() -> str | None:
+    """
+    Proxy residencial para bypassear IP bans de YouTube/googlevideo desde datacenters.
+    Formato esperado: http://user:pass@host:port (ej: Webshare rotating residential).
+
+    Aplica a:
+      - Chunks de googlevideo en _parallel_download()
+      - yt-dlp (fallback de transcript y descarga)
+    """
+    url = os.getenv("WEBSHARE_PROXY_URL") or os.getenv("HTTP_PROXY_URL")
+    return url.strip() if url else None
+
+
+def _urlopen_maybe_proxied(req, timeout: int = 30):
+    """urlopen que usa WEBSHARE_PROXY_URL si está seteado."""
+    proxy = _get_proxy_url()
+    if proxy:
+        opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+        return opener.open(req, timeout=timeout)
+    return urlopen(req, timeout=timeout)
 
 
 def _get_cookies_path():
@@ -59,7 +81,13 @@ def _build_ydl_opts(base_opts: dict) -> dict:
     
     # Use mobile clients to bypass bot detection (android/ios don't require sign-in)
     base_opts['extractor_args'] = {'youtube': {'player_client': ['android', 'web']}}
-    
+
+    # Proxy residencial si está configurado (bypassea IP bans de YouTube)
+    proxy = _get_proxy_url()
+    if proxy:
+        base_opts['proxy'] = proxy
+        print(f"🌐 yt-dlp usando proxy residencial: {proxy.split('@')[-1] if '@' in proxy else proxy}")
+
     return base_opts
 
 
@@ -154,9 +182,17 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
     Escribe a archivos temporales en un subdir, los concatena en orden al final.
     Retriea cada chunk hasta 3 veces antes de fallar.
     """
-    # HEAD para obtener tamaño total
+    # HEAD para obtener tamaño total (vía proxy si está seteado)
+    proxy = _get_proxy_url()
+    if proxy:
+        opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+        _open = lambda r, t=30: opener.open(r, timeout=t)
+        print(f"   🌐 {label}: vía proxy residencial")
+    else:
+        _open = lambda r, t=30: urlopen(r, timeout=t)
+
     req = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
-    with urlopen(req, timeout=30) as r:
+    with _open(req, 30) as r:
         total = int(r.headers.get("Content-Length", 0))
     if total <= 0:
         raise RuntimeError(f"{label}: no se pudo determinar Content-Length")
@@ -188,7 +224,7 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
                     "User-Agent": _DEFAULT_UA,
                     "Range": f"bytes={s}-{e}",
                 })
-                with urlopen(rq, timeout=180) as r, open(tmp, "wb") as f:
+                with _open(rq, 180) as r, open(tmp, "wb") as f:
                     shutil.copyfileobj(r, f, 1 << 20)
                 if tmp.stat().st_size != (e - s + 1):
                     raise IOError(f"chunk {i} size mismatch: got {tmp.stat().st_size}, expected {e-s+1}")
