@@ -157,10 +157,13 @@ Prioriza:
 
 **OLVIDA LINKEDIN. Para entretenimiento, genera:**
 
-1. **Overlay Text** (Texto que pones sobre el video)
-   - Máx 8 palabras
-   - Formato: "POV: ...", "Literalmente yo cuando...", "No puede ser 💀"
-   - Ejemplo: "Mortedor vs La R (Final Boss) 💀"
+1. **Overlay Text** (Texto que pones sobre el video — HOOK VIRAL CORTO)
+   - **MÁXIMO 4 PALABRAS** (ideal 2-3). Se lee en <1 segundo, por eso debe ser cortísimo.
+   - TODO EN MAYÚSCULAS, sin signos de puntuación al final.
+   - Tipo cartel de TikTok/Reel: pattern interrupt, curiosidad, shock, dato punzante.
+   - NO es un resumen del clip. Es el gancho que frena el scroll.
+   - Ejemplos buenos: "NADIE TE DICE ESTO", "EL ERROR #1", "92% FALLAN ACÁ", "MIRÁ QUÉ HIZO", "ESTO ES ORO", "SIN INVERTIR UN PESO", "CAMBIA TU VIDA"
+   - Ejemplos MALOS (muy largos, parecen subtítulo): "El e-commerce tradicional está muerto para principiantes", "Deja de vender productos bonitos empieza a vender soluciones"
 
 2. **Viral Caption** (Descripción del post)
    - 1-2 líneas max
@@ -225,7 +228,7 @@ Prioriza:
 **Genera este paquete completo:**
 
 ```
-overlay_text: "[Texto de 8 palabras max sobre el video]"
+overlay_text: "[HOOK VIRAL EN MAYÚSCULAS, MÁX 4 PALABRAS — pattern interrupt, no resumen]"
 caption: "[1-2 líneas + hashtags nativos]"
 visual_hook: "[Instrucción específica para seg 0]"
 visual_hook_description: "[Describe QUÉ VE el usuario en segundo 0 - texto overlay + acción visual]"
@@ -319,7 +322,7 @@ DURACIÓN: 6.5 segundos (flexible, no forzar 60s)
         }}
       ],
       "tiktok_package": {{
-        "overlay_text": "[Máx 8 palabras sobre el video]",
+        "overlay_text": "[MÁXIMO 4 PALABRAS, EN MAYÚSCULAS, hook viral que frena scroll]",
         "caption": "[1-2 líneas + hashtags nativos]",
         "visual_hook": "[Qué pasa en seg 0]",
         "sound_hook": "[Frase/sonido memorable del clip]"

@@ -384,7 +384,8 @@ FORMATO JSON DE SALIDA:
     {{
       "start_time": 0,
       "end_time": 60,
-      "hook": "Frase gancho específica (OBLIGATORIO)",
+      "hook": "Frase gancho específica (OBLIGATORIO, forma larga para thread/post)",
+      "viral_overlay": "HOOK CORTO MAX 4 PALABRAS UPPERCASE (se quema sobre el clip vertical, debe frenar scroll en <1s. Ej: 'NADIE TE DICE ESTO', 'EL ERROR #1', '92% FALLAN ACÁ', 'SIN INVERTIR UN PESO'. NO resumir el clip, generar un gancho tipo cartel de TikTok)",
       "emotional_trigger": "Curiosidad | Miedo | Codicia | Altruismo",
       "pillar_type": "authority",
       "category": "business",

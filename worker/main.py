@@ -34,9 +34,10 @@ validate_env()
 from services.downloader import download_audio, download_video, cleanup_all
 from services.processor import analyze_with_gemini, cleanup_uploaded_file
 from services.clipper import extract_clip, cleanup_clips
+from services.clip_generator import generate_clip, ClipGenerationError
 from services.supabase_client import (
-    update_job_status, 
-    update_job_error, 
+    update_job_status,
+    update_job_error,
     save_content_result,
     upload_clip_to_storage,
     get_supabase
@@ -196,13 +197,18 @@ def process_job(job_data: dict) -> None:
         # for moment in result.viral_moments:
         #     validate_against_transcript(moment, transcript)
         
-        # Step 4: Prepare clip URLs
-        # Video download via yt-dlp is blocked on most cloud IPs (Render, Railway, etc.)
-        # Instead, we generate YouTube deep links with timestamps — no download needed.
+        # Step 4: Download full video for real MP4 clipping (Sprint 1.1 Día 8).
+        # If download fails (e.g. yt-dlp blocked on cloud IP), fall back to YouTube timestamp links.
         supabase = get_supabase()
-        print("\n📹 Step 4: Preparing clip references...")
+        print("\n📹 Step 4: Downloading full video for MP4 clipping...")
         update_job_progress(job_id, current_step="clipping", progress_percentage=70)
-        video_path = None  # No local download; clips use YouTube timestamp URLs
+        video_path = None
+        try:
+            video_path = download_video(video_url, video_id)
+            print(f"✅ Video descargado: {video_path}")
+        except Exception as e:
+            print(f"⚠️ Video download falló ({e}) — fallback a links de YouTube")
+            video_path = None
         
         # Step 5: Save results
         print("\n💾 Step 5: Saving results...")
@@ -217,29 +223,44 @@ def process_job(job_data: dict) -> None:
             moment_index = i + 1
             clip_url = None
             
-            # Generate clip reference (timestamps already populated in Step 3.5)
+            # Generate clip (Sprint 1.1 Día 8):
+            #  - Si hay video local: generate_clip → 9:16 + subs + overlay → upload a R2.
+            #  - Fallback a YouTube timestamp link si algo falla o no hay video.
             if video_path:
-                # Local video available (e.g. running on VPS): extract and upload real clip
                 try:
-                    print(f"\n✂️ Extracting clip {moment_index}...")
-                    clip_path = extract_clip(
-                        input_path=video_path,
-                        start_time=moment.start_time,
-                        end_time=moment.end_time,
-                        video_id=video_id,
-                        moment_index=moment_index
+                    print(f"\n✂️ Generando clip MP4 {moment_index} ({moment.start_time}-{moment.end_time}s)...")
+                    clip_output = CLIPS_DIR / f"{video_id}_moment_{moment_index}.mp4"
+                    clip_output.parent.mkdir(parents=True, exist_ok=True)
+                    # Preferencia: viral_overlay (corto, viral) > tiktok_package.overlay_text > None.
+                    # Si no hay overlay corto, dejamos el clip SIN overlay (no usamos hook largo).
+                    overlay_text = getattr(moment, 'viral_overlay', None)
+                    if not overlay_text:
+                        tp = getattr(moment, 'tiktok_package', None)
+                        overlay_text = getattr(tp, 'overlay_text', None) if tp else None
+                    gen_result = generate_clip(
+                        video_path=video_path,
+                        start_sec=float(moment.start_time),
+                        end_sec=float(moment.end_time),
+                        output_path=str(clip_output),
+                        segments=transcript.get("segments"),
+                        subtitle_style="tiktok_viral",
+                        overlay_text=overlay_text,
+                        overlay_style="tiktok_viral",
                     )
-                    print(f"📤 Uploading clip {moment_index} to storage...")
-                    clip_url = upload_clip_to_storage(clip_path, job_id, moment_index)
+                    print(f"✅ Clip generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
+                    print(f"📤 Subiendo clip {moment_index} a R2...")
+                    clip_url = upload_clip_to_storage(str(clip_output), job_id, moment_index)
                     if clip_url:
-                        print(f"✅ Clip uploaded: {clip_url[:50]}...")
-                except Exception as e:
-                    print(f"⚠️ Clip {moment_index} failed: {e}")
-                    # Fallback to YouTube timestamp link
+                        print(f"✅ Clip subido: {clip_url[:70]}...")
+                    else:
+                        raise RuntimeError("upload_clip_to_storage devolvió None")
+                except (ClipGenerationError, Exception) as e:
+                    print(f"⚠️ Clip {moment_index} falló: {e}")
                     if moment.start_time is not None:
                         clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
+                        print(f"🔗 Fallback a link de YouTube: {clip_url}")
             else:
-                # No local video — use YouTube deep link with timestamp (works on any hosting)
+                # Sin video local — deep link con timestamp
                 if moment.start_time is not None:
                     clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                     print(f"🔗 Clip {moment_index}: YouTube link at {int(moment.start_time)}s → {clip_url}")

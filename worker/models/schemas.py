@@ -60,7 +60,8 @@ class ViralMoment(BaseModel):
     """A viral moment identified in the video"""
     start_time: Optional[int] = None  # seconds (deprecated for entertainment, use surgical_clipping)
     end_time: Optional[int] = None    # seconds (deprecated for entertainment, use surgical_clipping)
-    hook: str        # The viral hook/headline
+    hook: str        # The viral hook/headline (long form, para thread/post)
+    viral_overlay: Optional[str] = None  # Hook cortísimo MAX 4 palabras UPPERCASE para quemar sobre el video vertical
     emotional_trigger: str  # Why this moment is viral-worthy
     pillar_type: Optional[str] = None  # 'authority' | 'utility' | 'connection' | 'entertainment'
     category: Optional[str] = None  # 'business' | 'entertainment' | 'tech' | 'lifestyle'
