@@ -22,8 +22,24 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-FFMPEG_PATH = os.getenv('FFMPEG_PATH', shutil.which('ffmpeg') or 'ffmpeg')
-FFPROBE_PATH = os.getenv('FFPROBE_PATH', shutil.which('ffprobe') or 'ffprobe')
+def _resolve_bin(env_var: str, name: str) -> str:
+    """
+    Resuelve el path de un binario (ffmpeg/ffprobe) con fallback seguro.
+    Si el env var apunta a un path inexistente (ej: path de Windows en Linux),
+    cae al ejecutable en PATH en vez de explotar en runtime.
+    """
+    env_val = os.getenv(env_var)
+    if env_val and Path(env_val).exists():
+        return env_val
+    on_path = shutil.which(name)
+    if on_path:
+        return on_path
+    # Último recurso: nombre plano (falla clara en runtime si tampoco está)
+    return name
+
+
+FFMPEG_PATH = _resolve_bin('FFMPEG_PATH', 'ffmpeg')
+FFPROBE_PATH = _resolve_bin('FFPROBE_PATH', 'ffprobe')
 
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
 
