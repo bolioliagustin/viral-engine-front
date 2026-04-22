@@ -164,12 +164,12 @@ export function ViralMomentCard({
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="grid lg:grid-cols-[35%_65%] divider-x divider-slate-800">
-          
+        <div className="grid lg:grid-cols-[280px_1fr] divider-x divider-slate-800">
+
 
           {/* LEFT: Video & Actions */}
           <div className="p-5 border-r border-slate-800 bg-slate-925 flex flex-col gap-4">
-            <div className="relative rounded-xl overflow-hidden bg-black shadow-lg border border-slate-800 aspect-video group">
+            <div className="relative rounded-xl overflow-hidden bg-black shadow-lg border border-slate-800 aspect-[9/16] group">
               {isYouTubeUrl ? (
                 <iframe
                   src={getYouTubeEmbedUrl(clipUrl) ?? undefined}
