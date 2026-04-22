@@ -72,6 +72,40 @@ export async function getJobStatus(jobId: string) {
 }
 
 /**
+ * Create a Lemon Squeezy Checkout and redirect.
+ */
+export async function redirectToCheckout(): Promise<void> {
+    const response = await apiFetch("/billing/create-checkout", {
+        method: "POST",
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: "Unknown error" }));
+        throw new Error(error.message || error.error || `HTTP ${response.status}`);
+    }
+
+    const { url } = await response.json();
+    window.location.href = url;
+}
+
+/**
+ * Open the Lemon Squeezy Customer Portal (manage/cancel subscription).
+ */
+export async function redirectToPortal(): Promise<void> {
+    const response = await apiFetch("/billing/create-portal", {
+        method: "POST",
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: "Unknown error" }));
+        throw new Error(error.message || error.error || `HTTP ${response.status}`);
+    }
+
+    const { url } = await response.json();
+    window.location.href = url;
+}
+
+/**
  * Get current user's credits.
  */
 export async function getUserCredits() {

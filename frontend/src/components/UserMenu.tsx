@@ -101,6 +101,9 @@ export function UserMenu() {
           <DropdownMenuItem onClick={() => router.push("/dashboard")}>
             Dashboard
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/account")}>
+            Mi cuenta
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => router.push("/settings")}>
             Configuración
           </DropdownMenuItem>

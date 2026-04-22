@@ -10,6 +10,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const jobsRouter = require('./routes/jobs');
+const billingRouter = require('./routes/billing');
 const logger = require('./lib/logger');
 
 // C4: Initialize Sentry error tracking (must be before Express app creation)
@@ -49,10 +50,16 @@ app.use(cors({
     },
     credentials: true
 }));
-app.use(express.json());
+// Save raw body buffer so Stripe webhook can verify signatures
+app.use(express.json({
+    verify: (req, _res, buf) => {
+        req.rawBody = buf;
+    },
+}));
 
 // Routes
 app.use('/', jobsRouter);
+app.use('/', billingRouter);
 
 // Root route
 app.get('/', (req, res) => {
