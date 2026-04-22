@@ -3,6 +3,7 @@ YouTube Viral Content Engine - AI Worker
 Watches the queue folder and processes video analysis jobs.
 Now with video clipping and Supabase integration.
 """
+import gc
 import os
 import sys
 import json
@@ -72,31 +73,38 @@ def cleanup_old_files(max_age_hours: int = 24) -> None:
         print(f"🧹 Cleanup: removed {cleaned} file(s) older than {max_age_hours}h")
 
 
-def recover_stale_jobs(max_age_minutes: int = 30) -> None:
+def recover_stale_jobs(max_age_minutes: int = 20) -> None:
     """
-    C5: Recover jobs stuck in 'processing' for longer than max_age_minutes.
-    S1: Now just resets status to 'pending' in Supabase (no filesystem queue files).
-    Runs at worker startup.
+    C5: Marca como 'failed' los jobs que quedaron en 'processing' por más de
+    max_age_minutes (causado por OOM-kill del worker u otros crashes).
+
+    Antes reseteaba a 'pending', pero eso causaba loops infinitos si el job
+    seguía fallando por OOM. Ahora los marca failed con mensaje descriptivo
+    para que el usuario pueda re-intentar manualmente.
     """
     supabase = get_supabase()
     if not supabase:
         return
-    
+
     try:
         threshold = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
         result = supabase.table("jobs").select("id") \
             .eq("status", "processing") \
             .lt("updated_at", threshold) \
             .execute()
-        
+
         if not result.data:
             return
-        
+
         for job in result.data:
-            supabase.table("jobs").update({"status": "pending"}).eq("id", job["id"]).execute()
-            print(f"♻️ Recovered stale job: {job['id']}")
-        
-        print(f"♻️ Recovered {len(result.data)} stale job(s)")
+            supabase.table("jobs").update({
+                "status": "failed",
+                "error_message": "Worker crashed while processing (likely out of memory). Please retry the job.",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", job["id"]).execute()
+            print(f"🪦 Zombie job marcado failed: {job['id']}")
+
+        print(f"🧹 {len(result.data)} zombie job(s) limpiados al arrancar")
     except Exception as e:
         print(f"⚠️ Stale job recovery failed: {e}")
 
@@ -259,6 +267,15 @@ def process_job(job_data: dict) -> None:
                     if moment.start_time is not None:
                         clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                         print(f"🔗 Fallback a link de YouTube: {clip_url}")
+                finally:
+                    # Liberar el clip local y forzar GC entre momentos para
+                    # mantener el pico de RAM bajo en el free tier (512MB).
+                    if clip_output.exists():
+                        try:
+                            clip_output.unlink()
+                        except Exception:
+                            pass
+                    gc.collect()
             else:
                 # Sin video local — deep link con timestamp
                 if moment.start_time is not None:

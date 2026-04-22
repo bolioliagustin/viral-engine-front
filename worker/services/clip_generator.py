@@ -178,28 +178,34 @@ def cut_clip(
     # FFmpeg con re-encode preciso
     # -ss DESPUES de -i = seek preciso pero mas lento
     # Para clips <60s no es problema, ganamos precision
+    # -threads 2: limita uso de memoria (default = all cores → buffers enormes en RAM)
+    # -preset veryfast: ~30% menos RAM que 'fast', calidad casi idéntica para clips cortos
+    # -loglevel error: evita bufferar cientos de KB de progress output en capture_output
     cmd = [
         FFMPEG_PATH,
-        '-y',
+        '-y', '-loglevel', 'error',
         '-i', video_path,
         '-ss', f'{start_sec:.3f}',
         '-to', f'{end_sec:.3f}',
         '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '20',          # Calidad alta (18-23 = rango bueno)
+        '-preset', 'veryfast',
+        '-threads', '2',
+        '-crf', '23',
         '-c:a', 'aac',
-        '-b:a', '192k',        # Audio calidad alta
-        '-movflags', '+faststart',  # Streaming-friendly
+        '-b:a', '128k',
+        '-movflags', '+faststart',
         '-avoid_negative_ts', 'make_zero',
         output_path,
     ]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                       check=True, timeout=300)
     except subprocess.TimeoutExpired:
         raise ClipGenerationError(f"Timeout cortando clip (>5min)")
     except subprocess.CalledProcessError as e:
-        raise ClipGenerationError(f"FFmpeg fallo: {e.stderr[-500:]}")
+        err = e.stderr.decode(errors='replace') if isinstance(e.stderr, bytes) else (e.stderr or '')
+        raise ClipGenerationError(f"FFmpeg fallo: {err[-500:]}")
 
     if not os.path.exists(output_path):
         raise ClipGenerationError(f"FFmpeg termino pero el archivo no existe: {output_path}")
@@ -498,23 +504,26 @@ def burn_subtitles(
 
     cmd = [
         FFMPEG_PATH,
-        '-y',
+        '-y', '-loglevel', 'error',
         '-i', video_path,
         '-vf', vf,
         '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '20',
+        '-preset', 'veryfast',
+        '-threads', '2',
+        '-crf', '23',
         '-c:a', 'copy',
         '-movflags', '+faststart',
         output_path,
     ]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=600)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                       check=True, timeout=600)
     except subprocess.TimeoutExpired:
         raise ClipGenerationError("Timeout quemando subtitulos (>10min)")
     except subprocess.CalledProcessError as e:
-        raise ClipGenerationError(f"FFmpeg burn_subtitles fallo: {e.stderr[-500:]}")
+        err = e.stderr.decode(errors='replace') if isinstance(e.stderr, bytes) else (e.stderr or '')
+        raise ClipGenerationError(f"FFmpeg burn_subtitles fallo: {err[-500:]}")
 
     if not os.path.exists(output_path):
         raise ClipGenerationError(f"FFmpeg termino pero el archivo no existe: {output_path}")
@@ -715,23 +724,26 @@ def burn_overlay_text(
 
     cmd = [
         FFMPEG_PATH,
-        '-y',
+        '-y', '-loglevel', 'error',
         '-i', video_path,
         '-vf', vf,
         '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '20',
+        '-preset', 'veryfast',
+        '-threads', '2',
+        '-crf', '23',
         '-c:a', 'copy',
         '-movflags', '+faststart',
         output_path,
     ]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=600)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                       check=True, timeout=600)
     except subprocess.TimeoutExpired:
         raise ClipGenerationError("Timeout quemando overlay (>10min)")
     except subprocess.CalledProcessError as e:
-        raise ClipGenerationError(f"FFmpeg burn_overlay fallo: {e.stderr[-500:]}")
+        err = e.stderr.decode(errors='replace') if isinstance(e.stderr, bytes) else (e.stderr or '')
+        raise ClipGenerationError(f"FFmpeg burn_overlay fallo: {err[-500:]}")
 
     if not os.path.exists(output_path):
         raise ClipGenerationError(f"FFmpeg termino pero el archivo no existe: {output_path}")
@@ -798,34 +810,39 @@ def to_vertical_9_16(
 
     cmd = [
         FFMPEG_PATH,
-        '-y',
+        '-y', '-loglevel', 'error',
         '-i', clip_path,
         '-filter_complex', filter_complex,
         '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '20',
-        '-c:a', 'copy',  # audio sin re-encode (el cut ya lo dejo en AAC)
+        '-preset', 'veryfast',
+        '-threads', '2',
+        '-crf', '23',
+        '-c:a', 'copy',
         '-movflags', '+faststart',
         output_path,
     ]
 
     try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=600)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                       check=True, timeout=600)
     except subprocess.TimeoutExpired:
         raise ClipGenerationError("Timeout convirtiendo a 9:16 (>10min)")
     except subprocess.CalledProcessError as e:
+        err = e.stderr.decode(errors='replace') if isinstance(e.stderr, bytes) else (e.stderr or '')
         # Si falla por audio no compatible, reintentar con re-encode de audio
-        if b'Invalid argument' in (e.stderr.encode() if isinstance(e.stderr, str) else e.stderr) or 'audio' in e.stderr.lower():
+        if 'invalid argument' in err.lower() or 'audio' in err.lower():
             cmd_retry = [c if c != 'copy' else 'aac' for c in cmd]
             if '-b:a' not in cmd_retry:
                 idx = cmd_retry.index('aac')
-                cmd_retry[idx:idx+1] = ['aac', '-b:a', '192k']
+                cmd_retry[idx:idx+1] = ['aac', '-b:a', '128k']
             try:
-                subprocess.run(cmd_retry, capture_output=True, text=True, check=True, timeout=600)
+                subprocess.run(cmd_retry, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                               check=True, timeout=600)
             except subprocess.CalledProcessError as e2:
-                raise ClipGenerationError(f"FFmpeg 9:16 fallo (retry): {e2.stderr[-500:]}")
+                err2 = e2.stderr.decode(errors='replace') if isinstance(e2.stderr, bytes) else (e2.stderr or '')
+                raise ClipGenerationError(f"FFmpeg 9:16 fallo (retry): {err2[-500:]}")
         else:
-            raise ClipGenerationError(f"FFmpeg 9:16 fallo: {e.stderr[-500:]}")
+            raise ClipGenerationError(f"FFmpeg 9:16 fallo: {err[-500:]}")
 
     if not os.path.exists(output_path):
         raise ClipGenerationError(f"FFmpeg termino pero el archivo no existe: {output_path}")
@@ -910,6 +927,14 @@ def generate_clip(
     intermediates = []
     t_total_start = time.time()
 
+    def _del(path: str) -> None:
+        """Borra un archivo intermedio inmediatamente para liberar disco/caché."""
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
     # Setup workdir
     if workdir is None:
         workdir = str(Path(output_path).parent / ".tmp_pipeline")
@@ -939,6 +964,8 @@ def generate_clip(
             target_width=target_width,
             target_height=target_height,
         )
+        # cut_path ya no se necesita — liberar disco inmediatamente
+        _del(cut_path)
         intermediates.append(vertical_path)
         step_times['vertical_9_16'] = round(time.time() - t0, 2)
 
@@ -973,11 +1000,13 @@ def generate_clip(
                     output_path=subs_path,
                     style=subtitle_style,
                 )
+                # vertical_path ya no se necesita
+                _del(vertical_path)
                 intermediates.append(subs_path)
                 # El ASS generado internamente
                 ass_path = srt_path.replace(".srt", ".ass")
                 if os.path.exists(ass_path):
-                    intermediates.append(ass_path)
+                    _del(ass_path)
                 current = subs_path
                 step_times['subs'] = round(time.time() - t0, 2)
 

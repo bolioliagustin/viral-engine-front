@@ -339,8 +339,8 @@ def download_video_rapidapi(video_url: str, video_id: str = None, max_height: in
         # Esto bypassa el throttle de googlevideo (~4MB/min/conn).
         t0 = time.time()
         with ThreadPoolExecutor(max_workers=2) as ex:
-            fv = ex.submit(_parallel_download, vid["url"], vid_tmp, 8, "video")
-            fa = ex.submit(_parallel_download, aud["url"], aud_tmp, 4, "audio")
+            fv = ex.submit(_parallel_download, vid["url"], vid_tmp, 4, "video")
+            fa = ex.submit(_parallel_download, aud["url"], aud_tmp, 2, "audio")
             fv.result()
             fa.result()
         print(f"   ⏱️ Descarga total: {time.time() - t0:.1f}s")
