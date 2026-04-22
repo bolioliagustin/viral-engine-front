@@ -8,3 +8,4 @@ sentry-sdk
 boto3
 youtube-transcript-api>=0.6.2
 requests
+json-repair
