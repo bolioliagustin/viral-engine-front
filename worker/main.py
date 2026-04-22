@@ -254,6 +254,8 @@ def process_job(job_data: dict) -> None:
                         subtitle_style="tiktok_viral",
                         overlay_text=overlay_text,
                         overlay_style="tiktok_viral",
+                        target_width=720,   # 720x1280 (9:16) — 55% menos RAM vs 1080x1920
+                        target_height=1280, # sube bien a TikTok/Reels/Shorts
                     )
                     print(f"✅ Clip generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
                     print(f"📤 Subiendo clip {moment_index} a R2...")
