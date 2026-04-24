@@ -240,15 +240,89 @@ def _split_text_into_chunks(text: str, max_words: int) -> list[str]:
     return chunks
 
 
+def _words_to_srt_entries(
+    words: list[dict],
+    start_offset_sec: float,
+    clip_duration_sec: Optional[float],
+    max_words_per_line: int,
+    gap_sec: float = 0.050,
+) -> list[str]:
+    """
+    Genera entradas SRT a partir de timestamps por palabra (Whisper word-level).
+
+    Cada palabra tiene su tiempo EXACTO de inicio y fin (no interpolado).
+    Agrupamos de a N palabras y cada chunk aparece EXACTAMENTE cuando se pronuncia.
+    Con gap de 50ms entre chunks se elimina cualquier overlap visual.
+    """
+    entries = []
+    idx = 1
+
+    # Filtrar palabras dentro del clip + shift de tiempo
+    clip_words = []
+    for w in words:
+        w_start = float(w.get("start", 0)) - start_offset_sec
+        w_end = float(w.get("end", w_start + 0.1)) - start_offset_sec
+        word_text = (w.get("word") or "").strip()
+        if not word_text:
+            continue
+        if w_end <= 0:
+            continue
+        if clip_duration_sec is not None and w_start >= clip_duration_sec:
+            break  # palabras ordenadas por tiempo — si esta está fuera, las siguientes también
+        # Recortar al clip
+        w_start = max(0.0, w_start)
+        if clip_duration_sec is not None:
+            w_end = min(clip_duration_sec, w_end)
+        if w_end - w_start < 0.03:
+            continue
+        clip_words.append({"text": word_text, "start": w_start, "end": w_end})
+
+    if not clip_words:
+        return entries
+
+    # Agrupar de a max_words_per_line
+    last_entry_end = -1.0
+    for i in range(0, len(clip_words), max_words_per_line):
+        group = clip_words[i:i + max_words_per_line]
+        chunk_text = " ".join(g["text"] for g in group)
+        chunk_start = group[0]["start"]
+        chunk_end = group[-1]["end"]
+
+        # Garantizar gap con el chunk anterior (cross-grupo)
+        if chunk_start < last_entry_end + gap_sec:
+            chunk_start = last_entry_end + gap_sec
+        # Quitar un chiquito del final para que nunca toque al siguiente
+        chunk_end = max(chunk_start + 0.15, chunk_end - gap_sec / 2)
+
+        if chunk_end - chunk_start < 0.15:
+            continue
+
+        entries.append(
+            f"{idx}\n"
+            f"{_format_srt_timestamp(chunk_start)} --> {_format_srt_timestamp(chunk_end)}\n"
+            f"{chunk_text}\n"
+        )
+        last_entry_end = chunk_end
+        idx += 1
+
+    return entries
+
+
 def segments_to_srt(
     segments: list[dict],
     output_path: str,
     start_offset_sec: float = 0.0,
     clip_duration_sec: Optional[float] = None,
     max_words_per_line: int = 6,
+    words: Optional[list[dict]] = None,
 ) -> str:
     """
     Convierte segmentos tipo Whisper a archivo SRT listo para quemar.
+
+    Si se pasa `words` (timestamps por palabra de Whisper verbose_json con
+    timestamp_granularities=["word"]), se usa el tiempo EXACTO de cada palabra
+    → subtítulos perfectamente sincronizados con el audio, sin lag.
+    Fallback a chunking por tiempo interpolado si no hay words.
 
     Args:
         segments: Lista con formato [{"start": s, "end": s, "text": "..."}]
@@ -259,7 +333,9 @@ def segments_to_srt(
                           Ej: si el clip es de s60-s90 del original, pasar 60.
         clip_duration_sec: Duracion del clip. Segmentos fuera de rango se recortan.
         max_words_per_line: Particiona segmentos largos en bloques mas cortos
-                            para que sean legibles en vertical (recomendado 4-7).
+                            para que sean legibles en vertical (recomendado 3-4).
+        words: [OPCIONAL] Lista de palabras individuales con timestamps exactos:
+               [{"word": "hola", "start": 0.5, "end": 0.7}, ...]
 
     Returns:
         Path al SRT generado
@@ -267,11 +343,29 @@ def segments_to_srt(
     Raises:
         ClipGenerationError si no hay segmentos utilizables
     """
-    if not segments:
-        raise ClipGenerationError("segments vacio")
+    if not segments and not words:
+        raise ClipGenerationError("segments y words vacíos")
 
+    # ── Camino preferido: usar word-level timestamps (perfecto sync, sin lag) ──
+    if words:
+        srt_entries = _words_to_srt_entries(
+            words=words,
+            start_offset_sec=start_offset_sec,
+            clip_duration_sec=clip_duration_sec,
+            max_words_per_line=max_words_per_line,
+        )
+        if srt_entries:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(srt_entries))
+            return output_path
+        # Si no hay words en el rango del clip, caer al fallback
+        print("⚠️ No hay words en el rango del clip — fallback a segments con interpolación")
+
+    # ── Fallback: interpolación por segmento (legacy, lag inherente) ──────────
     srt_entries = []
     idx = 1
+    last_entry_end = -1.0  # track cross-segment para evitar overlap entre segs
 
     for seg in segments:
         seg_start_raw = float(seg.get("start", 0))
@@ -308,23 +402,30 @@ def segments_to_srt(
         if not chunks:
             continue
 
-        # Gap entre chunks consecutivos para que NUNCA dos líneas se superpongan.
-        # Sin gap, libass muestra chunk[i] + chunk[i+1] al mismo tiempo en el
-        # frame exacto del boundary → el texto viejo queda abajo y el nuevo arriba.
-        # Con 50ms de silencio entre cada chunk solo hay UNA línea visible siempre.
+        # Gap entre chunks consecutivos: evita que dos líneas aparezcan al mismo
+        # tiempo en el frame exacto del boundary (libass muestra ambas apiladas).
         GAP_SEC = 0.050
         duration = seg_end - seg_start
         n = len(chunks)
-        # Distribuir duración disponible descontando los gaps entre chunks
         total_gap = GAP_SEC * (n - 1)
-        chunk_duration = max(0.2, (duration - total_gap) / n)
+        available = max(0.1, duration - total_gap)
 
+        # Distribuir tiempo POR CARACTERES, no por chunks iguales.
+        # Speech pace es variable — un chunk de 15 chars tarda ~50% más en
+        # pronunciarse que uno de 10 chars. Distribuir por chars reduce el lag
+        # perceptible de los subtítulos contra el audio.
+        total_chars = sum(max(1, len(c)) for c in chunks)
+        # Si el segmento anterior terminó muy cerca del actual, arrancamos después
+        cursor = max(seg_start, last_entry_end + GAP_SEC)
         for i, chunk in enumerate(chunks):
-            chunk_start = seg_start + i * (chunk_duration + GAP_SEC)
+            chunk_chars = max(1, len(chunk))
+            chunk_duration = max(0.2, available * (chunk_chars / total_chars))
+            chunk_start = cursor
             chunk_end = chunk_start + chunk_duration
             # Asegurar que no excede el segmento
             chunk_end = min(chunk_end, seg_end)
             if chunk_end - chunk_start < 0.15:
+                cursor = chunk_end + GAP_SEC
                 continue
 
             srt_entries.append(
@@ -333,6 +434,8 @@ def segments_to_srt(
                 f"{chunk}\n"
             )
             idx += 1
+            cursor = chunk_end + GAP_SEC
+            last_entry_end = chunk_end
 
     if not srt_entries:
         raise ClipGenerationError("No quedaron segmentos validos despues de shift/recorte")
@@ -354,14 +457,14 @@ SUBTITLE_STYLES = {
     # compatible garantizado en Ubuntu (fonts-liberation viene por defecto).
     "tiktok_viral": {
         "FontName": "Liberation Sans",
-        "FontSize": "72",
+        "FontSize": "52",                # más chico, profesional (antes 72 = demasiado)
         "PrimaryColour": "&H00FFFFFF",   # blanco
         "OutlineColour": "&H00000000",   # negro
         "BorderStyle": "1",              # 1 = outline + shadow
-        "Outline": "5",                  # borde grueso TikTok-style
+        "Outline": "4",                  # borde visible pero no invasivo
         "Shadow": "0",
         "Bold": "1",
-        "Spacing": "1",                  # leve espaciado entre letras
+        "Spacing": "0",
         "Alignment": "2",                # 2 = bottom-center
         "MarginV": "340",                # zona blur inferior (debajo del video 16:9)
     },
@@ -369,7 +472,7 @@ SUBTITLE_STYLES = {
     # Para contenido más formal (entrevistas, business content)
     "clean": {
         "FontName": "Liberation Sans",
-        "FontSize": "64",
+        "FontSize": "48",
         "PrimaryColour": "&H00FFFFFF",   # blanco
         "OutlineColour": "&H00000000",   # negro
         "BackColour": "&HAA000000",      # fondo negro 67% opaco
@@ -384,11 +487,11 @@ SUBTITLE_STYLES = {
     # Para podcasts y vlogs donde el amarillo da energía
     "podcast": {
         "FontName": "Liberation Sans",
-        "FontSize": "68",
+        "FontSize": "50",
         "PrimaryColour": "&H0000FFFF",   # amarillo
         "OutlineColour": "&H00000000",   # negro
         "BorderStyle": "1",
-        "Outline": "4",
+        "Outline": "3",
         "Shadow": "0",
         "Bold": "1",
         "Alignment": "2",
@@ -907,6 +1010,7 @@ def generate_clip(
     output_path: str = "",
     segments: Optional[list[dict]] = None,
     segments_start_offset_sec: Optional[float] = None,
+    words: Optional[list[dict]] = None,  # word-level timestamps (Whisper verbose_json)
     subtitle_style: str = "tiktok_viral",
     overlay_text: Optional[str] = None,
     overlay_style: str = "tiktok_viral",
@@ -1005,9 +1109,9 @@ def generate_clip(
 
         t0 = time.time()
 
-        # Paso A: generar ASS de subtítulos (si hay segments)
+        # Paso A: generar ASS de subtítulos (si hay segments o words)
         subs_ass_path = None
-        if segments:
+        if segments or words:
             srt_path = str(Path(workdir) / f"{stem}_subs.srt")
             offset = segments_start_offset_sec if segments_start_offset_sec is not None else start_sec
             try:
@@ -1017,6 +1121,7 @@ def generate_clip(
                     start_offset_sec=offset,
                     clip_duration_sec=duration_sec,
                     max_words_per_line=3,
+                    words=words,  # ← sync perfecto cuando hay word timestamps
                 )
                 intermediates.append(srt_path)
                 ass_path = srt_path.replace(".srt", ".ass")

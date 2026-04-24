@@ -56,15 +56,17 @@ def _transcribe_single(audio_path: str) -> Dict:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",  # Supports verbose_json with timestamps
                 file=audio_file,
-                response_format="verbose_json"  # Includes segments with precise timestamps
+                response_format="verbose_json",  # Incluye segments con timestamps
+                timestamp_granularities=["segment", "word"],  # ← timestamps por palabra
             )
-        
+
         result = transcript.model_dump() if hasattr(transcript, 'model_dump') else dict(transcript)
-        
+
         # Save transcript to file for review
         _save_transcript(audio_path, result)
-        
-        print(f"✅ Transcription complete: {len(result.get('segments', []))} segments")
+
+        n_words = len(result.get('words', []))
+        print(f"✅ Transcription complete: {len(result.get('segments', []))} segments, {n_words} words")
         print(f"   Language: {result.get('language', 'unknown')}")
         print(f"   Duration: {result.get('duration', 'N/A')}s")
         
@@ -97,43 +99,56 @@ def _transcribe_chunked(audio_path: str, audio: 'AudioSegment') -> Dict:
     )
     
     all_segments = []
+    all_words = []
     full_text = []
     detected_language = None
-    
+
     try:
         for chunk_index, (chunk_path, offset_seconds) in enumerate(chunks):
             print(f"\n🔍 Transcribing chunk {chunk_index + 1}/{len(chunks)}...")
-            
+
             with open(chunk_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",  # Supports verbose_json with timestamps
                     file=audio_file,
-                    response_format="verbose_json"
+                    response_format="verbose_json",
+                    timestamp_granularities=["segment", "word"],
                 )
-            
+
             chunk_result = transcript.model_dump() if hasattr(transcript, 'model_dump') else dict(transcript)
-            
+
             # Detect language from first chunk
             if detected_language is None:
                 detected_language = chunk_result.get('language', 'es')
-            
+
             # Adjust timestamps with offset and add to all_segments
             for segment in chunk_result.get('segments', []):
                 adjusted_segment = segment.copy()
                 adjusted_segment['start'] += offset_seconds
                 adjusted_segment['end'] += offset_seconds
                 all_segments.append(adjusted_segment)
-            
+
+            # Adjust word-level timestamps also
+            for word in chunk_result.get('words', []) or []:
+                adjusted_word = word.copy()
+                adjusted_word['start'] = float(adjusted_word.get('start', 0)) + offset_seconds
+                adjusted_word['end'] = float(adjusted_word.get('end', 0)) + offset_seconds
+                all_words.append(adjusted_word)
+
             full_text.append(chunk_result.get('text', ''))
-            print(f"   ✅ Chunk {chunk_index + 1}: {len(chunk_result.get('segments', []))} segments")
-        
+            n_words_chunk = len(chunk_result.get('words', []) or [])
+            print(f"   ✅ Chunk {chunk_index + 1}: {len(chunk_result.get('segments', []))} segments, {n_words_chunk} words")
+
         # Deduplicate segments in overlap zones
         all_segments = _deduplicate_segments(all_segments)
-        
+        # Deduplicate words (by approximate start time)
+        all_words = _deduplicate_words(all_words)
+
         # Combine results
         combined_result = {
             "text": " ".join(full_text),
             "segments": all_segments,
+            "words": all_words,
             "language": detected_language,
             "duration": len(audio) / 1000
         }
@@ -183,6 +198,28 @@ def _deduplicate_segments(segments: List[Dict]) -> List[Dict]:
     
     print(f"   🔄 Deduplication: {len(sorted_segments)} → {len(deduplicated)} segments")
     return deduplicated
+
+
+def _deduplicate_words(words: List[Dict]) -> List[Dict]:
+    """
+    Elimina palabras duplicadas que aparecen en zonas de overlap entre chunks.
+    Criterio: si dos palabras tienen el mismo texto y su start difiere <0.5s,
+    se considera duplicado.
+    """
+    if not words:
+        return words
+    sorted_words = sorted(words, key=lambda w: float(w.get('start', 0)))
+    dedup = []
+    for w in sorted_words:
+        if dedup:
+            last = dedup[-1]
+            same_text = (w.get('word', '').strip().lower()
+                         == last.get('word', '').strip().lower())
+            close_time = abs(float(w.get('start', 0)) - float(last.get('start', 0))) < 0.5
+            if same_text and close_time:
+                continue
+        dedup.append(w)
+    return dedup
 
 
 def _text_similarity(text1: str, text2: str) -> float:

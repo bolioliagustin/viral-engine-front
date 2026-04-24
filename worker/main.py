@@ -319,6 +319,7 @@ def process_job(job_data: dict) -> None:
                         output_path=str(clip_output),
                         segments=transcript.get("segments"),
                         segments_start_offset_sec=src_offset,
+                        words=transcript.get("words"),  # word-level sync (Whisper)
                         subtitle_style="tiktok_viral",
                         overlay_text=overlay_text,
                         overlay_style="tiktok_viral",
