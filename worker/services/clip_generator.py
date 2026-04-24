@@ -333,42 +333,52 @@ def segments_to_srt(
 
 
 # Presets de estilo para subtitulos (formato ASS force_style)
-# Colores en formato ASS: &HBBGGRR (hex invertido) o &H00BBGGRR
+# Colores en formato ASS: &HAABBGGRR  (AA=alpha 00=opaco, BB=blue, GG=green, RR=red)
+# Ejemplos: &H00FFFFFF=blanco, &H0000FFFF=amarillo, &H000080FF=naranja, &H0000FF00=verde
 SUBTITLE_STYLES = {
-    # FontSize y MarginV en escala de PlayResY=1920 (pixeles reales)
+    # ── TikTok viral 2024/2025: blanco bold con borde negro grueso ─────────────
+    # El estilo más usado en clips virales — máximo contraste, legible sobre
+    # cualquier fondo, transmite energía. FontName Liberation Sans = Arial-
+    # compatible garantizado en Ubuntu (fonts-liberation viene por defecto).
     "tiktok_viral": {
-        "FontName": "Arial",
-        "FontSize": "62",
-        "PrimaryColour": "&H0000FFFF",   # amarillo (ASS: BBGGRR)
+        "FontName": "Liberation Sans",
+        "FontSize": "72",
+        "PrimaryColour": "&H00FFFFFF",   # blanco
         "OutlineColour": "&H00000000",   # negro
         "BorderStyle": "1",              # 1 = outline + shadow
-        "Outline": "2",                  # borde fino sobre PlayResY=1920
-        "Shadow": "1",
-        "Bold": "0",
+        "Outline": "5",                  # borde grueso TikTok-style
+        "Shadow": "0",
+        "Bold": "1",
+        "Spacing": "1",                  # leve espaciado entre letras
         "Alignment": "2",                # 2 = bottom-center
-        "MarginV": "340",                # sobre el blur de abajo, debajo del video 16:9
+        "MarginV": "340",                # zona blur inferior (debajo del video 16:9)
     },
+    # ── Clean: blanco sobre fondo semi-transparente ────────────────────────────
+    # Para contenido más formal (entrevistas, business content)
     "clean": {
-        "FontName": "Arial",
-        "FontSize": "54",
-        "PrimaryColour": "&H0000FFFF",   # amarillo
-        "OutlineColour": "&H00000000",
-        "BorderStyle": "1",
-        "Outline": "1.5",
-        "Shadow": "0.5",
-        "Bold": "0",
+        "FontName": "Liberation Sans",
+        "FontSize": "64",
+        "PrimaryColour": "&H00FFFFFF",   # blanco
+        "OutlineColour": "&H00000000",   # negro
+        "BackColour": "&HAA000000",      # fondo negro 67% opaco
+        "BorderStyle": "4",              # 4 = box con BackColour (sin outline)
+        "Outline": "16",                 # padding del box
+        "Shadow": "0",
+        "Bold": "1",
         "Alignment": "2",
         "MarginV": "340",
     },
+    # ── Podcast: texto grande amarillo clásico ─────────────────────────────────
+    # Para podcasts y vlogs donde el amarillo da energía
     "podcast": {
-        "FontName": "Arial",
-        "FontSize": "48",
+        "FontName": "Liberation Sans",
+        "FontSize": "68",
         "PrimaryColour": "&H0000FFFF",   # amarillo
-        "OutlineColour": "&H00000000",
+        "OutlineColour": "&H00000000",   # negro
         "BorderStyle": "1",
-        "Outline": "1.5",
+        "Outline": "4",
         "Shadow": "0",
-        "Bold": "0",
+        "Bold": "1",
         "Alignment": "2",
         "MarginV": "340",
     },
@@ -427,10 +437,10 @@ def _srt_to_ass(srt_path: str, ass_path: str, style: dict, play_res_x: int, play
         f"{s.get('PrimaryColour', '&H00FFFFFF')},"
         f"&H000000FF,"  # secondary (unused)
         f"{s.get('OutlineColour', '&H00000000')},"
-        f"&H00000000,"  # back
+        f"{s.get('BackColour', '&H00000000')},"  # back (transparente si no se define)
         f"{s.get('Bold', '0')},"
-        f"0,0,0,"       # Italic, Underline, StrikeOut
-        f"100,100,0,0," # ScaleX, ScaleY, Spacing, Angle
+        f"0,0,0,"                               # Italic, Underline, StrikeOut
+        f"100,100,{s.get('Spacing', '0')},0,"   # ScaleX, ScaleY, Spacing, Angle
         f"{s.get('BorderStyle', '1')},"
         f"{s.get('Outline', '1')},"
         f"{s.get('Shadow', '0')},"
@@ -533,35 +543,41 @@ def burn_subtitles(
 
 # Presets de estilo para overlay text (hook inicial)
 # Diferencia vs SUBTITLE_STYLES: fuente mas grande, posicion configurable
+# El overlay va en la zona SUPERIOR del blur (top blur band del layout 9:16).
 OVERLAY_STYLES = {
+    # ── TikTok viral: blanco bold con borde negro — el clásico de hooks ───────
     "tiktok_viral": {
-        "FontName": "Arial",
-        "FontSize": "80",
+        "FontName": "Liberation Sans",
+        "FontSize": "82",
         "PrimaryColour": "&H00FFFFFF",   # blanco
         "OutlineColour": "&H00000000",   # negro
         "BorderStyle": "1",
-        "Outline": "4",
-        "Shadow": "2",
+        "Outline": "6",                  # borde grueso para legibilidad sobre blur
+        "Shadow": "0",
         "Bold": "1",
+        "Spacing": "2",
     },
+    # ── Question: pregunta en amarillo ─────────────────────────────────────────
     "question": {
-        "FontName": "Arial",
-        "FontSize": "72",
+        "FontName": "Liberation Sans",
+        "FontSize": "74",
         "PrimaryColour": "&H0000FFFF",   # amarillo
         "OutlineColour": "&H00000000",
         "BorderStyle": "1",
-        "Outline": "3",
-        "Shadow": "1",
+        "Outline": "5",
+        "Shadow": "0",
         "Bold": "1",
+        "Spacing": "1",
     },
+    # ── Stat: dato/número con box negro ────────────────────────────────────────
     "stat": {
-        "FontName": "Arial",
-        "FontSize": "88",
+        "FontName": "Liberation Sans",
+        "FontSize": "90",
         "PrimaryColour": "&H00FFFFFF",   # blanco
         "OutlineColour": "&H00000000",
-        "BackColour": "&HCC000000",      # fondo negro semi-transparente (AA=CC = 80% opaco)
-        "BorderStyle": "3",              # 3 = box con BackColour
-        "Outline": "12",                 # padding del box
+        "BackColour": "&HCC000000",      # fondo negro 80% opaco
+        "BorderStyle": "4",              # box
+        "Outline": "18",                 # padding del box
         "Shadow": "0",
         "Bold": "1",
     },
@@ -615,7 +631,7 @@ def _build_overlay_ass(
         f"{s.get('BackColour', '&H80000000')},"
         f"{s.get('Bold', '1')},"
         f"0,0,0,"
-        f"100,100,0,0,"
+        f"100,100,{s.get('Spacing', '0')},0,"  # ScaleX, ScaleY, Spacing, Angle
         f"{s.get('BorderStyle', '1')},"
         f"{s.get('Outline', '3')},"
         f"{s.get('Shadow', '1')},"
@@ -697,11 +713,13 @@ def burn_overlay_text(
 
     video_meta = probe_video(video_path)
 
-    # MarginV segun posicion:
-    # top    -> 340 px desde arriba (dentro del blur superior del 9:16)
-    # bottom -> mismo que subs (340 desde abajo) -- pero chocaria con subs, mejor usar top
+    # MarginV segun posicion (canvas 1920px):
+    # top    -> 100px desde arriba = bien dentro del blur superior sin pegar al borde
+    #           El blur superior ocupa 0-656px (para video 16:9 en canvas 9:16).
+    #           100px nos da margen al top, el texto flota cómodo en el blur.
+    # bottom -> 340px desde abajo = zona blur inferior, sobre los subs
     # center -> no aplica (Alignment=5 ignora MarginV)
-    margin_v_by_pos = {"top": 340, "bottom": 340, "center": 0}
+    margin_v_by_pos = {"top": 100, "bottom": 340, "center": 0}
     alignment = _POSITION_TO_ALIGNMENT[position]
     margin_v = margin_v_by_pos[position]
 
@@ -1001,7 +1019,7 @@ def generate_clip(
         overlay_ass_path = None
         if overlay_text and overlay_text.strip():
             overlay_ass_path = str(Path(workdir) / f"{stem}_overlay.ass")
-            margin_v_by_pos = {"top": 340, "bottom": 340, "center": 0}
+            margin_v_by_pos = {"top": 100, "bottom": 340, "center": 0}
             alignment = _POSITION_TO_ALIGNMENT[overlay_position]
             margin_v = margin_v_by_pos[overlay_position]
             _build_overlay_ass(
