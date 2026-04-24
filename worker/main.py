@@ -32,7 +32,7 @@ validate_env()
 
 # Add parent to path for imports
 
-from services.downloader import download_audio, download_video, get_stream_urls, download_video_for_clips, cleanup_all
+from services.downloader import download_audio, download_video, get_stream_urls, download_clip_ytdlp, download_video_for_clips, cleanup_all
 from services.processor import analyze_with_gemini, cleanup_uploaded_file
 from services.clipper import extract_clip, cleanup_clips
 from services.clip_generator import generate_clip, ClipGenerationError
@@ -205,63 +205,23 @@ def process_job(job_data: dict) -> None:
         # for moment in result.viral_moments:
         #     validate_against_transcript(moment, transcript)
         
-        # Step 4: Descarga parcial del video via Python+proxy.
-        # YouTube bloquea IPs de datacenter (403). El proxy residencial funciona
-        # con Python urllib pero no con FFmpeg (HTTPS CONNECT no soportado).
-        # Solución: descargar desde byte 0 hasta el byte del último clip via
-        # Python+proxy → archivo MP4 válido → FFmpeg procesa localmente.
+        # Step 4: Preparar para clipping.
+        # Estrategia: yt-dlp con proxy + download_ranges descarga ~50MB por clip
+        # (solo los segmentos DASH del rango pedido). Si yt-dlp falla, fallback
+        # a descarga parcial desde byte 0 (más grande pero válida).
         supabase = get_supabase()
-        print("\n📹 Step 4: Descargando video parcial via Python+proxy...")
+        print("\n📹 Step 4: Preparando descarga selectiva por clip...")
         update_job_progress(job_id, current_step="clipping", progress_percentage=70)
         stream_urls = None
         video_path = None
         muxed_video_path = None
         video_duration = video_info.get("duration", 0) or 1
 
+        # Intentar obtener stream URLs para fallback (partial download)
         try:
             stream_urls = get_stream_urls(video_url, video_id)
-
-            # Calcular timestamp máximo de todos los momentos
-            max_end_sec = max(
-                float(m.end_time) for m in result.viral_moments
-                if m.end_time is not None
-            )
-            print(f"   🎯 Clips hasta {max_end_sec:.0f}s de {video_duration:.0f}s total")
-
-            # Descargar video+audio parcial (byte 0 → byte del max_end_sec)
-            pvid_path, paud_path = download_video_for_clips(
-                video_url=stream_urls["video_url"],
-                audio_url=stream_urls["audio_url"],
-                max_end_sec=max_end_sec,
-                video_duration=video_duration,
-                video_id=video_id,
-            )
-
-            # Muxear video+audio en un solo MP4
-            import subprocess as _sp
-            import shutil as _sh
-            _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
-            muxed_video_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
-            mux_res = _sp.run(
-                [_ffmpeg, "-y", "-loglevel", "warning",
-                 "-i", pvid_path, "-i", paud_path,
-                 "-c", "copy", "-movflags", "+faststart", muxed_video_path],
-                capture_output=True, text=True, timeout=300
-            )
-            # Limpiar streams separados
-            for p in [pvid_path, paud_path]:
-                try: Path(p).unlink(missing_ok=True)
-                except Exception: pass
-
-            if mux_res.returncode != 0:
-                raise RuntimeError(f"Mux falló: {mux_res.stderr[-300:]}")
-
-            video_path = muxed_video_path
-            print(f"✅ Video parcial listo: {Path(muxed_video_path).stat().st_size // (1<<20)}MB")
-
         except Exception as e:
-            print(f"⚠️ Descarga parcial falló ({e}) — fallback a links de YouTube")
-            stream_urls = None
+            print(f"ℹ️ Stream URLs no disponibles ({e}), se usará yt-dlp directo")
         
         # Step 5: Save results
         print("\n💾 Step 5: Saving results...")
@@ -276,9 +236,11 @@ def process_job(job_data: dict) -> None:
             moment_index = i + 1
             clip_url = None
             
-            # Generate clip desde el archivo local (video parcial muxeado).
-            # Si no hay video_path, fallback a YouTube timestamp link.
-            if video_path:
+            # Generate clip:
+            # Intento 1: yt-dlp + proxy + download_ranges → ~50MB por clip ✨
+            # Intento 2: partial download desde byte 0 → más grande pero válido
+            # Fallback: YouTube timestamp link
+            if moment.start_time is not None and moment.end_time is not None:
                 try:
                     start_s = float(moment.start_time)
                     end_s = float(moment.end_time)
@@ -291,12 +253,72 @@ def process_job(job_data: dict) -> None:
                         tp = getattr(moment, 'tiktok_package', None)
                         overlay_text = getattr(tp, 'overlay_text', None) if tp else None
 
+                    # ── Intento 1: yt-dlp download_ranges (~50MB) ─────────────
+                    seg_path = None
+                    try:
+                        seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}")
+                        seg_path = download_clip_ytdlp(
+                            youtube_url=video_url,
+                            start_sec=start_s,
+                            end_sec=end_s,
+                            output_path=seg_out,
+                        )
+                        src_path = seg_path
+                        src_start = 0.0
+                        src_end = end_s - start_s
+                        src_offset = start_s  # para alinear subtítulos
+                    except Exception as e_ytdlp:
+                        print(f"   ⚠️ yt-dlp falló ({e_ytdlp}) — fallback a partial download")
+                        seg_path = None
+
+                        # ── Intento 2: partial download desde byte 0 ──────────
+                        if stream_urls and not muxed_video_path:
+                            try:
+                                import subprocess as _sp, shutil as _sh
+                                _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
+                                max_end = max(
+                                    float(m.end_time) for m in result.viral_moments
+                                    if m.end_time is not None
+                                )
+                                pvid, paud = download_video_for_clips(
+                                    video_url=stream_urls["video_url"],
+                                    audio_url=stream_urls["audio_url"],
+                                    max_end_sec=max_end,
+                                    video_duration=video_duration,
+                                    video_id=video_id,
+                                )
+                                muxed_video_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
+                                mux_r = _sp.run(
+                                    [_ffmpeg, "-y", "-loglevel", "warning",
+                                     "-i", pvid, "-i", paud, "-c", "copy",
+                                     "-movflags", "+faststart", muxed_video_path],
+                                    capture_output=True, text=True, timeout=300
+                                )
+                                for pp in [pvid, paud]:
+                                    try: Path(pp).unlink(missing_ok=True)
+                                    except Exception: pass
+                                if mux_r.returncode != 0:
+                                    raise RuntimeError(mux_r.stderr[-300:])
+                                print(f"   ✅ Partial download: {Path(muxed_video_path).stat().st_size // (1<<20)}MB")
+                            except Exception as e_partial:
+                                print(f"   ⚠️ Partial download falló: {e_partial}")
+                                muxed_video_path = None
+
+                        if muxed_video_path and Path(muxed_video_path).exists():
+                            src_path = muxed_video_path
+                            src_start = start_s
+                            src_end = end_s
+                            src_offset = start_s
+                        else:
+                            raise RuntimeError("Sin video disponible para clip")
+
                     gen_result = generate_clip(
-                        video_path=video_path,
-                        start_sec=start_s,
-                        end_sec=end_s,
+                        video_path=src_path,
+                        start_sec=src_start,
+                        end_sec=src_end,
                         output_path=str(clip_output),
                         segments=transcript.get("segments"),
+                        segments_start_offset_sec=src_offset,
                         subtitle_style="tiktok_viral",
                         overlay_text=overlay_text,
                         overlay_style="tiktok_viral",
@@ -316,6 +338,11 @@ def process_job(job_data: dict) -> None:
                         clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                         print(f"🔗 Fallback a link de YouTube: {clip_url}")
                 finally:
+                    # Limpiar segmento yt-dlp (pequeño, por clip)
+                    if seg_path:
+                        try: Path(seg_path).unlink(missing_ok=True)
+                        except Exception: pass
+                    # Limpiar clip final
                     try:
                         if clip_output.exists():
                             clip_output.unlink()

@@ -439,6 +439,64 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
         return str(video_path)
 
 
+def download_clip_ytdlp(
+    youtube_url: str,
+    start_sec: float,
+    end_sec: float,
+    output_path: str,
+) -> str:
+    """
+    Descarga SOLO el segmento necesario para un clip usando yt-dlp con proxy.
+
+    yt-dlp con download_ranges descarga solo los segmentos DASH que cubren
+    el rango pedido (~50MB para 35s) usando Python requests internamente
+    (el proxy funciona aquí, a diferencia de FFmpeg que necesita HTTPS CONNECT).
+
+    Requiere WEBSHARE_PROXY_URL configurado para bypasear el 403 de YouTube
+    en IPs de datacenter.
+
+    Returns:
+        Path al MP4 descargado (clip listo para procesar con generate_clip)
+    """
+    from yt_dlp.utils import download_range_func
+
+    # output_path puede terminar en .mp4 pero yt-dlp agrega su propia extensión
+    # Usar un stem sin extensión y dejar que yt-dlp la maneje
+    out_stem = str(Path(output_path).with_suffix(''))
+
+    ydl_opts = _build_ydl_opts({
+        'format': 'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio/best[height<=720]',
+        'download_ranges': download_range_func(None, [(start_sec, end_sec)]),
+        'force_keyframes_at_cuts': True,
+        'outtmpl': out_stem + '.%(ext)s',
+        'ffmpeg_location': FFMPEG_LOCATION,
+        'merge_output_format': 'mp4',
+        'quiet': False,
+        'no_warnings': False,
+        'nocheckcertificate': True,
+    })
+
+    DOWNLOADS_DIR.mkdir(exist_ok=True)
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([youtube_url])
+
+    # Buscar el archivo generado
+    result_path = Path(out_stem + '.mp4')
+    if result_path.exists():
+        size_mb = result_path.stat().st_size / (1 << 20)
+        print(f"✅ yt-dlp segmento: {result_path.name} ({size_mb:.1f}MB, {start_sec:.0f}s-{end_sec:.0f}s)")
+        return str(result_path)
+
+    # Buscar cualquier extensión
+    for ext in ['mp4', 'mkv', 'webm']:
+        p = Path(out_stem + f'.{ext}')
+        if p.exists():
+            return str(p)
+
+    raise FileNotFoundError(f"yt-dlp no generó archivo en: {out_stem}.*")
+
+
 def download_video_for_clips(
     video_url: str,
     audio_url: str,
