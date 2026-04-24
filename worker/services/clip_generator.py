@@ -1054,18 +1054,22 @@ def generate_clip(
         # ─────────────────────────────────────────────────────────────────────
         subprocess_env = None
         if use_stream_urls:
-            if proxy_url:
-                subprocess_env = os.environ.copy()
-                subprocess_env['http_proxy'] = proxy_url
-                subprocess_env['https_proxy'] = proxy_url
-                subprocess_env['HTTP_PROXY'] = proxy_url
-                subprocess_env['HTTPS_PROXY'] = proxy_url
-                print(f"   🌐 FFmpeg usará proxy: {proxy_url.split('@')[-1] if '@' in proxy_url else proxy_url}")
             print(f"   🎯 Descarga selectiva: {start_sec:.1f}s-{end_sec:.1f}s ({duration_sec:.1f}s)")
+
+            # ── Proxy: usar -http_proxy nativo de FFmpeg, NO env vars ─────────
+            # HTTPS_PROXY/HTTP_PROXY env vars no funcionan bien con FFmpeg para
+            # HTTPS CONNECT tunneling. El flag -http_proxy va antes de cada -i
+            # y aplica solo a esa entrada.
+            proxy_flags = ['-http_proxy', proxy_url] if proxy_url else []
+            if proxy_url:
+                print(f"   🌐 FFmpeg proxy: {proxy_url.split('@')[-1] if '@' in proxy_url else proxy_url}")
+
             cmd = [
                 FFMPEG_PATH, '-y', '-loglevel', 'error',
+                *proxy_flags,
                 '-ss', f'{start_sec:.3f}',
                 '-i', video_stream_url,   # input 0: video stream URL
+                *proxy_flags,
                 '-ss', f'{start_sec:.3f}',
                 '-i', audio_stream_url,   # input 1: audio stream URL
                 '-t', f'{duration_sec:.3f}',
@@ -1101,7 +1105,6 @@ def generate_clip(
                 stderr=subprocess.PIPE,
                 check=True,
                 timeout=600,
-                env=subprocess_env,
             )
         except subprocess.CalledProcessError as e:
             err = e.stderr.decode(errors='replace') if isinstance(e.stderr, bytes) else (e.stderr or '')
