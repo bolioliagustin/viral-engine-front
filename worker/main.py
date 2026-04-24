@@ -342,10 +342,43 @@ def process_job(job_data: dict) -> None:
                             "-ar", "16000", "-ac", "1", "-b:a", "64k",
                             str(clip_audio_path),
                         ]
+                        # Audio: 96kbps para mejor calidad (antes 64kbps)
+                        ext_cmd[ext_cmd.index("-b:a") + 1] = "96k"
+
                         _sp2.run(ext_cmd, check=True, timeout=120,
                                  capture_output=True, text=True)
-                        print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper...")
-                        clip_tr = transcribe_with_whisper_openrouter(str(clip_audio_path))
+
+                        # ── Prompt de contexto para Whisper ──────────────
+                        # Extraemos el texto del YT Transcript en el rango del
+                        # clip. Whisper usa esto como hint → mejora la accuracy
+                        # de verbos, nombres propios y jerga específica.
+                        whisper_prompt = None
+                        yt_segments = transcript.get("segments") or []
+                        ctx_texts = []
+                        for sg in yt_segments:
+                            sg_start = float(sg.get("start", 0))
+                            sg_end = float(sg.get("end", 0))
+                            # Incluir segmentos que solapan con el rango del clip
+                            if sg_end >= start_s and sg_start <= end_s:
+                                ctx_texts.append(sg.get("text", "").strip())
+                        if ctx_texts:
+                            whisper_prompt = " ".join(ctx_texts).strip()
+                            # Tomar los últimos ~800 chars (Whisper pesa más el final)
+                            if len(whisper_prompt) > 800:
+                                whisper_prompt = whisper_prompt[-800:]
+
+                        whisper_lang = transcript.get("language")  # "es", "en", etc.
+                        if whisper_lang and len(whisper_lang) > 2:
+                            # YT da codigos tipo "es-419" — Whisper quiere "es"
+                            whisper_lang = whisper_lang.split("-")[0].lower()
+
+                        print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper "
+                              f"(lang={whisper_lang}, prompt={len(whisper_prompt or '')} chars)...")
+                        clip_tr = transcribe_with_whisper_openrouter(
+                            str(clip_audio_path),
+                            prompt=whisper_prompt,
+                            language=whisper_lang,
+                        )
                         raw_words = clip_tr.get("words") or []
                         raw_segments = clip_tr.get("segments") or []
 

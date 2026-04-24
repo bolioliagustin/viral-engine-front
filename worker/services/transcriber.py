@@ -7,7 +7,11 @@ from openai import OpenAI
 from typing import Dict, List
 
 
-def transcribe_with_whisper_openrouter(audio_path: str) -> Dict:
+def transcribe_with_whisper_openrouter(
+    audio_path: str,
+    prompt: str = None,
+    language: str = None,
+) -> Dict:
     """
     Transcribe audio using Whisper (via OpenRouter) with precise timestamps
     For long videos (>8min), automatically splits into chunks to avoid file size limits
@@ -38,26 +42,36 @@ def transcribe_with_whisper_openrouter(audio_path: str) -> Dict:
     # If video is longer than 20 minutes, use chunking
     if duration_seconds > 1200:  # 20 minutes
         print(f"📝 Long video detected ({duration_seconds/60:.1f} min), using chunked transcription...")
-        return _transcribe_chunked(audio_path, audio)
+        return _transcribe_chunked(audio_path, audio, prompt=prompt, language=language)
     else:
         print(f"📝 Transcribing audio with OpenAI ({duration_seconds/60:.1f} min)...")
-        return _transcribe_single(audio_path)
+        return _transcribe_single(audio_path, prompt=prompt, language=language)
 
 
-def _transcribe_single(audio_path: str) -> Dict:
+def _transcribe_single(audio_path: str, prompt: str = None, language: str = None) -> Dict:
     """Transcribe a single audio file (no chunking needed)"""
     # Use OpenAI directly for Whisper (OpenRouter doesn't support audio transcription)
     client = OpenAI(
         api_key=os.getenv("OPENAI_API_KEY")
     )
-    
+
     try:
+        kwargs = {
+            "model": "whisper-1",  # Supports verbose_json with timestamps
+            "response_format": "verbose_json",
+            "timestamp_granularities": ["segment", "word"],
+        }
+        if prompt:
+            # Whisper prompt: hasta 224 tokens. Da contexto (nombres, jerga)
+            # y mejora mucho la accuracy de verbos y palabras especificas.
+            kwargs["prompt"] = prompt[:900]  # ~224 tokens aprox
+        if language:
+            kwargs["language"] = language  # ISO-639-1 (ej. "es", "en")
+
         with open(audio_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
-                model="whisper-1",  # Supports verbose_json with timestamps
                 file=audio_file,
-                response_format="verbose_json",  # Incluye segments con timestamps
-                timestamp_granularities=["segment", "word"],  # ← timestamps por palabra
+                **kwargs,
             )
 
         result = transcript.model_dump() if hasattr(transcript, 'model_dump') else dict(transcript)
@@ -77,7 +91,7 @@ def _transcribe_single(audio_path: str) -> Dict:
         raise
 
 
-def _transcribe_chunked(audio_path: str, audio: 'AudioSegment') -> Dict:
+def _transcribe_chunked(audio_path: str, audio: 'AudioSegment', prompt: str = None, language: str = None) -> Dict:
     """
     Transcribe long audio by splitting into chunks with overlap
     
@@ -107,12 +121,20 @@ def _transcribe_chunked(audio_path: str, audio: 'AudioSegment') -> Dict:
         for chunk_index, (chunk_path, offset_seconds) in enumerate(chunks):
             print(f"\n🔍 Transcribing chunk {chunk_index + 1}/{len(chunks)}...")
 
+            kwargs_c = {
+                "model": "whisper-1",
+                "response_format": "verbose_json",
+                "timestamp_granularities": ["segment", "word"],
+            }
+            if prompt:
+                kwargs_c["prompt"] = prompt[:900]
+            if language:
+                kwargs_c["language"] = language
+
             with open(chunk_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
-                    model="whisper-1",  # Supports verbose_json with timestamps
                     file=audio_file,
-                    response_format="verbose_json",
-                    timestamp_granularities=["segment", "word"],
+                    **kwargs_c,
                 )
 
             chunk_result = transcript.model_dump() if hasattr(transcript, 'model_dump') else dict(transcript)
