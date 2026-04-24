@@ -312,14 +312,64 @@ def process_job(job_data: dict) -> None:
                         else:
                             raise RuntimeError("Sin video disponible para clip")
 
+                    # ── Whisper per-clip: sync perfecto palabra por palabra ────
+                    # Extraemos audio del rango del clip y lo transcribimos con
+                    # Whisper (word-level timestamps). Cuesta ~$0.006/min de clip.
+                    # Fallback a YT Transcript API si Whisper falla.
+                    clip_words = None
+                    clip_segments_whisper = None
+                    clip_audio_path = None
+                    try:
+                        import subprocess as _sp2, shutil as _sh2
+                        from services.transcriber import transcribe_with_whisper_openrouter
+                        _ffmpeg2 = _sh2.which("ffmpeg") or "ffmpeg"
+                        clip_audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
+                        ext_cmd = [
+                            _ffmpeg2, "-y", "-loglevel", "error",
+                            "-ss", str(src_start), "-to", str(src_end),
+                            "-i", src_path,
+                            "-vn", "-acodec", "libmp3lame",
+                            "-ar", "16000", "-ac", "1", "-b:a", "64k",
+                            str(clip_audio_path),
+                        ]
+                        _sp2.run(ext_cmd, check=True, timeout=120,
+                                 capture_output=True, text=True)
+                        print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper...")
+                        clip_tr = transcribe_with_whisper_openrouter(str(clip_audio_path))
+                        clip_words = clip_tr.get("words")
+                        clip_segments_whisper = clip_tr.get("segments")
+                        print(f"   ✅ Whisper: {len(clip_words or [])} words, "
+                              f"{len(clip_segments_whisper or [])} segments")
+                    except Exception as e_whisper:
+                        print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
+                              f"fallback a YT Transcript API")
+                        clip_words = None
+                        clip_segments_whisper = None
+                    finally:
+                        if clip_audio_path:
+                            try: Path(clip_audio_path).unlink(missing_ok=True)
+                            except Exception: pass
+
+                    # Si Whisper OK: usamos sus words/segments con offset=0
+                    # (ya son relativos al inicio del clip).
+                    # Si falló: caemos al transcript global de YouTube (offset=src_offset).
+                    if clip_words or clip_segments_whisper:
+                        subs_segments = clip_segments_whisper
+                        subs_words = clip_words
+                        subs_offset = 0.0
+                    else:
+                        subs_segments = transcript.get("segments")
+                        subs_words = None
+                        subs_offset = src_offset
+
                     gen_result = generate_clip(
                         video_path=src_path,
                         start_sec=src_start,
                         end_sec=src_end,
                         output_path=str(clip_output),
-                        segments=transcript.get("segments"),
-                        segments_start_offset_sec=src_offset,
-                        words=transcript.get("words"),  # word-level sync (Whisper)
+                        segments=subs_segments,
+                        segments_start_offset_sec=subs_offset,
+                        words=subs_words,  # word-level sync (Whisper per-clip)
                         subtitle_style="tiktok_viral",
                         overlay_text=overlay_text,
                         overlay_style="tiktok_viral",
