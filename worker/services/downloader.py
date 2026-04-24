@@ -436,6 +436,135 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
         return str(video_path)
 
 
+def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: int = 720) -> dict:
+    """
+    Obtiene URLs de stream de video+audio vía RapidAPI SIN descargar nada.
+
+    Retorna {"video_url": str, "audio_url": str, "video_id": str}.
+    Llama al mismo endpoint que download_video_rapidapi pero solo devuelve
+    las URLs — FFmpeg luego hace HTTP Range requests para los segmentos exactos
+    que necesita (descarga selectiva: ~50MB en vez de 1.3GB).
+    """
+    api_key = os.getenv("RAPIDAPI_KEY")
+    if not api_key:
+        raise RuntimeError("RAPIDAPI_KEY no está seteada en el entorno")
+
+    if not video_id:
+        video_id = _extract_video_id(video_url)
+
+    print(f"🔌 RapidAPI: obteniendo URLs de stream para {video_id}...")
+    import json
+    meta_url = f"https://yt-api.p.rapidapi.com/dl?id={video_id}"
+    req = Request(meta_url, headers={
+        "x-rapidapi-key": api_key,
+        "x-rapidapi-host": "yt-api.p.rapidapi.com",
+    })
+    with urlopen(req, timeout=30) as r:
+        data = json.loads(r.read().decode("utf-8"))
+
+    if data.get("status") != "OK":
+        raise RuntimeError(f"YT-API devolvió status={data.get('status')}: {data.get('reason', '')}")
+
+    vid = None
+    vid_quality = 0
+    for f in data.get("adaptiveFormats", []):
+        mime = f.get("mimeType", "")
+        if "video/mp4" not in mime or "avc1" not in mime:
+            continue
+        ql = f.get("qualityLabel", "")
+        h = int(re.match(r"(\d+)", ql).group(1)) if re.match(r"(\d+)", ql) else 0
+        if h > max_height:
+            continue
+        if h > vid_quality and f.get("url"):
+            vid = f
+            vid_quality = h
+
+    aud = None
+    aud_bitrate = 0
+    for f in data.get("adaptiveFormats", []):
+        if "audio/mp4" not in f.get("mimeType", ""):
+            continue
+        br = f.get("bitrate", 0)
+        if br > aud_bitrate and f.get("url"):
+            aud = f
+            aud_bitrate = br
+
+    if not vid or not aud:
+        raise RuntimeError(f"YT-API no devolvió formatos utilizables (vid={bool(vid)}, aud={bool(aud)})")
+
+    print(f"   ✅ URLs obtenidas: video={vid_quality}p avc1 | audio={aud_bitrate // 1000}kbps")
+    return {
+        "video_url": vid["url"],
+        "audio_url": aud["url"],
+        "video_id": video_id,
+    }
+
+
+def _get_stream_urls_ytdlp(video_url: str, video_id: str = None) -> dict:
+    """
+    Extrae URLs de stream vía yt-dlp sin descargar (download=False).
+    Retorna {"video_url": str, "audio_url": str, "video_id": str}.
+    """
+    ydl_opts = _build_ydl_opts({
+        'format': 'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio',
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+    })
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(video_url, download=False)
+        if not video_id:
+            video_id = info['id']
+
+        # Para formatos merged yt-dlp pone los componentes en requested_formats
+        req_formats = info.get('requested_formats', [])
+        if len(req_formats) >= 2:
+            v_fmt = next((f for f in req_formats if f.get('vcodec', 'none') != 'none'), None)
+            a_fmt = next((f for f in req_formats
+                         if f.get('acodec', 'none') != 'none' and f.get('vcodec', 'none') == 'none'), None)
+        elif len(req_formats) == 1:
+            v_fmt = req_formats[0]
+            a_fmt = req_formats[0]
+        else:
+            v_fmt = info if info.get('url') else None
+            a_fmt = info if info.get('url') else None
+
+        if not v_fmt or not a_fmt or not v_fmt.get('url') or not a_fmt.get('url'):
+            raise RuntimeError("yt-dlp no pudo obtener URLs de stream utilizables")
+
+        print(f"   ✅ URLs yt-dlp: video={v_fmt.get('height', '?')}p | audio OK")
+        return {
+            "video_url": v_fmt["url"],
+            "audio_url": a_fmt["url"],
+            "video_id": video_id,
+        }
+
+
+def get_stream_urls(video_url: str, video_id: str = None) -> dict:
+    """
+    Obtiene URLs de stream de video+audio sin descargar el archivo completo.
+    Intenta yt-dlp primero (gratis); si falla cae a RapidAPI.
+
+    Forzar RapidAPI con USE_RAPIDAPI_DOWNLOAD=true.
+
+    Retorna {"video_url": str, "audio_url": str, "video_id": str}.
+    Estas URLs se pasan directamente a FFmpeg para descarga selectiva:
+    FFmpeg solo descarga los bytes correspondientes al clip pedido (~50MB
+    en vez de los ~1.3GB del video completo).
+    """
+    force_rapidapi = os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes")
+
+    if not force_rapidapi:
+        try:
+            return _get_stream_urls_ytdlp(video_url, video_id)
+        except Exception as e:
+            print(f"⚠️ yt-dlp stream URLs falló ({type(e).__name__}: {str(e)[:120]}) — fallback a RapidAPI")
+    else:
+        print("ℹ️ USE_RAPIDAPI_DOWNLOAD=true, usando RapidAPI para stream URLs")
+
+    return get_stream_urls_rapidapi(video_url, video_id)
+
+
 def cleanup_audio(file_path: str) -> None:
     """Remove audio file after processing"""
     try:

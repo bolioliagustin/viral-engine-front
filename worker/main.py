@@ -32,7 +32,7 @@ validate_env()
 
 # Add parent to path for imports
 
-from services.downloader import download_audio, download_video, cleanup_all
+from services.downloader import download_audio, download_video, get_stream_urls, cleanup_all
 from services.processor import analyze_with_gemini, cleanup_uploaded_file
 from services.clipper import extract_clip, cleanup_clips
 from services.clip_generator import generate_clip, ClipGenerationError
@@ -205,18 +205,21 @@ def process_job(job_data: dict) -> None:
         # for moment in result.viral_moments:
         #     validate_against_transcript(moment, transcript)
         
-        # Step 4: Download full video for real MP4 clipping (Sprint 1.1 Día 8).
-        # If download fails (e.g. yt-dlp blocked on cloud IP), fall back to YouTube timestamp links.
+        # Step 4: Obtener URLs de stream para descarga selectiva.
+        # En vez de bajar 1.3GB, FFmpeg descarga solo los bytes de cada clip
+        # (~50MB total para 5 clips de 35s) usando HTTP Range requests.
+        # Si falla (proxy no disponible / API down), fallback a YouTube links.
         supabase = get_supabase()
-        print("\n📹 Step 4: Downloading full video for MP4 clipping...")
+        print("\n📹 Step 4: Obteniendo URLs de stream para descarga selectiva...")
         update_job_progress(job_id, current_step="clipping", progress_percentage=70)
-        video_path = None
+        stream_urls = None
+        video_path = None  # mantenido para compatibilidad (cleanup_all lo usa)
         try:
-            video_path = download_video(video_url, video_id)
-            print(f"✅ Video descargado: {video_path}")
+            from services.downloader import _get_proxy_url
+            stream_urls = get_stream_urls(video_url, video_id)
+            print(f"✅ Stream URLs obtenidas — descarga selectiva activa")
         except Exception as e:
-            print(f"⚠️ Video download falló ({e}) — fallback a links de YouTube")
-            video_path = None
+            print(f"⚠️ Stream URLs fallaron ({e}) — fallback a links de YouTube")
         
         # Step 5: Save results
         print("\n💾 Step 5: Saving results...")
@@ -231,10 +234,10 @@ def process_job(job_data: dict) -> None:
             moment_index = i + 1
             clip_url = None
             
-            # Generate clip (Sprint 1.1 Día 8):
-            #  - Si hay video local: generate_clip → 9:16 + subs + overlay → upload a R2.
-            #  - Fallback a YouTube timestamp link si algo falla o no hay video.
-            if video_path:
+            # Generate clip:
+            #  - Si hay stream URLs: generate_clip con descarga selectiva → 9:16 + subs + overlay → upload a R2.
+            #  - Fallback a YouTube timestamp link si algo falla o no hay URLs.
+            if stream_urls:
                 try:
                     print(f"\n✂️ Generando clip MP4 {moment_index} ({moment.start_time}-{moment.end_time}s)...")
                     clip_output = CLIPS_DIR / f"{video_id}_moment_{moment_index}.mp4"
@@ -246,7 +249,9 @@ def process_job(job_data: dict) -> None:
                         tp = getattr(moment, 'tiktok_package', None)
                         overlay_text = getattr(tp, 'overlay_text', None) if tp else None
                     gen_result = generate_clip(
-                        video_path=video_path,
+                        video_stream_url=stream_urls["video_url"],
+                        audio_stream_url=stream_urls["audio_url"],
+                        proxy_url=_get_proxy_url(),
                         start_sec=float(moment.start_time),
                         end_sec=float(moment.end_time),
                         output_path=str(clip_output),
@@ -271,15 +276,15 @@ def process_job(job_data: dict) -> None:
                         print(f"🔗 Fallback a link de YouTube: {clip_url}")
                 finally:
                     # Liberar el clip local y forzar GC entre momentos para
-                    # mantener el pico de RAM bajo en el free tier (512MB).
-                    if clip_output.exists():
-                        try:
+                    # mantener el pico de RAM bajo.
+                    try:
+                        if clip_output.exists():
                             clip_output.unlink()
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
                     gc.collect()
             else:
-                # Sin video local — deep link con timestamp
+                # Sin stream URLs — deep link con timestamp
                 if moment.start_time is not None:
                     clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                     print(f"🔗 Clip {moment_index}: YouTube link at {int(moment.start_time)}s → {clip_url}")

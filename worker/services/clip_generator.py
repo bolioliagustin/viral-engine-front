@@ -869,10 +869,10 @@ class GenerateClipResult:
 
 
 def generate_clip(
-    video_path: str,
-    start_sec: float,
-    end_sec: float,
-    output_path: str,
+    video_path: Optional[str] = None,
+    start_sec: float = 0.0,
+    end_sec: float = 0.0,
+    output_path: str = "",
     segments: Optional[list[dict]] = None,
     segments_start_offset_sec: Optional[float] = None,
     subtitle_style: str = "tiktok_viral",
@@ -884,28 +884,33 @@ def generate_clip(
     target_height: int = 1920,
     keep_intermediate: bool = False,
     workdir: Optional[str] = None,
+    # ── Descarga selectiva (stream URLs) ──────────────────────────────────────
+    # Si se pasan, FFmpeg descarga directamente desde las URLs (HTTP Range
+    # requests para el segmento exacto) en vez de leer un archivo local.
+    # Reduce el ancho de banda de ~1.3GB a ~50MB por job.
+    video_stream_url: Optional[str] = None,
+    audio_stream_url: Optional[str] = None,
+    proxy_url: Optional[str] = None,
 ) -> GenerateClipResult:
     """
-    Pipeline completo: video largo + timestamps → MP4 9:16 listo para TikTok/Reels.
+    Pipeline completo: video + timestamps → MP4 9:16 listo para TikTok/Reels.
+
+    Modos de entrada:
+      A) Archivo local  : pasar video_path (comportamiento original)
+      B) Descarga selectiva: pasar video_stream_url + audio_stream_url.
+         FFmpeg hace HTTP Range requests SOLO para los bytes del clip
+         (~50MB en vez de bajar el video completo de 1.3GB).
 
     Pasos:
-      1. cut_clip (frame-accurate re-encode)
-      2. to_vertical_9_16 (con fondo blureado)
-      3. burn_subtitles (opcional, solo si se pasan segments)
-      4. burn_overlay_text (opcional, solo si se pasa overlay_text)
+      1. Corte preciso + 9:16 + subs + overlay en una sola pasada ffmpeg
+      2. (Modo B) FFmpeg descarga directo desde URL con seek eficiente
 
     Args:
-        video_path: MP4 fuente (video completo descargado)
+        video_path: MP4 fuente local. Requerido si no se pasan stream URLs.
         start_sec, end_sec: rango del momento viral (en segundos del video original)
         output_path: path del MP4 final
-        segments: lista Whisper-style para subtitulos. Formato:
-                  [{"start": s, "end": s, "text": "..."}, ...]
-                  Timestamps en segundos del VIDEO ORIGINAL.
-                  Si None, no se queman subs.
-        segments_start_offset_sec: Segundo del video original donde empiezan los
-                                   timestamps de los segments. Default: usa start_sec,
-                                   asumiendo que los segments estan en tiempo del
-                                   video original.
+        segments: lista Whisper-style para subtitulos.
+        segments_start_offset_sec: offset de timestamps de segments.
         subtitle_style: 'tiktok_viral' | 'clean' | 'podcast'
         overlay_text: texto del hook inicial. Si None, no se quema overlay.
         overlay_style: 'tiktok_viral' | 'question' | 'stat'
@@ -913,7 +918,10 @@ def generate_clip(
         overlay_position: 'top' | 'center' | 'bottom'
         target_width, target_height: dimensiones finales (default 1080x1920)
         keep_intermediate: si True, no borra los archivos temporales
-        workdir: directorio para archivos intermedios (default: tmp junto a output)
+        workdir: directorio para archivos intermedios
+        video_stream_url: URL de stream de video (modo descarga selectiva)
+        audio_stream_url: URL de stream de audio (modo descarga selectiva)
+        proxy_url: proxy HTTP/HTTPS para que FFmpeg acceda a las URLs
 
     Returns:
         GenerateClipResult con metadata del clip final y timings por paso
@@ -921,6 +929,13 @@ def generate_clip(
     Raises:
         ClipGenerationError si algun paso falla
     """
+    use_stream_urls = bool(video_stream_url and audio_stream_url)
+    if not use_stream_urls and not video_path:
+        raise ClipGenerationError(
+            "Debe pasarse video_path (archivo local) o video_stream_url+audio_stream_url"
+        )
+    if not output_path:
+        raise ClipGenerationError("output_path es requerido")
     import time
 
     step_times = {}
@@ -973,14 +988,14 @@ def generate_clip(
                 )
                 intermediates.append(srt_path)
                 ass_path = srt_path.replace(".srt", ".ass")
-                # Probe del video original para el PlayRes correcto
-                src_meta = probe_video(video_path)
                 _srt_to_ass(srt_path, ass_path, SUBTITLE_STYLES[subtitle_style],
                             W, H)
                 subs_ass_path = ass_path
                 intermediates.append(ass_path)
             except ClipGenerationError as e:
                 print(f"⚠️ Sin segments para rango {start_sec}-{end_sec}s, sigo sin subs: {e}")
+        # Nota: srt_to_ass usa W,H (dimensiones del target) como PlayRes,
+        # así que no necesitamos hacer probe del video fuente aquí.
 
         # Paso B: generar ASS del overlay (si hay overlay_text)
         overlay_ass_path = None
@@ -1030,24 +1045,64 @@ def generate_clip(
         filter_parts += "[vout]"
 
         t0 = time.time()
-        cmd = [
-            FFMPEG_PATH, '-y', '-loglevel', 'error',
-            '-ss', f'{start_sec:.3f}',
-            '-i', video_path,
-            '-t', f'{duration_sec:.3f}',
-            '-filter_complex', filter_parts,
-            '-map', '[vout]',
-            '-map', '0:a',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '128k',
-            '-avoid_negative_ts', 'make_zero',
-            '-movflags', '+faststart',
-            output_path,
-        ]
+
+        # ── Construir comando FFmpeg ──────────────────────────────────────────
+        # Modo A: archivo local  → un solo -i, audio de 0:a
+        # Modo B: stream URLs    → dos -i (video URL + audio URL), audio de 1:a
+        #   FFmpeg hace HTTP Range request hacia la posición exacta del clip,
+        #   descargando solo ~50MB en vez de 1.3GB del video completo.
+        # ─────────────────────────────────────────────────────────────────────
+        subprocess_env = None
+        if use_stream_urls:
+            if proxy_url:
+                subprocess_env = os.environ.copy()
+                subprocess_env['http_proxy'] = proxy_url
+                subprocess_env['https_proxy'] = proxy_url
+                subprocess_env['HTTP_PROXY'] = proxy_url
+                subprocess_env['HTTPS_PROXY'] = proxy_url
+                print(f"   🌐 FFmpeg usará proxy: {proxy_url.split('@')[-1] if '@' in proxy_url else proxy_url}")
+            print(f"   🎯 Descarga selectiva: {start_sec:.1f}s-{end_sec:.1f}s ({duration_sec:.1f}s)")
+            cmd = [
+                FFMPEG_PATH, '-y', '-loglevel', 'error',
+                '-ss', f'{start_sec:.3f}',
+                '-i', video_stream_url,   # input 0: video stream URL
+                '-ss', f'{start_sec:.3f}',
+                '-i', audio_stream_url,   # input 1: audio stream URL
+                '-t', f'{duration_sec:.3f}',
+                '-filter_complex', filter_parts,  # opera sobre [0:v]
+                '-map', '[vout]',
+                '-map', '1:a',            # audio de input 1
+                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '128k',
+                '-avoid_negative_ts', 'make_zero',
+                '-movflags', '+faststart',
+                output_path,
+            ]
+        else:
+            cmd = [
+                FFMPEG_PATH, '-y', '-loglevel', 'error',
+                '-ss', f'{start_sec:.3f}',
+                '-i', video_path,         # input 0: archivo local
+                '-t', f'{duration_sec:.3f}',
+                '-filter_complex', filter_parts,
+                '-map', '[vout]',
+                '-map', '0:a',
+                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '128k',
+                '-avoid_negative_ts', 'make_zero',
+                '-movflags', '+faststart',
+                output_path,
+            ]
 
         try:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                           check=True, timeout=600)
+            subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=600,
+                env=subprocess_env,
+            )
         except subprocess.CalledProcessError as e:
             err = e.stderr.decode(errors='replace') if isinstance(e.stderr, bytes) else (e.stderr or '')
             raise ClipGenerationError(f"FFmpeg single-pass falló: {err[-800:]}")
