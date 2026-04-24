@@ -324,9 +324,19 @@ def process_job(job_data: dict) -> None:
                         from services.transcriber import transcribe_with_whisper_openrouter
                         _ffmpeg2 = _sh2.which("ffmpeg") or "ffmpeg"
                         clip_audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
+
+                        # Padding: 0.5s antes y 1.0s después para dar contexto a
+                        # Whisper en los bordes (mejora mucho la transcripción
+                        # de la primera y última palabra del clip).
+                        PRE_PAD = 0.5
+                        POST_PAD = 1.0
+                        pad_start = max(0.0, src_start - PRE_PAD)
+                        actual_pre_pad = src_start - pad_start  # cuánto prepad efectivo
+                        pad_end = src_end + POST_PAD  # ffmpeg clampa solo si sobrepasa
+
                         ext_cmd = [
                             _ffmpeg2, "-y", "-loglevel", "error",
-                            "-ss", str(src_start), "-to", str(src_end),
+                            "-ss", str(pad_start), "-to", str(pad_end),
                             "-i", src_path,
                             "-vn", "-acodec", "libmp3lame",
                             "-ar", "16000", "-ac", "1", "-b:a", "64k",
@@ -336,10 +346,39 @@ def process_job(job_data: dict) -> None:
                                  capture_output=True, text=True)
                         print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper...")
                         clip_tr = transcribe_with_whisper_openrouter(str(clip_audio_path))
-                        clip_words = clip_tr.get("words")
-                        clip_segments_whisper = clip_tr.get("segments")
-                        print(f"   ✅ Whisper: {len(clip_words or [])} words, "
-                              f"{len(clip_segments_whisper or [])} segments")
+                        raw_words = clip_tr.get("words") or []
+                        raw_segments = clip_tr.get("segments") or []
+
+                        # Shift por el prepad: los timestamps de Whisper están
+                        # relativos al audio extraído; restamos actual_pre_pad
+                        # para que queden relativos al inicio del clip real.
+                        clip_duration = src_end - src_start
+                        clip_words = []
+                        for w in raw_words:
+                            ws = float(w.get("start", 0)) - actual_pre_pad
+                            we = float(w.get("end", ws + 0.1)) - actual_pre_pad
+                            # Filtrar palabras fuera del rango del clip real
+                            if we <= 0 or ws >= clip_duration:
+                                continue
+                            w2 = dict(w)
+                            w2["start"] = max(0.0, ws)
+                            w2["end"] = min(clip_duration, we)
+                            clip_words.append(w2)
+
+                        clip_segments_whisper = []
+                        for sg in raw_segments:
+                            ss = float(sg.get("start", 0)) - actual_pre_pad
+                            se = float(sg.get("end", ss + 0.1)) - actual_pre_pad
+                            if se <= 0 or ss >= clip_duration:
+                                continue
+                            sg2 = dict(sg)
+                            sg2["start"] = max(0.0, ss)
+                            sg2["end"] = min(clip_duration, se)
+                            clip_segments_whisper.append(sg2)
+
+                        print(f"   ✅ Whisper: {len(clip_words)} words, "
+                              f"{len(clip_segments_whisper)} segments "
+                              f"(pre_pad={actual_pre_pad:.2f}s)")
                     except Exception as e_whisper:
                         print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
                               f"fallback a YT Transcript API")

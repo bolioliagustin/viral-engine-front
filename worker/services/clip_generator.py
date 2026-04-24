@@ -281,9 +281,16 @@ def _words_to_srt_entries(
         return entries
 
     # Agrupar de a max_words_per_line
+    # NUNCA descartamos un grupo: preferimos mostrarlo aunque sea micro-lag
+    # antes que perder palabras del clip.
+    MIN_CHUNK_DURATION = 0.40  # duración mínima legible (400ms)
     last_entry_end = -1.0
-    for i in range(0, len(clip_words), max_words_per_line):
+    n_groups = (len(clip_words) + max_words_per_line - 1) // max_words_per_line
+
+    for gi in range(n_groups):
+        i = gi * max_words_per_line
         group = clip_words[i:i + max_words_per_line]
+        is_last_group = (gi == n_groups - 1)
         chunk_text = " ".join(g["text"] for g in group)
         chunk_start = group[0]["start"]
         chunk_end = group[-1]["end"]
@@ -291,11 +298,26 @@ def _words_to_srt_entries(
         # Garantizar gap con el chunk anterior (cross-grupo)
         if chunk_start < last_entry_end + gap_sec:
             chunk_start = last_entry_end + gap_sec
-        # Quitar un chiquito del final para que nunca toque al siguiente
-        chunk_end = max(chunk_start + 0.15, chunk_end - gap_sec / 2)
 
-        if chunk_end - chunk_start < 0.15:
-            continue
+        # Si el próximo grupo existe, no pasarse de su start (respetar gap)
+        if not is_last_group:
+            next_start = clip_words[i + max_words_per_line]["start"]
+            chunk_end_max = next_start - gap_sec
+        else:
+            # Último grupo: puede extenderse hasta el final del clip
+            chunk_end_max = (clip_duration_sec if clip_duration_sec is not None
+                             else chunk_end + 2.0)
+
+        # Quitar un chiquito del final para que nunca toque al siguiente
+        chunk_end_trimmed = chunk_end - gap_sec / 2
+
+        # Si el chunk quedaría demasiado corto por el gap cross-grupo,
+        # extendemos chunk_end hasta MIN_CHUNK_DURATION (sin pisar al próximo).
+        if chunk_end_trimmed - chunk_start < MIN_CHUNK_DURATION:
+            chunk_end_trimmed = min(chunk_start + MIN_CHUNK_DURATION, chunk_end_max)
+
+        # Garantizar end > start (sanity)
+        chunk_end = max(chunk_start + 0.10, chunk_end_trimmed)
 
         entries.append(
             f"{idx}\n"
