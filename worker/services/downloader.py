@@ -79,8 +79,9 @@ def _build_ydl_opts(base_opts: dict) -> dict:
     if cookies_path:
         base_opts['cookiefile'] = cookies_path
     
-    # Use mobile clients to bypass bot detection (android/ios don't require sign-in)
-    base_opts['extractor_args'] = {'youtube': {'player_client': ['android', 'web']}}
+    # Usar cliente web — soporta formatos adaptativos (720p) sin PO Token.
+    # android requiere GVS PO Token para HTTPS adaptive → cae a format 18 (360p).
+    base_opts['extractor_args'] = {'youtube': {'player_client': ['web']}}
 
     # Proxy residencial si está configurado (bypassea IP bans de YouTube)
     proxy = _get_proxy_url()
