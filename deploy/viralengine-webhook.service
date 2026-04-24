@@ -1,0 +1,18 @@
+[Unit]
+Description=ViralEngine GitHub Webhook Auto-Deploy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/viralengine/deploy
+ExecStart=/usr/bin/python3 /opt/viralengine/deploy/webhook_server.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/viralengine/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
