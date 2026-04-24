@@ -467,7 +467,7 @@ SUBTITLE_STYLES = {
     # compatible garantizado en Ubuntu (fonts-liberation viene por defecto).
     "tiktok_viral": {
         "FontName": "Liberation Sans",
-        "FontSize": "52",                # más chico, profesional (antes 72 = demasiado)
+        "FontSize": "44",                # baja para que 3 palabras largas entren
         "PrimaryColour": "&H00FFFFFF",   # blanco
         "OutlineColour": "&H00000000",   # negro
         "BorderStyle": "1",              # 1 = outline + shadow
@@ -570,7 +570,7 @@ def _srt_to_ass(srt_path: str, ass_path: str, style: dict, play_res_x: int, play
         f"{s.get('Outline', '1')},"
         f"{s.get('Shadow', '0')},"
         f"{s.get('Alignment', '2')},"
-        f"40,40,"       # MarginL, MarginR
+        f"60,60,"       # MarginL, MarginR (más aire para que no toque bordes)
         f"{s.get('MarginV', '40')},"
         f"1"            # Encoding
     )
@@ -580,7 +580,7 @@ ScriptType: v4.00+
 PlayResX: {play_res_x}
 PlayResY: {play_res_y}
 ScaledBorderAndShadow: yes
-WrapStyle: 2
+WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
@@ -674,14 +674,14 @@ OVERLAY_STYLES = {
     # ── TikTok viral: blanco bold con borde negro — el clásico de hooks ───────
     "tiktok_viral": {
         "FontName": "Liberation Sans",
-        "FontSize": "82",
+        "FontSize": "58",                # baja para que 4 palabras UPPER entren cómodas
         "PrimaryColour": "&H00FFFFFF",   # blanco
         "OutlineColour": "&H00000000",   # negro
         "BorderStyle": "1",
-        "Outline": "6",                  # borde grueso para legibilidad sobre blur
+        "Outline": "5",                  # borde grueso para legibilidad sobre blur
         "Shadow": "0",
         "Bold": "1",
-        "Spacing": "2",
+        "Spacing": "1",
     },
     # ── Question: pregunta en amarillo ─────────────────────────────────────────
     "question": {
@@ -762,7 +762,7 @@ def _build_overlay_ass(
         f"{s.get('Outline', '3')},"
         f"{s.get('Shadow', '1')},"
         f"{alignment},"
-        f"60,60,"
+        f"80,80,"       # MarginL, MarginR (overlay tiene más aire lateral)
         f"{margin_v},"
         f"1"
     )
@@ -779,7 +779,7 @@ ScriptType: v4.00+
 PlayResX: {play_res_x}
 PlayResY: {play_res_y}
 ScaledBorderAndShadow: yes
-WrapStyle: 2
+WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
