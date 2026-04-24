@@ -308,12 +308,24 @@ def segments_to_srt(
         if not chunks:
             continue
 
+        # Gap entre chunks consecutivos para que NUNCA dos líneas se superpongan.
+        # Sin gap, libass muestra chunk[i] + chunk[i+1] al mismo tiempo en el
+        # frame exacto del boundary → el texto viejo queda abajo y el nuevo arriba.
+        # Con 50ms de silencio entre cada chunk solo hay UNA línea visible siempre.
+        GAP_SEC = 0.050
         duration = seg_end - seg_start
-        chunk_duration = duration / len(chunks)
+        n = len(chunks)
+        # Distribuir duración disponible descontando los gaps entre chunks
+        total_gap = GAP_SEC * (n - 1)
+        chunk_duration = max(0.2, (duration - total_gap) / n)
 
         for i, chunk in enumerate(chunks):
-            chunk_start = seg_start + i * chunk_duration
+            chunk_start = seg_start + i * (chunk_duration + GAP_SEC)
             chunk_end = chunk_start + chunk_duration
+            # Asegurar que no excede el segmento
+            chunk_end = min(chunk_end, seg_end)
+            if chunk_end - chunk_start < 0.15:
+                continue
 
             srt_entries.append(
                 f"{idx}\n"
@@ -455,6 +467,7 @@ ScriptType: v4.00+
 PlayResX: {play_res_x}
 PlayResY: {play_res_y}
 ScaledBorderAndShadow: yes
+WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
@@ -653,6 +666,7 @@ ScriptType: v4.00+
 PlayResX: {play_res_x}
 PlayResY: {play_res_y}
 ScaledBorderAndShadow: yes
+WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
