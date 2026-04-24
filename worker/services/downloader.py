@@ -466,7 +466,17 @@ def download_clip_ytdlp(
     out_stem = str(Path(output_path).with_suffix(''))
 
     ydl_opts = _build_ydl_opts({
-        'format': 'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio/best[height<=720]',
+        # Cascada de formatos: preferimos AVC1+m4a (compatible con todo),
+        # luego cualquier 720p, luego cualquier 480p, y como último recurso
+        # el mejor video + mejor audio disponibles (VP9/AV1 también).
+        'format': (
+            'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
+            'bestvideo[height<=720]+bestaudio/'
+            'bestvideo[height<=480]+bestaudio/'
+            'best[height<=720]/'
+            'bestvideo+bestaudio/'
+            'best'
+        ),
         'download_ranges': download_range_func(None, [(start_sec, end_sec)]),
         'force_keyframes_at_cuts': True,
         'outtmpl': out_stem + '.%(ext)s',
