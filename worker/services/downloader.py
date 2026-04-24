@@ -436,6 +436,142 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
         return str(video_path)
 
 
+def download_clip_segment(
+    video_url: str,
+    audio_url: str,
+    start_sec: float,
+    end_sec: float,
+    video_duration: float,
+    video_id: str,
+    buffer_sec: float = 12.0,
+) -> tuple[str, str]:
+    """
+    Descarga solo los bytes del segmento necesario para un clip usando
+    Python urllib + proxy (el mismo mecanismo que _parallel_download).
+
+    Estrategia:
+      - Estima el byte range con: offset = (time / duration) * content_length
+      - Agrega buffer_sec antes y después para asegurar que el keyframe anterior
+        esté incluido (FFmpeg necesita el I-frame para decodificar correctamente)
+      - Descarga video+audio en paralelo usando _parallel_download
+      - Devuelve rutas a los archivos temporales (video_seg.mp4, audio_seg.m4a)
+
+    Para un clip de 35s en un video de 2h:
+      - Full download: ~1.3GB
+      - Este método: ~60-100MB (35s + 24s buffer) ≈ 15x menos
+
+    Returns:
+        (video_segment_path, audio_segment_path)
+    """
+    DOWNLOADS_DIR.mkdir(exist_ok=True)
+
+    proxy = _get_proxy_url()
+    if proxy:
+        opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+        _open = lambda r, t=30: opener.open(r, timeout=t)
+    else:
+        _open = lambda r, t=30: urlopen(r, timeout=t)
+
+    def _get_size(url: str) -> int:
+        req = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
+        with _open(req, 30) as r:
+            return int(r.headers.get("Content-Length", 0))
+
+    def _byte_range(size: int, t_start: float, t_end: float) -> tuple[int, int]:
+        """Convierte rango de tiempo a rango de bytes (heurístico CBR)."""
+        s_byte = max(0, int((t_start / video_duration) * size))
+        e_byte = min(size - 1, int((t_end / video_duration) * size))
+        return s_byte, e_byte
+
+    def _range_download(url: str, out_path: Path, s_byte: int, e_byte: int, label: str) -> None:
+        """Descarga un rango de bytes específico en paralelo (igual que _parallel_download)."""
+        total = e_byte - s_byte + 1
+        num_chunks = min(8, max(1, total // (1 << 20)))  # 1 chunk por MB, máx 8
+        chunk_size = max(1 << 20, total // num_chunks)
+
+        ranges = []
+        cur = s_byte
+        idx = 0
+        while cur <= e_byte:
+            chunk_end = min(e_byte, cur + chunk_size - 1)
+            ranges.append((idx, cur, chunk_end))
+            cur = chunk_end + 1
+            idx += 1
+
+        tmp_dir = out_path.parent / f".{out_path.stem}_chunks"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir()
+
+        print(f"   ⬇️ {label}: {total // (1 << 20)}MB en {len(ranges)} chunks (bytes {s_byte}-{e_byte})")
+        t0 = time.time()
+
+        def fetch(i: int, bs: int, be: int) -> Path:
+            tmp = tmp_dir / f"chunk_{i:04d}"
+            last_err = None
+            for attempt in range(3):
+                try:
+                    rq = Request(url, headers={
+                        "User-Agent": _DEFAULT_UA,
+                        "Range": f"bytes={bs}-{be}",
+                    })
+                    with _open(rq, 180) as r, open(tmp, "wb") as f:
+                        shutil.copyfileobj(r, f, 1 << 20)
+                    return tmp
+                except Exception as ex:
+                    last_err = ex
+                    time.sleep(1 + attempt)
+            raise RuntimeError(f"chunk {i} falló: {last_err}")
+
+        with ThreadPoolExecutor(max_workers=len(ranges)) as ex:
+            futures = {ex.submit(fetch, i, bs, be): i for i, bs, be in ranges}
+            for fut in as_completed(futures):
+                fut.result()
+
+        elapsed = time.time() - t0
+        print(f"   ✅ {label}: {total // (1 << 20)}MB en {elapsed:.1f}s ({total // (1 << 20) / max(elapsed, 0.01):.1f}MB/s)")
+
+        with open(out_path, "wb") as out:
+            for i, _, _ in ranges:
+                chunk_path = tmp_dir / f"chunk_{i:04d}"
+                with open(chunk_path, "rb") as cf:
+                    shutil.copyfileobj(cf, out, 1 << 20)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    # ── Calcular byte ranges con buffer ──────────────────────────────────────
+    seg_start = max(0.0, start_sec - buffer_sec)
+    seg_end = min(video_duration, end_sec + buffer_sec)
+
+    print(f"   📐 Segmento: {seg_start:.0f}s-{seg_end:.0f}s (clip: {start_sec:.0f}s-{end_sec:.0f}s, buffer: ±{buffer_sec:.0f}s)")
+
+    vid_path = DOWNLOADS_DIR / f"{video_id}_vseg_{int(start_sec)}.mp4"
+    aud_path = DOWNLOADS_DIR / f"{video_id}_aseg_{int(start_sec)}.m4a"
+
+    t0 = time.time()
+    vid_size, aud_size = 0, 0
+    try:
+        vid_size = _get_size(video_url)
+        aud_size = _get_size(audio_url)
+    except Exception as e:
+        raise RuntimeError(f"No se pudo obtener tamaño de los streams: {e}")
+
+    if vid_size <= 0 or aud_size <= 0:
+        raise RuntimeError(f"Content-Length inválido: video={vid_size}, audio={aud_size}")
+
+    vid_s, vid_e = _byte_range(vid_size, seg_start, seg_end)
+    aud_s, aud_e = _byte_range(aud_size, seg_start, seg_end)
+
+    # Descargar video+audio en paralelo
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fv = ex.submit(_range_download, video_url, vid_path, vid_s, vid_e, "video-seg")
+        fa = ex.submit(_range_download, audio_url, aud_path, aud_s, aud_e, "audio-seg")
+        fv.result()
+        fa.result()
+
+    print(f"   ⏱️ Segmento descargado en {time.time() - t0:.1f}s total")
+    return str(vid_path), str(aud_path)
+
+
 def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: int = 720) -> dict:
     """
     Obtiene URLs de stream de video+audio vía RapidAPI SIN descargar nada.
