@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { submitVideo } from "@/lib/api";
-import { Sparkles, AlertCircle, Clock, ChevronRight, Youtube, Zap } from "lucide-react";
+import { submitVideo, redirectToCheckout } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { Sparkles, AlertCircle, Clock, ChevronRight, Youtube, Zap, CreditCard } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -255,7 +256,7 @@ function FailedRow({ job, index }: { job: Job; index: number }) {
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
-export default function Dashboard() {
+function DashboardContent() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [summaries, setSummaries] = useState<Record<string, ResultSummary>>({});
   const [loading, setLoading] = useState(true);
@@ -263,13 +264,37 @@ export default function Dashboard() {
   const [videoUrl, setVideoUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [credits, setCredits] = useState<number | null>(null);
+  const [upgradingPlan, setUpgradingPlan] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+  const { toast } = useToast();
+
+  const hasCredits = credits === null || credits > 0; // null = loading, optimistic
+
+  // Show success toast when coming back from LS checkout
+  useEffect(() => {
+    if (searchParams.get("upgrade") === "success") {
+      toast({
+        title: "🎉 ¡Suscripción activada!",
+        description: "Ya tenés 40 créditos disponibles. ¡A crear contenido viral!",
+      });
+    }
+  }, [searchParams, toast]);
 
   useEffect(() => {
     const fetchData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/login"); return; }
+
+      // Fetch credits
+      const { data: userData } = await supabase
+        .from("users")
+        .select("credits")
+        .eq("id", user.id)
+        .single();
+      if (userData) setCredits(userData.credits);
 
       // Fetch jobs
       const { data: jobsData } = await supabase
@@ -332,8 +357,24 @@ export default function Dashboard() {
       const result = await submitVideo(videoUrl);
       router.push(`/results/${result.jobId}`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al procesar el video");
+      const msg = err instanceof Error ? err.message : "Error al procesar el video";
+      // 402 = no credits → show upgrade prompt instead of generic error
+      if (msg.toLowerCase().includes("crédito") || msg.toLowerCase().includes("credit")) {
+        setCredits(0);
+        setError("UPGRADE_REQUIRED");
+      } else {
+        setError(msg);
+      }
       setSubmitting(false);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    setUpgradingPlan(true);
+    try {
+      await redirectToCheckout();
+    } catch {
+      setUpgradingPlan(false);
     }
   };
 
@@ -361,6 +402,11 @@ export default function Dashboard() {
           >
             <Sparkles className="w-4 h-4" />
             {showForm ? "Cancelar" : "Procesar Video"}
+            {credits !== null && !showForm && (
+              <span className="ml-1 text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
+                {credits}
+              </span>
+            )}
           </Button>
         </div>
 
@@ -371,28 +417,71 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8 p-6 bg-slate-900/70 border border-purple-500/20 rounded-2xl"
           >
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+            {/* Credits indicator */}
+            <div className="flex items-center justify-between mb-4">
+              <label className="block text-sm font-medium text-slate-300">
                 URL del video de YouTube
               </label>
-              <input
-                type="url"
-                value={videoUrl}
-                onChange={e => setVideoUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=..."
-                className="w-full px-4 py-3 bg-slate-800 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                required
-                disabled={submitting}
-              />
-              {error && <p className="text-red-400 text-sm">{error}</p>}
-              <Button
-                type="submit"
-                disabled={submitting || !videoUrl.trim()}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl py-3 disabled:opacity-50"
-              >
-                {submitting ? "⏳ Enviando..." : "🚀 Procesar Video"}
-              </Button>
-            </form>
+              {credits !== null && (
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 ${
+                  credits > 0
+                    ? "bg-purple-500/10 text-purple-300 border border-purple-500/20"
+                    : "bg-red-500/10 text-red-400 border border-red-500/20"
+                }`}>
+                  <Zap className="w-3 h-3" />
+                  {credits} crédito{credits !== 1 ? "s" : ""} disponible{credits !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+
+            {/* No credits — upgrade wall */}
+            {credits === 0 || error === "UPGRADE_REQUIRED" ? (
+              <div className="text-center py-6 px-4 bg-gradient-to-b from-purple-950/30 to-slate-900/50 border border-purple-500/20 rounded-xl">
+                <div className="w-12 h-12 bg-purple-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <CreditCard className="w-6 h-6 text-purple-400" />
+                </div>
+                <h3 className="text-white font-semibold mb-1">Sin créditos disponibles</h3>
+                <p className="text-slate-400 text-sm mb-4">
+                  Necesitás créditos para procesar videos.<br />
+                  El plan Starter incluye 40 créditos / mes.
+                </p>
+                <Button
+                  onClick={handleUpgrade}
+                  disabled={upgradingPlan}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white gap-2"
+                >
+                  {upgradingPlan ? "⏳ Cargando..." : "🚀 Obtener Starter — $9/mes"}
+                </Button>
+                <p className="text-xs text-slate-500 mt-3">
+                  ¿Ya tenés suscripción?{" "}
+                  <Link href="/account" className="text-purple-400 hover:underline">
+                    Revisá tu cuenta
+                  </Link>
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <input
+                  type="url"
+                  value={videoUrl}
+                  onChange={e => setVideoUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  className="w-full px-4 py-3 bg-slate-800 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                  required
+                  disabled={submitting}
+                />
+                {error && error !== "UPGRADE_REQUIRED" && (
+                  <p className="text-red-400 text-sm">{error}</p>
+                )}
+                <Button
+                  type="submit"
+                  disabled={submitting || !videoUrl.trim()}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl py-3 disabled:opacity-50"
+                >
+                  {submitting ? "⏳ Enviando..." : "🚀 Procesar Video"}
+                </Button>
+              </form>
+            )}
           </motion.div>
         )}
 
@@ -466,5 +555,17 @@ export default function Dashboard() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full" />
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }
