@@ -405,28 +405,39 @@ def segments_to_srt(
         # Gap entre chunks consecutivos: evita que dos líneas aparezcan al mismo
         # tiempo en el frame exacto del boundary (libass muestra ambas apiladas).
         GAP_SEC = 0.050
-        duration = seg_end - seg_start
-        n = len(chunks)
-        total_gap = GAP_SEC * (n - 1)
-        available = max(0.1, duration - total_gap)
 
-        # Distribuir tiempo POR CARACTERES, no por chunks iguales.
-        # Speech pace es variable — un chunk de 15 chars tarda ~50% más en
-        # pronunciarse que uno de 10 chars. Distribuir por chars reduce el lag
-        # perceptible de los subtítulos contra el audio.
-        total_chars = sum(max(1, len(c)) for c in chunks)
-        # Si el segmento anterior terminó muy cerca del actual, arrancamos después
-        cursor = max(seg_start, last_entry_end + GAP_SEC)
+        # Respetar gap cross-segment: si el segmento anterior terminó muy cerca
+        # del inicio de este, arrancamos un poquito después. Pero NUNCA movemos
+        # el inicio más de 100ms para no acumular desfase perceptible.
+        effective_start = max(seg_start, last_entry_end + GAP_SEC)
+        if effective_start - seg_start > 0.10:
+            # Si tenemos que mover más de 100ms el arranque, mejor dejarlo en
+            # seg_start + GAP mínimo (aceptamos micro-overlap antes que lag).
+            effective_start = seg_start + GAP_SEC
+
+        # Si no queda tiempo dentro del segmento, skip
+        if seg_end - effective_start < 0.2:
+            continue
+
+        # Distribuir tiempo equitativo entre chunks dentro del segmento.
+        # Por caracteres era más fiel al pace pero acumulaba errores cuando
+        # el cursor se movía por gap cross-segment — mejor simple y robusto.
+        n = len(chunks)
+        available = seg_end - effective_start
+        total_gap = GAP_SEC * (n - 1)
+        chunk_duration = max(0.2, (available - total_gap) / n)
+
         for i, chunk in enumerate(chunks):
-            chunk_chars = max(1, len(chunk))
-            chunk_duration = max(0.2, available * (chunk_chars / total_chars))
-            chunk_start = cursor
+            chunk_start = effective_start + i * (chunk_duration + GAP_SEC)
             chunk_end = chunk_start + chunk_duration
-            # Asegurar que no excede el segmento
+            # Clampar al final del segmento
             chunk_end = min(chunk_end, seg_end)
+
             if chunk_end - chunk_start < 0.15:
-                cursor = chunk_end + GAP_SEC
-                continue
+                # No hay tiempo para este chunk — break para no perder los que
+                # sí entrarían. Pero al ser el ÚLTIMO del segmento, igual se
+                # perdería; acá priorizamos no generar entries invisibles.
+                break
 
             srt_entries.append(
                 f"{idx}\n"
@@ -434,7 +445,6 @@ def segments_to_srt(
                 f"{chunk}\n"
             )
             idx += 1
-            cursor = chunk_end + GAP_SEC
             last_entry_end = chunk_end
 
     if not srt_entries:
