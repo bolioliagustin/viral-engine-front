@@ -234,57 +234,16 @@ def process_job(job_data: dict) -> None:
             clip_url = None
             
             # Generate clip:
-            #  - Si hay stream URLs: descarga el segmento con Python+proxy,
-            #    luego genera el clip 9:16+subs+overlay desde el archivo local.
+            #  - Si hay stream URLs: FFmpeg accede directo a las URLs (sin proxy).
+            #    El proxy causaba 4XX; acceso directo desde Hetzner funciona.
+            #    FFmpeg hace HTTP Range seek → descarga solo los bytes del clip.
             #  - Fallback a YouTube timestamp link si algo falla o no hay URLs.
             if stream_urls:
-                seg_video_path = None
-                seg_audio_path = None
                 try:
                     start_s = float(moment.start_time)
                     end_s = float(moment.end_time)
                     print(f"\n✂️ Generando clip MP4 {moment_index} ({int(start_s)}-{int(end_s)}s)...")
 
-                    # Paso A: descargar segmento con Python+proxy (funciona donde FFmpeg no puede)
-                    seg_video_path, seg_audio_path = download_clip_segment(
-                        video_url=stream_urls["video_url"],
-                        audio_url=stream_urls["audio_url"],
-                        start_sec=start_s,
-                        end_sec=end_s,
-                        video_duration=video_duration,
-                        video_id=video_id,
-                    )
-
-                    # Paso B: muxear video+audio del segmento descargado
-                    import subprocess as _sp
-                    from services.downloader import FFMPEG_LOCATION as _FFMPEG_LOC
-                    ffmpeg_bin = "ffmpeg"
-                    if _FFMPEG_LOC:
-                        from pathlib import Path as _P
-                        _p = _P(_FFMPEG_LOC)
-                        if _p.is_file():
-                            ffmpeg_bin = str(_p)
-                        elif _p.is_dir():
-                            _c = _p / "ffmpeg"
-                            if _c.exists():
-                                ffmpeg_bin = str(_c)
-                    muxed_path = DOWNLOADS_DIR / f"{video_id}_mux_{int(start_s)}.mp4"
-                    mux_cmd = [
-                        ffmpeg_bin, "-y", "-loglevel", "warning",
-                        "-i", seg_video_path,
-                        "-i", seg_audio_path,
-                        "-c", "copy",
-                        "-movflags", "+faststart",
-                        str(muxed_path),
-                    ]
-                    mux_res = _sp.run(mux_cmd, capture_output=True, text=True, timeout=120)
-                    if mux_res.returncode != 0:
-                        raise RuntimeError(f"Mux falló: {mux_res.stderr[-300:]}")
-
-                    # Paso C: generate_clip desde el archivo local muxeado
-                    # El segmento empieza buffer_sec segundos ANTES del clip,
-                    # así que start_sec dentro del segmento = buffer_sec (12s).
-                    BUFFER_SEC = 12.0
                     clip_output = CLIPS_DIR / f"{video_id}_moment_{moment_index}.mp4"
                     clip_output.parent.mkdir(parents=True, exist_ok=True)
                     overlay_text = getattr(moment, 'viral_overlay', None)
@@ -292,13 +251,17 @@ def process_job(job_data: dict) -> None:
                         tp = getattr(moment, 'tiktok_package', None)
                         overlay_text = getattr(tp, 'overlay_text', None) if tp else None
 
+                    # Sin proxy — acceso directo desde Hetzner a googlevideo CDN.
+                    # El proxy residencial causaba 4XX (no soporta HTTPS CONNECT).
+                    # Las URLs de RapidAPI son accesibles desde cualquier IP.
                     gen_result = generate_clip(
-                        video_path=str(muxed_path),
-                        start_sec=BUFFER_SEC,
-                        end_sec=BUFFER_SEC + (end_s - start_s),
+                        video_stream_url=stream_urls["video_url"],
+                        audio_stream_url=stream_urls["audio_url"],
+                        proxy_url=None,
+                        start_sec=start_s,
+                        end_sec=end_s,
                         output_path=str(clip_output),
                         segments=transcript.get("segments"),
-                        segments_start_offset_sec=start_s,  # timestamps originales del video
                         subtitle_style="tiktok_viral",
                         overlay_text=overlay_text,
                         overlay_style="tiktok_viral",
@@ -318,16 +281,11 @@ def process_job(job_data: dict) -> None:
                         clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                         print(f"🔗 Fallback a link de YouTube: {clip_url}")
                 finally:
-                    # Limpiar archivos temporales del segmento y el clip final
-                    for tmp in [seg_video_path, seg_audio_path,
-                                 str(DOWNLOADS_DIR / f"{video_id}_mux_{int(float(moment.start_time))}.mp4") if moment.start_time else None,
-                                 str(clip_output) if 'clip_output' in dir() else None]:
-                        if tmp:
-                            try:
-                                from pathlib import Path as _P2
-                                _P2(tmp).unlink(missing_ok=True)
-                            except Exception:
-                                pass
+                    try:
+                        if clip_output.exists():
+                            clip_output.unlink()
+                    except Exception:
+                        pass
                     gc.collect()
             else:
                 # Sin stream URLs — deep link con timestamp
