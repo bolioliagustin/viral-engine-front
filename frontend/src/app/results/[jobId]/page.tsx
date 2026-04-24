@@ -28,6 +28,8 @@ interface Result {
   time_saved_minutes?: number;
   roi_time_saved?: number;
   pillar_type?: string;
+  sentiment_detected?: string;
+  viral_overlay?: string;
 }
 
 
@@ -265,6 +267,11 @@ export default function ResultsPage() {
                         tiktokContent={tiktokContent}
                         linkedinContent={linkedinContent}
                         scriptContent={scriptContent}
+                        overlayText={firstResult.viral_overlay}
+                        emotionalTrigger={firstResult.emotional_trigger}
+                        sentiment={firstResult.sentiment_detected}
+                        pillarType={firstResult.pillar_type}
+                        roiTimeSaved={firstResult.roi_time_saved}
                       />
                     </motion.div>
                   );

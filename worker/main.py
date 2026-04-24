@@ -550,7 +550,8 @@ def process_job(job_data: dict) -> None:
                 score_shareability=scores.shareability if scores else None,
                 sentiment_detected=sentiment,
                 roi_time_saved=roi_time,
-                score_justifications=justifications
+                score_justifications=justifications,
+                viral_overlay=overlay_text,
             )
             
             # Route platform-specific content based on category

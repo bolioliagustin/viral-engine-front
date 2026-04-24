@@ -2,6 +2,7 @@
 
 Documentación completa de todos los endpoints del backend con ejemplos de testing.
 
+
 **Base URL:** `http://localhost:3000` (desarrollo)
 
 ---

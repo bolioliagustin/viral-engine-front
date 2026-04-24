@@ -107,7 +107,8 @@ def save_content_result(
     score_shareability: int = None,
     sentiment_detected: str = None,  # Phase B
     roi_time_saved: int = None,  # Phase B
-    score_justifications: list = None  # Phase B
+    score_justifications: list = None,  # Phase B
+    viral_overlay: str = None,  # TikTok burn-in title (hook corto UPPERCASE)
 ) -> str:
     """Save content result to Supabase or SQLite"""
     import uuid
@@ -145,7 +146,9 @@ def save_content_result(
             data["roi_time_saved"] = roi_time_saved
         if score_justifications:
             data["score_justifications"] = json.dumps(score_justifications)
-            
+        if viral_overlay:
+            data["viral_overlay"] = viral_overlay
+
         supabase.table("content_results").insert(data).execute()
     else:
         from services.database import save_content_result as sqlite_save

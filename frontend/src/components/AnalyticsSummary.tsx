@@ -167,8 +167,12 @@ export function AnalyticsSummary({ results }: AnalyticsSummaryProps) {
       ) / uniqueResults.length
     : 0;
 
-  // Time Saved (sum all)
-  const totalTimeSaved = results.reduce((sum, r) => sum + (r.time_saved_minutes || 0), 0);
+  // Time Saved — usar roi_time_saved (real field) y deduplicar por moment_index
+  // para no sumar el mismo minuto X veces (twitter + tiktok + linkedin del mismo momento).
+  const totalTimeSaved = uniqueResults.reduce(
+    (sum, r) => sum + (r.roi_time_saved || r.time_saved_minutes || 0),
+    0
+  );
 
   // Average ROI
   const avgRoi = uniqueResults.length > 0
