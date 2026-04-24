@@ -36,27 +36,63 @@ function frontendUrl() {
 
 // ---------------------------------------------------------------------------
 // POST /billing/create-checkout
-// Builds a direct LS buy URL — no API call, instant redirect
 // ---------------------------------------------------------------------------
 router.post('/billing/create-checkout', requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
         const userEmail = req.user.email;
 
-        const storeSlug = process.env.LEMONSQUEEZY_STORE_SLUG;
+        const storeId = process.env.LEMONSQUEEZY_STORE_ID;
         const variantId = process.env.LEMONSQUEEZY_VARIANT_ID;
 
-        if (!storeSlug || !variantId) {
-            return res.status(500).json({ error: 'LEMONSQUEEZY_STORE_SLUG / LEMONSQUEEZY_VARIANT_ID not configured' });
+        if (!storeId || !variantId) {
+            return res.status(500).json({ error: 'LEMONSQUEEZY_STORE_ID / LEMONSQUEEZY_VARIANT_ID not configured' });
         }
 
-        // Build direct buy URL — no API round-trip needed
-        const url = new URL(`https://${storeSlug}.lemonsqueezy.com/checkout/buy/${variantId}`);
-        if (userEmail) url.searchParams.set('checkout[email]', userEmail);
-        url.searchParams.set('checkout[custom][user_id]', userId);
+        const body = {
+            data: {
+                type: 'checkouts',
+                attributes: {
+                    checkout_data: {
+                        email: userEmail,
+                        custom: { user_id: userId },
+                    },
+                    product_options: {
+                        redirect_url: `${frontendUrl()}/dashboard?upgrade=success`,
+                    },
+                    checkout_options: {
+                        dark: true,
+                        logo: true,
+                    },
+                },
+                relationships: {
+                    store: { data: { type: 'stores', id: String(storeId) } },
+                    variant: { data: { type: 'variants', id: String(variantId) } },
+                },
+            },
+        };
 
-        logger.info('LS checkout URL built', { userId });
-        res.json({ url: url.toString() });
+        const response = await fetch(`${LS_API}/checkouts`, {
+            method: 'POST',
+            headers: lsHeaders(),
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            logger.error('LS checkout API error', { status: response.status, body: err });
+            return res.status(500).json({ error: 'Failed to create checkout' });
+        }
+
+        const data = await response.json();
+        const checkoutUrl = data.data?.attributes?.url;
+
+        if (!checkoutUrl) {
+            return res.status(500).json({ error: 'No checkout URL returned from Lemon Squeezy' });
+        }
+
+        logger.info('LS checkout created', { userId });
+        res.json({ url: checkoutUrl });
 
     } catch (error) {
         logger.error('LS create-checkout error', { error: error.message });
