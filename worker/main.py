@@ -32,7 +32,7 @@ validate_env()
 
 # Add parent to path for imports
 
-from services.downloader import download_audio, download_video, get_stream_urls, download_clip_segment, cleanup_all
+from services.downloader import download_audio, download_video, get_stream_urls, download_video_for_clips, cleanup_all
 from services.processor import analyze_with_gemini, cleanup_uploaded_file
 from services.clipper import extract_clip, cleanup_clips
 from services.clip_generator import generate_clip, ClipGenerationError
@@ -205,20 +205,63 @@ def process_job(job_data: dict) -> None:
         # for moment in result.viral_moments:
         #     validate_against_transcript(moment, transcript)
         
-        # Step 4: Obtener URLs de stream para descarga selectiva.
-        # Las URLs se usan después por-clip para bajar solo los bytes necesarios
-        # (~60-100MB por clip via Python+proxy, vs 1.3GB del video completo).
+        # Step 4: Descarga parcial del video via Python+proxy.
+        # YouTube bloquea IPs de datacenter (403). El proxy residencial funciona
+        # con Python urllib pero no con FFmpeg (HTTPS CONNECT no soportado).
+        # Solución: descargar desde byte 0 hasta el byte del último clip via
+        # Python+proxy → archivo MP4 válido → FFmpeg procesa localmente.
         supabase = get_supabase()
-        print("\n📹 Step 4: Obteniendo URLs de stream para descarga selectiva...")
+        print("\n📹 Step 4: Descargando video parcial via Python+proxy...")
         update_job_progress(job_id, current_step="clipping", progress_percentage=70)
         stream_urls = None
-        video_path = None  # mantenido para compatibilidad (cleanup_all lo usa)
-        video_duration = video_info.get("duration", 0)
+        video_path = None
+        muxed_video_path = None
+        video_duration = video_info.get("duration", 0) or 1
+
         try:
             stream_urls = get_stream_urls(video_url, video_id)
-            print(f"✅ Stream URLs obtenidas — descarga selectiva por-clip activa")
+
+            # Calcular timestamp máximo de todos los momentos
+            max_end_sec = max(
+                float(m.end_time) for m in result.viral_moments
+                if m.end_time is not None
+            )
+            print(f"   🎯 Clips hasta {max_end_sec:.0f}s de {video_duration:.0f}s total")
+
+            # Descargar video+audio parcial (byte 0 → byte del max_end_sec)
+            pvid_path, paud_path = download_video_for_clips(
+                video_url=stream_urls["video_url"],
+                audio_url=stream_urls["audio_url"],
+                max_end_sec=max_end_sec,
+                video_duration=video_duration,
+                video_id=video_id,
+            )
+
+            # Muxear video+audio en un solo MP4
+            import subprocess as _sp
+            import shutil as _sh
+            _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
+            muxed_video_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
+            mux_res = _sp.run(
+                [_ffmpeg, "-y", "-loglevel", "warning",
+                 "-i", pvid_path, "-i", paud_path,
+                 "-c", "copy", "-movflags", "+faststart", muxed_video_path],
+                capture_output=True, text=True, timeout=300
+            )
+            # Limpiar streams separados
+            for p in [pvid_path, paud_path]:
+                try: Path(p).unlink(missing_ok=True)
+                except Exception: pass
+
+            if mux_res.returncode != 0:
+                raise RuntimeError(f"Mux falló: {mux_res.stderr[-300:]}")
+
+            video_path = muxed_video_path
+            print(f"✅ Video parcial listo: {Path(muxed_video_path).stat().st_size // (1<<20)}MB")
+
         except Exception as e:
-            print(f"⚠️ Stream URLs fallaron ({e}) — fallback a links de YouTube")
+            print(f"⚠️ Descarga parcial falló ({e}) — fallback a links de YouTube")
+            stream_urls = None
         
         # Step 5: Save results
         print("\n💾 Step 5: Saving results...")
@@ -233,12 +276,9 @@ def process_job(job_data: dict) -> None:
             moment_index = i + 1
             clip_url = None
             
-            # Generate clip:
-            #  - Si hay stream URLs: FFmpeg accede directo a las URLs (sin proxy).
-            #    El proxy causaba 4XX; acceso directo desde Hetzner funciona.
-            #    FFmpeg hace HTTP Range seek → descarga solo los bytes del clip.
-            #  - Fallback a YouTube timestamp link si algo falla o no hay URLs.
-            if stream_urls:
+            # Generate clip desde el archivo local (video parcial muxeado).
+            # Si no hay video_path, fallback a YouTube timestamp link.
+            if video_path:
                 try:
                     start_s = float(moment.start_time)
                     end_s = float(moment.end_time)
@@ -251,13 +291,8 @@ def process_job(job_data: dict) -> None:
                         tp = getattr(moment, 'tiktok_package', None)
                         overlay_text = getattr(tp, 'overlay_text', None) if tp else None
 
-                    # Sin proxy — acceso directo desde Hetzner a googlevideo CDN.
-                    # El proxy residencial causaba 4XX (no soporta HTTPS CONNECT).
-                    # Las URLs de RapidAPI son accesibles desde cualquier IP.
                     gen_result = generate_clip(
-                        video_stream_url=stream_urls["video_url"],
-                        audio_stream_url=stream_urls["audio_url"],
-                        proxy_url=None,
+                        video_path=video_path,
                         start_sec=start_s,
                         end_sec=end_s,
                         output_path=str(clip_output),
@@ -288,7 +323,7 @@ def process_job(job_data: dict) -> None:
                         pass
                     gc.collect()
             else:
-                # Sin stream URLs — deep link con timestamp
+                # Sin video local — deep link con timestamp
                 if moment.start_time is not None:
                     clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                     print(f"🔗 Clip {moment_index}: YouTube link at {int(moment.start_time)}s → {clip_url}")
@@ -457,7 +492,14 @@ def process_job(job_data: dict) -> None:
     finally:
         # C5: Cancel timeout timer
         timeout_timer.cancel()
-        
+
+        # Limpiar video muxeado parcial
+        if muxed_video_path:
+            try:
+                Path(muxed_video_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
         # Cleanup all files
         if video_id:
             cleanup_all(video_id)

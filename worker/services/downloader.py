@@ -172,17 +172,17 @@ def _extract_video_id(video_url: str) -> str:
 _DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 
-def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "") -> None:
+def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "",
+                        end_byte: int = None) -> None:
     """
-    Descarga un archivo grande en paralelo usando HTTP Range requests.
+    Descarga un archivo usando HTTP Range requests en paralelo.
+
+    end_byte: si se pasa, descarga solo hasta ese byte (descarga parcial).
+              Si None, descarga el archivo completo.
 
     googlevideo throttlea conexiones individuales a ~4MB/min. Con N conexiones
     paralelas lográs ~N * 4MB/min. Con 8 chunks ≈ 32MB/min = 40MB en 75s.
-
-    Escribe a archivos temporales en un subdir, los concatena en orden al final.
-    Retriea cada chunk hasta 3 veces antes de fallar.
     """
-    # HEAD para obtener tamaño total (vía proxy si está seteado)
     proxy = _get_proxy_url()
     if proxy:
         opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
@@ -197,12 +197,16 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
     if total <= 0:
         raise RuntimeError(f"{label}: no se pudo determinar Content-Length")
 
-    chunk_size = max(1 << 20, total // num_chunks)  # mínimo 1MB por chunk
+    # Limitar al end_byte pedido (descarga parcial desde byte 0)
+    effective_end = (min(end_byte, total - 1) if end_byte is not None else total - 1)
+    effective_total = effective_end + 1
+
+    chunk_size = max(1 << 20, effective_total // num_chunks)
     ranges = []
     start = 0
     idx = 0
-    while start < total:
-        end = min(total - 1, start + chunk_size - 1)
+    while start <= effective_end:
+        end = min(effective_end, start + chunk_size - 1)
         ranges.append((idx, start, end))
         start = end + 1
         idx += 1
@@ -212,7 +216,8 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir()
 
-    print(f"   ⬇️ {label}: {total // (1<<20)}MB en {len(ranges)} chunks paralelos")
+    size_label = f"{effective_total // (1<<20)}MB" + (f" de {total // (1<<20)}MB" if end_byte else "")
+    print(f"   ⬇️ {label}: {size_label} en {len(ranges)} chunks paralelos")
     t0 = time.time()
 
     def fetch(i: int, s: int, e: int) -> Path:
@@ -234,17 +239,15 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
                 time.sleep(1 + attempt)
         raise RuntimeError(f"chunk {i} failed after 3 attempts: {last_err}")
 
-    # Descarga paralela
     with ThreadPoolExecutor(max_workers=len(ranges)) as ex:
         futures = {ex.submit(fetch, i, s, e): i for i, s, e in ranges}
         for fut in as_completed(futures):
-            fut.result()  # raise si alguno falló
+            fut.result()
 
     elapsed = time.time() - t0
-    mbps = (total / (1 << 20)) / max(elapsed, 0.01)
-    print(f"   ✅ {label}: {total // (1<<20)}MB en {elapsed:.1f}s ({mbps:.1f}MB/s)")
+    mbps = (effective_total / (1 << 20)) / max(elapsed, 0.01)
+    print(f"   ✅ {label}: {effective_total // (1<<20)}MB en {elapsed:.1f}s ({mbps:.1f}MB/s)")
 
-    # Concatenar en orden
     with open(out_path, "wb") as out:
         for i, _, _ in ranges:
             chunk_path = tmp_dir / f"chunk_{i:04d}"
@@ -434,6 +437,76 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
             raise FileNotFoundError(f"Downloaded video file not found for {video_id}")
 
         return str(video_path)
+
+
+def download_video_for_clips(
+    video_url: str,
+    audio_url: str,
+    max_end_sec: float,
+    video_duration: float,
+    video_id: str,
+    buffer_sec: float = 15.0,
+) -> tuple[str, str]:
+    """
+    Descarga video+audio desde byte 0 hasta el byte correspondiente a
+    max_end_sec + buffer usando Python urllib + proxy.
+
+    Al descargar desde byte 0, el archivo resultante es un MP4/M4A válido
+    con el moov atom completo — FFmpeg puede procesarlo sin problemas.
+
+    Para un video de 2h con clips hasta los 4625s:
+      - Descarga: (4640/7200) × 1.3GB ≈ 837MB (vs 1.3GB full)
+      - Para clips early (< 2000s): (2015/7200) × 1.3GB ≈ 363MB
+
+    Se descarga UNA sola vez para todos los clips del job.
+
+    Returns:
+        (video_path, audio_path) — archivos MP4/M4A válidos y procesables
+    """
+    DOWNLOADS_DIR.mkdir(exist_ok=True)
+
+    effective_end = min(max_end_sec + buffer_sec, video_duration)
+    ratio = effective_end / max(video_duration, 1)
+
+    print(f"   📐 Descargando 0s–{effective_end:.0f}s ({ratio * 100:.0f}% del video)")
+
+    # Obtener tamaños totales para calcular end_byte
+    proxy = _get_proxy_url()
+    if proxy:
+        opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+        _open_head = lambda r, t=30: opener.open(r, timeout=t)
+    else:
+        _open_head = lambda r, t=30: urlopen(r, timeout=t)
+
+    def _get_size(url: str) -> int:
+        r = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
+        with _open_head(r, 30) as resp:
+            return int(resp.headers.get("Content-Length", 0))
+
+    try:
+        vid_total = _get_size(video_url)
+        aud_total = _get_size(audio_url)
+    except Exception as e:
+        raise RuntimeError(f"No se pudo obtener tamaño de streams: {e}")
+
+    if vid_total <= 0 or aud_total <= 0:
+        raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
+
+    vid_end_byte = int(ratio * vid_total)
+    aud_end_byte = int(ratio * aud_total)
+
+    vid_path = DOWNLOADS_DIR / f"{video_id}_pvid.mp4"
+    aud_path = DOWNLOADS_DIR / f"{video_id}_paud.m4a"
+
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fv = ex.submit(_parallel_download, video_url, vid_path, 8, "video", vid_end_byte)
+        fa = ex.submit(_parallel_download, audio_url, aud_path, 4, "audio", aud_end_byte)
+        fv.result()
+        fa.result()
+
+    print(f"   ⏱️ Descarga parcial completada en {time.time() - t0:.1f}s")
+    return str(vid_path), str(aud_path)
 
 
 def download_clip_segment(
