@@ -13,7 +13,9 @@ En cualquier error, marca el edit como 'failed' con mensaje descriptivo
 para que la UI lo muestre.
 """
 import gc
+import json
 from pathlib import Path
+from typing import Optional
 
 from services.downloader import (
     download_clip_ytdlp,
@@ -33,14 +35,31 @@ DOWNLOADS_DIR = Path(__file__).parent.parent / "downloads"
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
 
 
+def _download_from_r2(raw_clip_url: str, edit_id: str) -> str:
+    """
+    Plan C: descarga el segmento crudo cacheado desde R2.
+    Mucho más rápido y confiable que yt-dlp (sin bot-detection issues).
+    """
+    import urllib.request
+    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    out = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg.mp4")
+    print(f"   ⬇️  Cache hit: bajando segmento crudo desde R2")
+    urllib.request.urlretrieve(raw_clip_url, out)
+    size_mb = Path(out).stat().st_size // (1 << 20)
+    print(f"   ✅ R2 segment OK ({size_mb}MB)")
+    return out
+
+
 def _download_segment_with_fallback(
     video_url: str,
     start_s: float,
     end_s: float,
     edit_id: str,
+    raw_clip_url: Optional[str] = None,
 ) -> str:
     """
-    Descarga el segmento [start_s, end_s] del video con fallback chain:
+    Descarga el segmento [start_s, end_s] del video con cascada:
+      0. (Plan C) Si raw_clip_url está cacheado en R2 → bajarlo de ahí.
       1. yt-dlp download_ranges (~50MB, rápido)
       2. Si falla: get_stream_urls + descarga parcial desde byte 0 + corte
          con ffmpeg al rango pedido.
@@ -49,6 +68,13 @@ def _download_segment_with_fallback(
     (start=0, duration=end_s-start_s) para simplificar el resto del pipeline.
     """
     DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # ── Intento 0: cache R2 (Plan C) ──────────────────────────────────
+    if raw_clip_url:
+        try:
+            return _download_from_r2(raw_clip_url, edit_id)
+        except Exception as e_cache:
+            print(f"   ⚠️ R2 cache miss ({e_cache}) — fallback a yt-dlp")
 
     # ── Intento 1: yt-dlp download_ranges ─────────────────────────────
     try:
@@ -227,19 +253,42 @@ def process_clip_edit(edit: dict) -> None:
         if not video_url:
             raise RuntimeError("job sin video_url")
 
-        # 3) Re-download segment (~50MB) con fallback chain
+        # 3) Re-download segment con cascada (cache R2 → yt-dlp → partial)
         CLIPS_DIR.mkdir(parents=True, exist_ok=True)
-        print(f"   ⬇️  Segment download: {int(start_s)}-{int(end_s)}s")
+        cached_raw_url = cr.get("raw_clip_url")
+        print(
+            f"   ⬇️  Segment {int(start_s)}-{int(end_s)}s "
+            f"(cache={'sí' if cached_raw_url else 'no'})"
+        )
         seg_path = _download_segment_with_fallback(
             video_url=video_url,
             start_s=start_s,
             end_s=end_s,
             edit_id=edit_id,
+            raw_clip_url=cached_raw_url,
         )
 
-        # 4) Whisper per-clip (best-effort, sync palabra a palabra)
+        # 4) Whisper words: usar cache si existe, sino transcribir
         clip_duration = end_s - start_s
-        words, segments = _whisper_per_clip(seg_path, clip_duration, edit_id)
+        words, segments = None, None
+        cached_whisper = cr.get("whisper_words")
+        if cached_whisper:
+            try:
+                if isinstance(cached_whisper, str):
+                    cached_whisper = json.loads(cached_whisper)
+                words = cached_whisper.get("words") or None
+                segments = cached_whisper.get("segments") or None
+                if words or segments:
+                    print(
+                        f"   ✅ Whisper cache hit: "
+                        f"{len(words or [])} words, {len(segments or [])} segments"
+                    )
+            except Exception as e_cache:
+                print(f"   ⚠️ Whisper cache parse falló ({e_cache}) — re-transcribo")
+                words, segments = None, None
+
+        if not words and not segments:
+            words, segments = _whisper_per_clip(seg_path, clip_duration, edit_id)
 
         # 5) Generate clip with edit's overrides
         clip_output = CLIPS_DIR / f"edit_{edit_id}.mp4"

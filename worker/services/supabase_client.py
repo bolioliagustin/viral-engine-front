@@ -109,6 +109,8 @@ def save_content_result(
     roi_time_saved: int = None,  # Phase B
     score_justifications: list = None,  # Phase B
     viral_overlay: str = None,  # TikTok burn-in title (hook corto UPPERCASE)
+    raw_clip_url: str = None,  # Plan C: cache del segmento crudo en R2
+    whisper_words: dict = None,  # Plan C: {"words": [...], "segments": [...]}
 ) -> str:
     """Save content result to Supabase or SQLite"""
     import uuid
@@ -148,6 +150,11 @@ def save_content_result(
             data["score_justifications"] = json.dumps(score_justifications)
         if viral_overlay:
             data["viral_overlay"] = viral_overlay
+        # Plan C: cache para acelerar re-renders
+        if raw_clip_url:
+            data["raw_clip_url"] = raw_clip_url
+        if whisper_words:
+            data["whisper_words"] = json.dumps(whisper_words) if not isinstance(whisper_words, str) else whisper_words
 
         supabase.table("content_results").insert(data).execute()
     else:
@@ -306,6 +313,25 @@ def upload_edited_clip_to_storage(file_path: str, edit_id: str) -> Optional[str]
         return url
     except Exception as e:
         print(f"❌ Failed to upload edited clip: {e}")
+        return None
+
+
+def upload_raw_clip_to_storage(file_path: str, job_id: str, moment_index: int) -> Optional[str]:
+    """
+    Plan C: sube el segmento CRUDO (sin subs/overlay) a R2 para cachear.
+    Usado por el editor post-clip para re-renderizar sin re-descargar de YouTube.
+
+    Path estable: raw_clips/{job_id}_{moment_index}.mp4
+    """
+    try:
+        from services.storage_client import upload_file
+        object_name = f"raw_clips/{job_id}_{moment_index}.mp4"
+        url = upload_file(file_path, object_name)
+        if url:
+            print(f"✅ Raw clip cached: {url[:70]}...")
+        return url
+    except Exception as e:
+        print(f"⚠️ Failed to cache raw clip (non-fatal): {e}")
         return None
 
 

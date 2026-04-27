@@ -237,7 +237,12 @@ def process_job(job_data: dict) -> None:
         for i, moment in enumerate(result.viral_moments):
             moment_index = i + 1
             clip_url = None
-            
+            # Plan C: cache para acelerar re-renders del editor post-clip.
+            # Se popula tras yt-dlp + Whisper; queda en None si caemos a paths
+            # de fallback (entonces el editor re-descargará desde YouTube).
+            raw_clip_url_cache = None
+            whisper_words_cache = None
+
             # Generate clip:
             # Intento 1: yt-dlp + proxy + download_ranges → ~50MB por clip ✨
             # Intento 2: partial download desde byte 0 → más grande pero válido
@@ -436,6 +441,25 @@ def process_job(job_data: dict) -> None:
                         subs_words = None
                         subs_offset = src_offset
 
+                    # ── Plan C: cachear para re-renders rápidos ────────────────
+                    # Subir el segmento crudo (solo si vino de yt-dlp — el fallback
+                    # de partial download es el video entero, no sirve como cache).
+                    # Y guardar los words de Whisper para no re-transcribir.
+                    if seg_path:
+                        try:
+                            from services.supabase_client import upload_raw_clip_to_storage
+                            raw_clip_url_cache = upload_raw_clip_to_storage(
+                                seg_path, job_id, moment_index
+                            )
+                        except Exception as e_cache:
+                            print(f"   ⚠️ Cache raw clip falló (no fatal): {e_cache}")
+
+                    if clip_words or clip_segments_whisper:
+                        whisper_words_cache = {
+                            "words": clip_words or [],
+                            "segments": clip_segments_whisper or [],
+                        }
+
                     gen_result = generate_clip(
                         video_path=src_path,
                         start_sec=src_start,
@@ -554,6 +578,8 @@ def process_job(job_data: dict) -> None:
                 roi_time_saved=roi_time,
                 score_justifications=justifications,
                 viral_overlay=overlay_text,
+                raw_clip_url=raw_clip_url_cache,
+                whisper_words=whisper_words_cache,
             )
             
             # Route platform-specific content based on category
@@ -576,7 +602,9 @@ def process_job(job_data: dict) -> None:
                         score_shareability=scores.shareability if scores else None,
                         sentiment_detected=sentiment,
                         roi_time_saved=roi_time,
-                        score_justifications=justifications
+                        score_justifications=justifications,
+                        raw_clip_url=raw_clip_url_cache,
+                        whisper_words=whisper_words_cache,
                     )
                     
             elif category in ['entertainment', 'podcast', 'lifestyle']:
@@ -598,7 +626,9 @@ def process_job(job_data: dict) -> None:
                         score_shareability=scores.shareability if scores else None,
                         sentiment_detected=sentiment,
                         roi_time_saved=roi_time,
-                        score_justifications=justifications
+                        score_justifications=justifications,
+                        raw_clip_url=raw_clip_url_cache,
+                        whisper_words=whisper_words_cache,
                     )
 
             
@@ -619,7 +649,9 @@ def process_job(job_data: dict) -> None:
                         score_shareability=scores.shareability if scores else None,
                         sentiment_detected=sentiment,
                         roi_time_saved=roi_time,
-                        score_justifications=justifications
+                        score_justifications=justifications,
+                        raw_clip_url=raw_clip_url_cache,
+                        whisper_words=whisper_words_cache,
                     )
         
         # Update status to completed
