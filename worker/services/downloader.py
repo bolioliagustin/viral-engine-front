@@ -562,7 +562,10 @@ def download_video_for_clips(
         raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
 
     vid_end_byte = int(ratio * vid_total)
-    aud_end_byte = int(ratio * aud_total)
+    # ⚠️ Audio: descargar SIEMPRE completo. El m4a tiene el moov atom al final,
+    # si lo truncamos por byte-range el container queda inválido y ffmpeg no
+    # puede leer el header. Es solo unos pocos MB de más, vale la pena.
+    aud_end_byte = aud_total
 
     vid_path = DOWNLOADS_DIR / f"{video_id}_pvid.mp4"
     aud_path = DOWNLOADS_DIR / f"{video_id}_paud.m4a"

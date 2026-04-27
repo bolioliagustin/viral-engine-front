@@ -1,4 +1,4 @@
-yt-dlp>=2024.12.13
+yt-dlp>=2025.10.01
 openai
 pydantic
 python-dotenv
