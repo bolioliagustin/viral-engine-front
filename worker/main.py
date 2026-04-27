@@ -342,38 +342,55 @@ def process_job(job_data: dict) -> None:
                         actual_pre_pad = src_start - pad_start  # cuánto prepad efectivo
                         pad_end = src_end + POST_PAD  # ffmpeg clampa solo si sobrepasa
 
+                        # ── Audio para Whisper: extraer + normalizar volumen ──
+                        # loudnorm: equaliza volumen + comprime dinámica → audio
+                        # más consistente para Whisper, mejor accuracy con voz
+                        # sobre música/silencios. Single-pass es suficiente.
+                        # Bitrate 128k para máxima calidad (Whisper se beneficia).
                         ext_cmd = [
                             _ffmpeg2, "-y", "-loglevel", "error",
                             "-ss", str(pad_start), "-to", str(pad_end),
                             "-i", src_path,
-                            "-vn", "-acodec", "libmp3lame",
-                            "-ar", "16000", "-ac", "1", "-b:a", "64k",
+                            "-vn",
+                            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+                            "-acodec", "libmp3lame",
+                            "-ar", "16000", "-ac", "1", "-b:a", "128k",
                             str(clip_audio_path),
                         ]
-                        # Audio: 96kbps para mejor calidad (antes 64kbps)
-                        ext_cmd[ext_cmd.index("-b:a") + 1] = "96k"
 
                         _sp2.run(ext_cmd, check=True, timeout=120,
                                  capture_output=True, text=True)
 
                         # ── Prompt de contexto para Whisper ──────────────
-                        # Extraemos el texto del YT Transcript en el rango del
-                        # clip. Whisper usa esto como hint → mejora la accuracy
-                        # de verbos, nombres propios y jerga específica.
+                        # Whisper usa el prompt como hint para nombres, jerga,
+                        # estilo. Construimos:
+                        #   1. Título del video (proper nouns, tema general)
+                        #   2. Texto del YT transcript en el rango del clip
+                        # Cap a ~800 chars (224 tokens). Tomamos el inicio (no
+                        # el final) porque el inicio tiende a tener el contexto
+                        # más relevante para el clip.
                         whisper_prompt = None
+                        prompt_parts = []
+
+                        video_title = (video_info.get("title") or "").strip()
+                        if video_title:
+                            prompt_parts.append(video_title)
+
                         yt_segments = transcript.get("segments") or []
                         ctx_texts = []
                         for sg in yt_segments:
                             sg_start = float(sg.get("start", 0))
                             sg_end = float(sg.get("end", 0))
-                            # Incluir segmentos que solapan con el rango del clip
                             if sg_end >= start_s and sg_start <= end_s:
                                 ctx_texts.append(sg.get("text", "").strip())
                         if ctx_texts:
-                            whisper_prompt = " ".join(ctx_texts).strip()
-                            # Tomar los últimos ~800 chars (Whisper pesa más el final)
+                            prompt_parts.append(" ".join(ctx_texts).strip())
+
+                        if prompt_parts:
+                            whisper_prompt = ". ".join(prompt_parts)
+                            # Tomar el INICIO (más relevante que el final)
                             if len(whisper_prompt) > 800:
-                                whisper_prompt = whisper_prompt[-800:]
+                                whisper_prompt = whisper_prompt[:800]
 
                         whisper_lang = transcript.get("language")  # "es", "en", etc.
                         if whisper_lang and len(whisper_lang) > 2:

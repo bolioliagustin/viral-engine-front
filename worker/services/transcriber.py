@@ -1,10 +1,34 @@
 """
-Audio transcription service using Whisper via OpenRouter
-Provides precise timestamps for viral moment detection
+Audio transcription service.
+
+Provider order (best → fallback):
+  1. Groq Whisper Large v3 Turbo (cuando GROQ_API_KEY existe).
+     Modelo más nuevo, ~10× más rápido, ~9× más barato y mejor accuracy
+     que whisper-1 de OpenAI. API es OpenAI-compatible.
+  2. OpenAI Whisper-1 como fallback.
+
+Ambos soportan word-level timestamps (timestamp_granularities=["word"])
+y el parámetro `prompt` para mejorar accuracy con contexto.
 """
 import os
 from openai import OpenAI
 from typing import Dict, List
+
+
+# ── Provider clients ─────────────────────────────────────────────────────────
+def _groq_client() -> 'OpenAI | None':
+    """Returns a Groq client (OpenAI-compatible) if GROQ_API_KEY is set."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return None
+    return OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+
+
+def _openai_client() -> 'OpenAI | None':
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    return OpenAI(api_key=api_key)
 
 
 def transcribe_with_whisper_openrouter(
@@ -48,46 +72,82 @@ def transcribe_with_whisper_openrouter(
         return _transcribe_single(audio_path, prompt=prompt, language=language)
 
 
+def _transcribe_with_provider(
+    client: 'OpenAI', model: str, provider: str,
+    audio_path: str, prompt: str = None, language: str = None,
+) -> Dict:
+    """Llama a la API de transcripción y retorna dict normalizado."""
+    kwargs = {
+        "model": model,
+        "response_format": "verbose_json",
+        "timestamp_granularities": ["segment", "word"],
+    }
+    if prompt:
+        kwargs["prompt"] = prompt[:900]  # ~224 tokens
+    if language:
+        kwargs["language"] = language
+
+    with open(audio_path, "rb") as audio_file:
+        transcript = client.audio.transcriptions.create(file=audio_file, **kwargs)
+
+    result = (transcript.model_dump() if hasattr(transcript, "model_dump")
+              else dict(transcript))
+    return result
+
+
 def _transcribe_single(audio_path: str, prompt: str = None, language: str = None) -> Dict:
-    """Transcribe a single audio file (no chunking needed)"""
-    # Use OpenAI directly for Whisper (OpenRouter doesn't support audio transcription)
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
-
-    try:
-        kwargs = {
-            "model": "whisper-1",  # Supports verbose_json with timestamps
-            "response_format": "verbose_json",
-            "timestamp_granularities": ["segment", "word"],
-        }
-        if prompt:
-            # Whisper prompt: hasta 224 tokens. Da contexto (nombres, jerga)
-            # y mejora mucho la accuracy de verbos y palabras especificas.
-            kwargs["prompt"] = prompt[:900]  # ~224 tokens aprox
-        if language:
-            kwargs["language"] = language  # ISO-639-1 (ej. "es", "en")
-
-        with open(audio_path, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                file=audio_file,
-                **kwargs,
+    """
+    Transcribe un audio. Prueba Groq primero (mejor/más rápido/barato),
+    cae a OpenAI si Groq no está configurado o falla.
+    """
+    # ── Intento 1: Groq Whisper Large v3 Turbo ──────────────────────────────
+    groq = _groq_client()
+    if groq:
+        try:
+            print(f"📝 Transcribing with Groq (whisper-large-v3-turbo)...")
+            result = _transcribe_with_provider(
+                client=groq,
+                model="whisper-large-v3-turbo",
+                provider="groq",
+                audio_path=audio_path,
+                prompt=prompt,
+                language=language,
             )
+            _save_transcript(audio_path, result)
+            n_words = len(result.get("words", []))
+            n_segs = len(result.get("segments", []))
+            print(f"✅ Groq transcription: {n_segs} segments, {n_words} words")
+            print(f"   Language: {result.get('language', 'unknown')}, "
+                  f"Duration: {result.get('duration', 'N/A')}s")
+            return result
+        except Exception as e:
+            print(f"⚠️ Groq falló ({e}) — fallback a OpenAI")
 
-        result = transcript.model_dump() if hasattr(transcript, 'model_dump') else dict(transcript)
-
-        # Save transcript to file for review
+    # ── Intento 2: OpenAI Whisper-1 ─────────────────────────────────────────
+    openai = _openai_client()
+    if not openai:
+        raise RuntimeError(
+            "Sin transcriber disponible: ni GROQ_API_KEY ni OPENAI_API_KEY"
+        )
+    try:
+        print(f"📝 Transcribing with OpenAI (whisper-1)...")
+        result = _transcribe_with_provider(
+            client=openai,
+            model="whisper-1",
+            provider="openai",
+            audio_path=audio_path,
+            prompt=prompt,
+            language=language,
+        )
         _save_transcript(audio_path, result)
-
-        n_words = len(result.get('words', []))
-        print(f"✅ Transcription complete: {len(result.get('segments', []))} segments, {n_words} words")
-        print(f"   Language: {result.get('language', 'unknown')}")
-        print(f"   Duration: {result.get('duration', 'N/A')}s")
-        
+        n_words = len(result.get("words", []))
+        n_segs = len(result.get("segments", []))
+        print(f"✅ OpenAI transcription: {n_segs} segments, {n_words} words")
+        print(f"   Language: {result.get('language', 'unknown')}, "
+              f"Duration: {result.get('duration', 'N/A')}s")
         return result
-        
     except Exception as e:
-        print(f"❌ Transcription failed: {e}")
+        print(f"❌ OpenAI transcription failed: {e}")
         raise
 
 

@@ -171,8 +171,10 @@ def _whisper_per_clip(src_path: str, clip_duration: float, edit_id: str):
             ffmpeg, "-y", "-loglevel", "error",
             "-ss", str(pad_start), "-to", str(pad_end),
             "-i", src_path,
-            "-vn", "-acodec", "libmp3lame",
-            "-ar", "16000", "-ac", "1", "-b:a", "96k",
+            "-vn",
+            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+            "-acodec", "libmp3lame",
+            "-ar", "16000", "-ac", "1", "-b:a", "128k",
             str(audio_path),
         ]
         _sp.run(cmd, check=True, timeout=120, capture_output=True, text=True)

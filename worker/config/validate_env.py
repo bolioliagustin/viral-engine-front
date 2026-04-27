@@ -14,6 +14,7 @@ REQUIRED_ENV_VARS = [
 OPTIONAL_ENV_VARS = {
     'FFMPEG_PATH': 'Will use system PATH if not set',
     'OPENROUTER_MODEL': 'Defaults to google/gemini-2.0-flash-exp:free',
+    'GROQ_API_KEY': 'Preferred Whisper provider (faster + better than OpenAI). Get at console.groq.com. Si no está, cae a OpenAI.',
     'SUPADATA_API_KEY': 'REQUIRED on cloud deployments (Render/Railway) — get free key at supadata.ai',
     'R2_ACCOUNT_ID': 'Required for clip uploads to Cloudflare R2',
     'R2_ACCESS_KEY_ID': 'Required for clip uploads to Cloudflare R2',
