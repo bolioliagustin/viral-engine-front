@@ -380,6 +380,18 @@ def segments_to_srt(
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(srt_entries))
+            # Diagnóstico: log de cuántos sub bursts se generan + sample
+            try:
+                n_in = len(words)
+                n_out = len(srt_entries)
+                first = srt_entries[0].split("\n")[1] if srt_entries else "-"
+                last = srt_entries[-1].split("\n")[1] if srt_entries else "-"
+                print(f"   📜 SRT: {n_out} chunks de {n_in} words "
+                      f"(max_words={max_words_per_line})")
+                print(f"      primer chunk: {first}")
+                print(f"      último chunk: {last}")
+            except Exception:
+                pass
             return output_path
         # Si no hay words en el rango del clip, caer al fallback
         print("⚠️ No hay words en el rango del clip — fallback a segments con interpolación")
@@ -614,6 +626,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(ass_content)
+    # Diagnóstico: cuántos events terminaron en el ASS
+    print(f"   🎬 ASS: {len(events)} dialogue events (de {len(blocks)} bloques SRT)")
 
 
 def burn_subtitles(
