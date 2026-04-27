@@ -438,7 +438,7 @@ export function ViralMomentCard({
                     title={
                       isYouTubeUrl
                         ? "Editor solo disponible para clips descargados"
-                        : "Próximamente — editar título y subtítulos"
+                        : "Editar título, estilo y posición de subtítulos"
                     }
                   >
                     <Pencil className="mr-1.5 h-3.5 w-3.5" />
@@ -554,6 +554,7 @@ export function ViralMomentCard({
         contentResultId={contentResultId}
         clipUrl={clipUrl}
         overlayText={overlayText}
+        clipDuration={Math.max(1, endTime - startTime)}
         onRendered={(url) => {
           setRenderedOverride(url);
           toast({

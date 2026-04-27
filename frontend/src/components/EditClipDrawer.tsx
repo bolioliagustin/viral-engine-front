@@ -23,13 +23,17 @@ import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 type SubtitleStyle = "tiktok_viral" | "clean" | "podcast";
+type OverlayPosition = "top" | "center" | "bottom";
 type EditStatus = "draft" | "queued" | "processing" | "completed" | "failed";
 
 interface ClipEdit {
   id: string;
   status: EditStatus;
   overlay_text?: string | null;
+  overlay_position?: OverlayPosition | null;
   subtitle_style?: SubtitleStyle | null;
+  trim_start_offset?: number | null;
+  trim_end_offset?: number | null;
   rendered_clip_url?: string | null;
   error_message?: string | null;
   updated_at?: string;
@@ -42,6 +46,8 @@ interface EditClipDrawerProps {
   contentResultId: string;
   clipUrl?: string;
   overlayText?: string;
+  /** Duración del clip en segundos — usada para el slider de trim. */
+  clipDuration?: number;
   /**
    * Notifica al padre cuando un re-render completa con una URL nueva,
    * para que pueda reemplazar el clip mostrado en la card.
@@ -63,6 +69,7 @@ export function EditClipDrawer({
   contentResultId,
   clipUrl,
   overlayText,
+  clipDuration,
   onRendered,
 }: EditClipDrawerProps) {
   const { toast } = useToast();
@@ -70,6 +77,12 @@ export function EditClipDrawer({
   const [titleDraft, setTitleDraft] = useState(overlayText ?? "");
   const [selectedStyle, setSelectedStyle] =
     useState<SubtitleStyle>("tiktok_viral");
+  const [titlePosition, setTitlePosition] = useState<OverlayPosition>("top");
+  // Trim offsets en segundos. trim_start_offset = recortar X seg desde el
+  // inicio del clip; trim_end_offset = recortar X seg desde el final.
+  const [trimStart, setTrimStart] = useState<number>(0);
+  const [trimEnd, setTrimEnd] = useState<number>(0);
+  const safeDuration = Math.max(1, clipDuration ?? 30);
 
   // Backend wiring state
   const [latestEdit, setLatestEdit] = useState<ClipEdit | null>(null);
@@ -103,6 +116,11 @@ export function EditClipDrawer({
         if (edit) {
           if (edit.overlay_text) setTitleDraft(edit.overlay_text);
           if (edit.subtitle_style) setSelectedStyle(edit.subtitle_style);
+          if (edit.overlay_position) setTitlePosition(edit.overlay_position);
+          if (typeof edit.trim_start_offset === "number")
+            setTrimStart(edit.trim_start_offset);
+          if (typeof edit.trim_end_offset === "number")
+            setTrimEnd(edit.trim_end_offset);
           // Si ya hay un re-render completado, notificar al padre para
           // que reemplace el clip mostrado en la card.
           if (edit.status === "completed" && edit.rendered_clip_url) {
@@ -174,16 +192,22 @@ export function EditClipDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, contentResultId, latestEdit?.id, latestEdit?.status]);
 
+  // Construye el payload completo del edit (reusable)
+  const buildEditPayload = () => ({
+    overlay_text: titleDraft.trim() || null,
+    overlay_position: titlePosition,
+    subtitle_style: selectedStyle,
+    trim_start_offset: trimStart > 0.05 ? Number(trimStart.toFixed(2)) : null,
+    trim_end_offset: trimEnd > 0.05 ? Number(trimEnd.toFixed(2)) : null,
+  });
+
   // ─── Save draft ────────────────────────────────────────────────────
   const handleSaveDraft = async () => {
     try {
       setSaving(true);
       const res = await apiFetch(`/api/clips/${contentResultId}/edit`, {
         method: "POST",
-        body: JSON.stringify({
-          overlay_text: titleDraft.trim() || null,
-          subtitle_style: selectedStyle,
-        }),
+        body: JSON.stringify(buildEditPayload()),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -209,13 +233,10 @@ export function EditClipDrawer({
   const handleRegenerate = async () => {
     try {
       setRegenerating(true);
-      // Save first (always persist current draft)
+      // Save first (always persist current draft con todos los campos)
       const saveRes = await apiFetch(`/api/clips/${contentResultId}/edit`, {
         method: "POST",
-        body: JSON.stringify({
-          overlay_text: titleDraft.trim() || null,
-          subtitle_style: selectedStyle,
-        }),
+        body: JSON.stringify(buildEditPayload()),
       });
       const saveData = await saveRes.json();
       if (!saveRes.ok) throw new Error(saveData.error || `HTTP ${saveRes.status}`);
@@ -511,19 +532,27 @@ export function EditClipDrawer({
                     Posición del título
                   </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {["Arriba", "Centro", "Abajo"].map((pos, i) => (
+                    {([
+                      { id: "top" as const, label: "Arriba" },
+                      { id: "center" as const, label: "Centro" },
+                      { id: "bottom" as const, label: "Abajo" },
+                    ]).map((pos) => (
                       <button
-                        key={pos}
-                        disabled
-                        className="p-3 rounded-lg border border-slate-800 bg-slate-900/40 text-slate-500 text-sm opacity-50 cursor-not-allowed"
+                        key={pos.id}
+                        onClick={() => setTitlePosition(pos.id)}
+                        disabled={isLocked}
+                        className={`p-3 rounded-lg border text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                          titlePosition === pos.id
+                            ? "border-purple-500/60 bg-purple-500/10 text-purple-200 ring-1 ring-purple-500/40"
+                            : "border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                        }`}
                       >
-                        {pos}
+                        {pos.label}
                       </button>
                     ))}
                   </div>
-                  <p className="text-[11px] text-slate-600 mt-2 flex items-center gap-1">
-                    <Lock className="w-3 h-3" />
-                    Disponible al lanzamiento del editor
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    Determina dónde se quema el título dentro del frame.
                   </p>
                 </div>
               </TabsContent>
@@ -531,35 +560,113 @@ export function EditClipDrawer({
               {/* ══ AUDIO ══ */}
               <TabsContent
                 value="audio"
-                className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-5 mt-0"
+                className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6 mt-0"
               >
-                <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-5 text-center">
-                  <Music className="w-8 h-8 text-emerald-400 mx-auto mb-3" />
-                  <h4 className="text-white font-semibold mb-1">
-                    Música y audio
-                  </h4>
-                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                    Próximamente: recortar start/end del clip, agregar música
-                    de fondo libre de copyright, normalizar volumen.
+                {/* Trim controls — funcional */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs uppercase tracking-wider text-slate-400 font-semibold">
+                      Recortar clip
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Duración: {(safeDuration - trimStart - trimEnd).toFixed(1)}s
+                      {(trimStart > 0.05 || trimEnd > 0.05) && (
+                        <span className="ml-1 text-purple-400">
+                          (de {safeDuration.toFixed(1)}s)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Visualización del rango activo */}
+                  <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4 space-y-3">
+                    <div className="h-10 bg-slate-800 rounded relative overflow-hidden">
+                      {/* Rango activo */}
+                      <div
+                        className="absolute inset-y-0 bg-gradient-to-r from-purple-500/40 to-pink-500/40 border-x-2 border-purple-400"
+                        style={{
+                          left: `${(trimStart / safeDuration) * 100}%`,
+                          right: `${(trimEnd / safeDuration) * 100}%`,
+                        }}
+                      />
+                    </div>
+
+                    {/* Slider Inicio */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                          Recortar del inicio
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-300">
+                          {trimStart.toFixed(1)}s
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(0, safeDuration - trimEnd - 1)}
+                        step={0.5}
+                        value={trimStart}
+                        onChange={(e) => setTrimStart(parseFloat(e.target.value))}
+                        disabled={isLocked}
+                        className="w-full accent-purple-500 disabled:opacity-50"
+                      />
+                    </div>
+
+                    {/* Slider Final */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                          Recortar del final
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-300">
+                          {trimEnd.toFixed(1)}s
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(0, safeDuration - trimStart - 1)}
+                        step={0.5}
+                        value={trimEnd}
+                        onChange={(e) => setTrimEnd(parseFloat(e.target.value))}
+                        disabled={isLocked}
+                        className="w-full accent-pink-500 disabled:opacity-50"
+                      />
+                    </div>
+
+                    {(trimStart > 0.05 || trimEnd > 0.05) && (
+                      <button
+                        onClick={() => {
+                          setTrimStart(0);
+                          setTrimEnd(0);
+                        }}
+                        disabled={isLocked}
+                        className="text-[11px] text-slate-400 hover:text-white disabled:opacity-50 underline"
+                      >
+                        Resetear recortes
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Útil para sacar pausas iniciales o descortes feos al final.
+                    El re-render aplica los recortes con frame-accuracy.
                   </p>
-                  <Badge className="mt-3 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    En desarrollo
-                  </Badge>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs uppercase tracking-wider text-slate-400 font-semibold block">
-                    Recortar clip (próximamente)
-                  </label>
-                  <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-4 opacity-50">
-                    <div className="h-8 bg-slate-800 rounded relative overflow-hidden">
-                      <div className="absolute inset-y-0 left-[10%] right-[15%] bg-purple-500/40 border-x-2 border-purple-400" />
-                    </div>
-                    <div className="flex justify-between text-[10px] text-slate-600 mt-1.5 font-mono">
-                      <span>0:00</span>
-                      <span>0:30</span>
-                    </div>
-                  </div>
+                {/* Música de fondo — placeholder honesto */}
+                <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-5 text-center">
+                  <Music className="w-7 h-7 text-emerald-400/80 mx-auto mb-2" />
+                  <h4 className="text-white font-medium text-sm">
+                    Música de fondo
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto mt-1">
+                    Próximamente: agregar tracks libres de copyright al clip.
+                  </p>
+                  <Badge className="mt-3 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
+                    En desarrollo
+                  </Badge>
                 </div>
               </TabsContent>
             </Tabs>

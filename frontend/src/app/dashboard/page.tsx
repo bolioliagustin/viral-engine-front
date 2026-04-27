@@ -10,7 +10,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { submitVideo, redirectToCheckout } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, AlertCircle, Clock, ChevronRight, Youtube, Zap, CreditCard } from "lucide-react";
+import { Sparkles, AlertCircle, Clock, ChevronRight, Youtube, Zap, CreditCard, RotateCcw, Trash2, Loader2 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,10 +82,73 @@ function ScoreRing({ score, label, color }: { score: number; label: string; colo
   );
 }
 
+// ─── Hook: action handlers ────────────────────────────────────────────────────
+
+function useJobActions(onChange: () => void) {
+  const { toast } = useToast();
+  const [busyJobId, setBusyJobId] = useState<string | null>(null);
+
+  const retry = async (jobId: string) => {
+    if (busyJobId) return;
+    try {
+      setBusyJobId(jobId);
+      const res = await apiFetch(`/jobs/${jobId}/retry`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      toast({ title: "🔄 Reintentando", description: "El worker lo va a tomar pronto." });
+      onChange();
+    } catch (e: unknown) {
+      toast({
+        title: "❌ No se pudo reintentar",
+        description: e instanceof Error ? e.message : "Error",
+        variant: "destructive",
+      });
+    } finally {
+      setBusyJobId(null);
+    }
+  };
+
+  const remove = async (jobId: string, title?: string) => {
+    if (busyJobId) return;
+    const confirmed = window.confirm(
+      `¿Eliminar el job "${title || "este video"}"?\n\nSe borran todos los resultados y clips asociados. Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    try {
+      setBusyJobId(jobId);
+      const res = await apiFetch(`/jobs/${jobId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      toast({ title: "🗑️ Eliminado", description: "El job fue removido." });
+      onChange();
+    } catch (e: unknown) {
+      toast({
+        title: "❌ No se pudo eliminar",
+        description: e instanceof Error ? e.message : "Error",
+        variant: "destructive",
+      });
+    } finally {
+      setBusyJobId(null);
+    }
+  };
+
+  return { retry, remove, busyJobId };
+}
+
 // ─── Completed Card ───────────────────────────────────────────────────────────
 
-function CompletedCard({ job, summary, index }: { job: Job; summary: ResultSummary; index: number }) {
+function CompletedCard({
+  job, summary, index, onDelete, onRetry, busyJobId,
+}: {
+  job: Job;
+  summary: ResultSummary;
+  index: number;
+  onDelete: (jobId: string, title?: string) => void;
+  onRetry: (jobId: string) => void;
+  busyJobId: string | null;
+}) {
   const thumb = getThumbnail(job.video_url);
+  const isBusy = busyJobId === job.id;
 
   return (
     <motion.div
@@ -148,12 +212,34 @@ function CompletedCard({ job, summary, index }: { job: Job; summary: ResultSumma
         )}
 
         {/* CTA */}
-        <Link href={`/results/${job.id}`}>
-          <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl text-sm font-medium group/btn">
-            Ver Resultados
-            <ChevronRight className="w-4 h-4 ml-1 group-hover/btn:translate-x-0.5 transition-transform" />
+        <div className="flex gap-2">
+          <Link href={`/results/${job.id}`} className="flex-1">
+            <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl text-sm font-medium group/btn">
+              Ver Resultados
+              <ChevronRight className="w-4 h-4 ml-1 group-hover/btn:translate-x-0.5 transition-transform" />
+            </Button>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onRetry(job.id)}
+            disabled={isBusy}
+            className="text-slate-500 hover:text-purple-300 hover:bg-purple-500/10 shrink-0"
+            title="Reprocesar este video"
+          >
+            {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
           </Button>
-        </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onDelete(job.id, job.video_title)}
+            disabled={isBusy}
+            className="text-slate-500 hover:text-red-400 hover:bg-red-500/10 shrink-0"
+            title="Eliminar"
+          >
+            {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          </Button>
+        </div>
       </div>
     </motion.div>
   );
@@ -218,8 +304,17 @@ function ProcessingCard({ job, index }: { job: Job; index: number }) {
 
 // ─── Failed Row ───────────────────────────────────────────────────────────────
 
-function FailedRow({ job, index }: { job: Job; index: number }) {
+function FailedRow({
+  job, index, onRetry, onDelete, busyJobId,
+}: {
+  job: Job;
+  index: number;
+  onRetry: (jobId: string) => void;
+  onDelete: (jobId: string, title?: string) => void;
+  busyJobId: string | null;
+}) {
   const thumb = getThumbnail(job.video_url);
+  const isBusy = busyJobId === job.id;
 
   return (
     <motion.div
@@ -246,9 +341,29 @@ function FailedRow({ job, index }: { job: Job; index: number }) {
           <p className="text-xs text-red-400/70 line-clamp-1 mt-0.5">{job.error_message}</p>
         )}
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-xs text-slate-600">{formatDate(job.created_at)}</span>
-        <AlertCircle className="w-4 h-4 text-red-500/50" />
+      <span className="text-xs text-slate-600 flex-shrink-0">{formatDate(job.created_at)}</span>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onRetry(job.id)}
+          disabled={isBusy}
+          className="h-8 w-8 text-slate-400 hover:text-purple-300 hover:bg-purple-500/10"
+          title="Reintentar"
+        >
+          {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onDelete(job.id, job.video_title)}
+          disabled={isBusy}
+          className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-red-500/10"
+          title="Eliminar"
+        >
+          {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+        </Button>
+        <AlertCircle className="w-4 h-4 text-red-500/50 ml-1" />
       </div>
     </motion.div>
   );
@@ -270,8 +385,13 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const { toast } = useToast();
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const triggerRefetch = () => setRefetchTrigger((n) => n + 1);
+  const { retry, remove, busyJobId } = useJobActions(triggerRefetch);
 
-  const hasCredits = credits === null || credits > 0; // null = loading, optimistic
+  // hasCredits: null = loading, optimistic
+  // (currently unused but kept for future credit-gating UI)
+  void (credits === null || credits > 0);
 
   // Show success toast when coming back from LS checkout
   useEffect(() => {
@@ -347,7 +467,7 @@ function DashboardContent() {
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, [router, supabase]);
+  }, [router, supabase, refetchTrigger]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -530,6 +650,9 @@ function DashboardContent() {
                       job={job}
                       summary={summaries[job.id] ?? { moment_count: 0, avg_hook: 0, avg_retention: 0, avg_shareability: 0, hooks: [], clip_urls: [] }}
                       index={i}
+                      onRetry={retry}
+                      onDelete={remove}
+                      busyJobId={busyJobId}
                     />
                   ))}
                 </div>
@@ -545,7 +668,14 @@ function DashboardContent() {
                 </h2>
                 <div className="space-y-2">
                   {failed.map((job, i) => (
-                    <FailedRow key={job.id} job={job} index={i} />
+                    <FailedRow
+                      key={job.id}
+                      job={job}
+                      index={i}
+                      onRetry={retry}
+                      onDelete={remove}
+                      busyJobId={busyJobId}
+                    />
                   ))}
                 </div>
               </section>

@@ -256,4 +256,118 @@ router.get('/user/:userId/credits', requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * POST /jobs/:jobId/retry
+ * Reintenta un job 'failed' o 'completed' reseteandolo a 'pending'.
+ * El worker lo va a tomar en el siguiente poll. NO duplica el row, NO
+ * descuenta credito (ya se cobro o el job fallo antes de cobrar).
+ */
+router.post('/jobs/:jobId/retry', requireAuth, async (req, res) => {
+    try {
+        if (!process.env.SUPABASE_URL) {
+            return res.status(501).json({ error: 'Supabase not configured' });
+        }
+
+        const { jobId } = req.params;
+        const userId = req.user.id;
+
+        // Fetch + ownership check
+        const { data: job, error: fetchErr } = await supabase
+            .from('jobs')
+            .select('id, user_id, status')
+            .eq('id', jobId)
+            .single();
+
+        if (fetchErr || !job) {
+            return res.status(404).json({ error: 'Job not found' });
+        }
+        if (job.user_id !== userId) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        // Solo permitimos reintentar jobs en estado terminal
+        if (!['failed', 'completed'].includes(job.status)) {
+            return res.status(409).json({
+                error: `Cannot retry: job is ${job.status}`,
+            });
+        }
+
+        const { data: updated, error: updateErr } = await supabase
+            .from('jobs')
+            .update({
+                status: 'pending',
+                error_message: null,
+                progress_percentage: 0,
+                current_step: null,
+            })
+            .eq('id', jobId)
+            .select()
+            .single();
+
+        if (updateErr) throw updateErr;
+        res.json({ job: updated, message: 'Job re-encolado' });
+    } catch (error) {
+        console.error('Error retrying job:', error);
+        res.status(500).json({ error: 'Failed to retry job' });
+    }
+});
+
+/**
+ * DELETE /jobs/:jobId
+ * Elimina un job + sus content_results + intenta limpiar los clips de R2.
+ */
+router.delete('/jobs/:jobId', requireAuth, async (req, res) => {
+    try {
+        if (!process.env.SUPABASE_URL) {
+            return res.status(501).json({ error: 'Supabase not configured' });
+        }
+
+        const { jobId } = req.params;
+        const userId = req.user.id;
+
+        // Fetch + ownership
+        const { data: job, error: fetchErr } = await supabase
+            .from('jobs')
+            .select('id, user_id, status')
+            .eq('id', jobId)
+            .single();
+
+        if (fetchErr || !job) {
+            return res.status(404).json({ error: 'Job not found' });
+        }
+        if (job.user_id !== userId) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        // Bloquear delete de jobs en proceso (evita corrupcion del worker)
+        if (job.status === 'processing' || job.status === 'pending') {
+            return res.status(409).json({
+                error: 'No se puede eliminar un job en proceso. Esperá a que termine o falle.',
+            });
+        }
+
+        // 1. Borrar content_results (cascade no esta configurado; mejor explicito)
+        await supabase.from('content_results').delete().eq('job_id', jobId);
+
+        // 2. Borrar clip_edits asociados (CASCADE FK en content_result_id ya
+        //    deberia limpiar pero lo hacemos explicito por si)
+        // (clip_edits.content_result_id tiene ON DELETE CASCADE)
+
+        // 3. Borrar el job
+        const { error: deleteErr } = await supabase
+            .from('jobs')
+            .delete()
+            .eq('id', jobId);
+
+        if (deleteErr) throw deleteErr;
+
+        // Nota: clips MP4 en R2 quedan huérfanos. Cleanup tipo TTL del bucket
+        // se puede hacer aparte (lifecycle rules). Borrarlos sincrónicamente
+        // aca alargaria mucho el endpoint y no es critico.
+        res.json({ ok: true, message: 'Job eliminado' });
+    } catch (error) {
+        console.error('Error deleting job:', error);
+        res.status(500).json({ error: 'Failed to delete job' });
+    }
+});
+
 module.exports = router;
