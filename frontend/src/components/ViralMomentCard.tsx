@@ -36,6 +36,7 @@ interface ScoreJustification {
 
 interface ViralMomentCardProps {
   momentIndex: number;
+  contentResultId: string;
   hook: string;
   clipUrl: string;
   startTime: number;
@@ -160,6 +161,7 @@ const fmt = (sec: number) => {
 // ═══════════════════════════════════════════════════════════════════════════
 export function ViralMomentCard({
   momentIndex,
+  contentResultId,
   hook,
   clipUrl,
   startTime,
@@ -508,6 +510,7 @@ export function ViralMomentCard({
         open={editOpen}
         onOpenChange={setEditOpen}
         momentIndex={momentIndex}
+        contentResultId={contentResultId}
         clipUrl={clipUrl}
         overlayText={overlayText}
       />

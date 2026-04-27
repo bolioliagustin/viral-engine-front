@@ -11,16 +11,35 @@ import {
   Info,
   Sparkles,
   Lock,
+  Check,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiFetch } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+
+type SubtitleStyle = "tiktok_viral" | "clean" | "podcast";
+type EditStatus = "draft" | "queued" | "processing" | "completed" | "failed";
+
+interface ClipEdit {
+  id: string;
+  status: EditStatus;
+  overlay_text?: string | null;
+  subtitle_style?: SubtitleStyle | null;
+  rendered_clip_url?: string | null;
+  error_message?: string | null;
+  updated_at?: string;
+}
 
 interface EditClipDrawerProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   momentIndex: number;
+  contentResultId: string;
   clipUrl?: string;
   overlayText?: string;
 }
@@ -36,19 +55,130 @@ export function EditClipDrawer({
   open,
   onOpenChange,
   momentIndex,
+  contentResultId,
   clipUrl,
   overlayText,
 }: EditClipDrawerProps) {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("text");
   const [titleDraft, setTitleDraft] = useState(overlayText ?? "");
-  const [selectedStyle, setSelectedStyle] = useState<
-    "tiktok_viral" | "clean" | "podcast"
-  >("tiktok_viral");
+  const [selectedStyle, setSelectedStyle] =
+    useState<SubtitleStyle>("tiktok_viral");
+
+  // Backend wiring state
+  const [latestEdit, setLatestEdit] = useState<ClipEdit | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  const isLocked =
+    latestEdit?.status === "queued" ||
+    latestEdit?.status === "processing";
 
   // Sync title when overlayText changes
   useEffect(() => {
     if (overlayText) setTitleDraft(overlayText);
   }, [overlayText]);
+
+  // ─── Load latest draft when opening ────────────────────────────────
+  useEffect(() => {
+    if (!open || !contentResultId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingEdit(true);
+        const res = await apiFetch(`/api/clips/${contentResultId}/edit`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const edit: ClipEdit | null = data.edit ?? null;
+        setLatestEdit(edit);
+        if (edit) {
+          if (edit.overlay_text) setTitleDraft(edit.overlay_text);
+          if (edit.subtitle_style) setSelectedStyle(edit.subtitle_style);
+        }
+      } catch (e) {
+        console.warn("Failed to load latest edit", e);
+      } finally {
+        if (!cancelled) setLoadingEdit(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, contentResultId]);
+
+  // ─── Save draft ────────────────────────────────────────────────────
+  const handleSaveDraft = async () => {
+    try {
+      setSaving(true);
+      const res = await apiFetch(`/api/clips/${contentResultId}/edit`, {
+        method: "POST",
+        body: JSON.stringify({
+          overlay_text: titleDraft.trim() || null,
+          subtitle_style: selectedStyle,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setLatestEdit(data.edit);
+      setSavedAt(Date.now());
+      toast({
+        title: "✅ Cambios guardados",
+        description: "Tu borrador quedó listo para regenerar.",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      toast({
+        title: "❌ No se pudo guardar",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─── Queue regenerate ──────────────────────────────────────────────
+  const handleRegenerate = async () => {
+    try {
+      setRegenerating(true);
+      // Save first (always persist current draft)
+      const saveRes = await apiFetch(`/api/clips/${contentResultId}/edit`, {
+        method: "POST",
+        body: JSON.stringify({
+          overlay_text: titleDraft.trim() || null,
+          subtitle_style: selectedStyle,
+        }),
+      });
+      const saveData = await saveRes.json();
+      if (!saveRes.ok) throw new Error(saveData.error || `HTTP ${saveRes.status}`);
+
+      // Then queue
+      const qRes = await apiFetch(
+        `/api/clips/${contentResultId}/regenerate`,
+        { method: "POST" }
+      );
+      const qData = await qRes.json();
+      if (!qRes.ok) throw new Error(qData.error || `HTTP ${qRes.status}`);
+      setLatestEdit(qData.edit);
+      toast({
+        title: "🚀 Re-render en cola",
+        description:
+          "El worker tomará tu clip pronto. Te avisaremos cuando esté listo.",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      toast({
+        title: "❌ No se pudo encolar",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   // ESC to close
   useEffect(() => {
@@ -117,15 +247,65 @@ export function EditClipDrawer({
               </button>
             </div>
 
-            {/* Beta banner */}
-            <div className="px-5 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-xs text-amber-200">
-                <strong className="font-semibold">Beta cerrada</strong> · el
-                editor se activa pronto. Guardá tus preferencias ahora y se
-                aplicarán al lanzamiento.
-              </span>
-            </div>
+            {/* Status banner — refleja estado real del clip_edit */}
+            {latestEdit?.status === "queued" && (
+              <div className="px-5 py-2.5 bg-blue-500/10 border-b border-blue-500/20 flex items-center gap-2">
+                <Loader2 className="w-4 h-4 text-blue-400 shrink-0 animate-spin" />
+                <span className="text-xs text-blue-200">
+                  <strong className="font-semibold">En cola</strong> · el worker
+                  tomará tu clip pronto. Volvé en unos minutos.
+                </span>
+              </div>
+            )}
+            {latestEdit?.status === "processing" && (
+              <div className="px-5 py-2.5 bg-purple-500/10 border-b border-purple-500/20 flex items-center gap-2">
+                <Loader2 className="w-4 h-4 text-purple-400 shrink-0 animate-spin" />
+                <span className="text-xs text-purple-200">
+                  <strong className="font-semibold">Procesando…</strong> el
+                  re-render está en curso.
+                </span>
+              </div>
+            )}
+            {latestEdit?.status === "completed" && (
+              <div className="px-5 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-xs text-emerald-200">
+                  <strong className="font-semibold">Re-render completado</strong>
+                  {latestEdit.rendered_clip_url && (
+                    <>
+                      {" "}·{" "}
+                      <a
+                        href={latestEdit.rendered_clip_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline hover:text-emerald-100"
+                      >
+                        ver clip nuevo
+                      </a>
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
+            {latestEdit?.status === "failed" && (
+              <div className="px-5 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <span className="text-xs text-red-200">
+                  <strong className="font-semibold">Falló</strong> ·{" "}
+                  {latestEdit.error_message || "intentá regenerar de nuevo."}
+                </span>
+              </div>
+            )}
+            {!latestEdit && (
+              <div className="px-5 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs text-amber-200">
+                  <strong className="font-semibold">Beta</strong> · el worker
+                  re-render aún no está activo. Guardá preferencias y encolá; se
+                  aplicarán cuando se lance.
+                </span>
+              </div>
+            )}
 
             {/* Tabs */}
             <Tabs
@@ -171,7 +351,8 @@ export function EditClipDrawer({
                     onChange={(e) => setTitleDraft(e.target.value.toUpperCase())}
                     placeholder="EJ: NO VAS A CREER"
                     maxLength={35}
-                    className="bg-slate-900 border-slate-800 text-white"
+                    disabled={isLocked}
+                    className="bg-slate-900 border-slate-800 text-white disabled:opacity-60"
                   />
                   <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
                     <Info className="w-3 h-3" />
@@ -235,7 +416,8 @@ export function EditClipDrawer({
                       <button
                         key={s.id}
                         onClick={() => setSelectedStyle(s.id)}
-                        className={`text-left p-4 rounded-lg border transition-all ${
+                        disabled={isLocked}
+                        className={`text-left p-4 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                           selectedStyle === s.id
                             ? `${s.color} ring-2 ring-purple-500/40`
                             : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
@@ -317,22 +499,59 @@ export function EditClipDrawer({
             </Tabs>
 
             {/* Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950 flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1 border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                disabled
-                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Endpoint de regenerado — próximamente"
-              >
-                <Sparkles className="w-4 h-4 mr-1.5" />
-                Regenerar clip
-              </Button>
+            <div className="p-4 border-t border-slate-800 bg-slate-950 flex flex-col gap-2">
+              {savedAt && (
+                <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  Borrador guardado · {new Date(savedAt).toLocaleTimeString()}
+                </p>
+              )}
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                  onClick={() => onOpenChange(false)}
+                  disabled={saving || regenerating}
+                >
+                  Cerrar
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                  onClick={handleSaveDraft}
+                  disabled={
+                    saving || regenerating || isLocked || loadingEdit ||
+                    !titleDraft.trim()
+                  }
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4 mr-1.5" />
+                  )}
+                  Guardar
+                </Button>
+                <Button
+                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleRegenerate}
+                  disabled={
+                    regenerating || saving || isLocked || loadingEdit ||
+                    !titleDraft.trim()
+                  }
+                  title={
+                    isLocked
+                      ? "Ya hay un re-render en curso"
+                      : "Encolar re-render"
+                  }
+                >
+                  {regenerating ? (
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 mr-1.5" />
+                  )}
+                  Regenerar
+                </Button>
+              </div>
             </div>
           </motion.aside>
         </>

@@ -253,6 +253,7 @@ export default function ResultsPage() {
                     >
                       <ViralMomentCard
                         momentIndex={Number(momentIndex)}
+                        contentResultId={firstResult.id}
                         hook={firstResult.hook}
                         clipUrl={firstResult.clip_url}
                         startTime={firstResult.start_time}
