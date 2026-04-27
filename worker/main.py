@@ -389,6 +389,27 @@ def process_job(job_data: dict) -> None:
                         raw_words = clip_tr.get("words") or []
                         raw_segments = clip_tr.get("segments") or []
 
+                        # ── Filtrar hallucinations conocidas de Whisper ────
+                        # Whisper aprendió del dataset de YouTube y suele
+                        # alucinar estos textos cuando hay silencio/música:
+                        WHISPER_HALLUCINATIONS = {
+                            "amara", "amara.org", "subtítulos por la comunidad",
+                            "subtitles by the amara.org community",
+                            "subtítulos realizados por la comunidad",
+                            "thanks for watching", "thank you for watching",
+                            "gracias por ver", "like and subscribe",
+                            "suscríbete al canal",
+                        }
+
+                        def _is_hallucination(w_obj):
+                            txt = (w_obj.get("word") or "").strip().lower()
+                            return any(h in txt for h in WHISPER_HALLUCINATIONS)
+
+                        # También dropeamos palabras con duración anómala
+                        # (>5s una sola palabra es Whisper rindiéndose y
+                        # marcando un período de silencio como una palabra).
+                        MAX_WORD_DURATION = 5.0
+
                         # Shift por el prepad: los timestamps de Whisper están
                         # relativos al audio extraído; restamos actual_pre_pad
                         # para que queden relativos al inicio del clip real.
@@ -398,7 +419,16 @@ def process_job(job_data: dict) -> None:
                         END_TOLERANCE = 0.5  # palabras al final del clip
                         clip_words = []
                         dropped_for_diag = []
+                        n_hallucinations = 0
+                        n_long_word = 0
                         for w in raw_words:
+                            if _is_hallucination(w):
+                                n_hallucinations += 1
+                                continue
+                            raw_dur = float(w.get("end", 0)) - float(w.get("start", 0))
+                            if raw_dur > MAX_WORD_DURATION:
+                                n_long_word += 1
+                                continue
                             raw_ws = float(w.get("start", 0))
                             raw_we = float(w.get("end", raw_ws + 0.1))
                             ws = raw_ws - actual_pre_pad
@@ -435,32 +465,36 @@ def process_job(job_data: dict) -> None:
                         n_kept = len(clip_words)
                         retention = (n_kept / n_raw * 100) if n_raw else 0
 
+                        words_per_sec = (n_kept / clip_duration) if clip_duration > 0 else 0
+
                         print(f"   ✅ Whisper: {n_kept}/{n_raw} words ({retention:.0f}%), "
                               f"{len(clip_segments_whisper)}/{len(raw_segments)} segments "
                               f"(pre_pad={actual_pre_pad:.2f}s, "
-                              f"clip_duration={clip_duration:.1f}s)")
+                              f"clip_duration={clip_duration:.1f}s, "
+                              f"density={words_per_sec:.2f} w/s)")
+                        if n_hallucinations or n_long_word:
+                            print(f"   🧹 Filtered: {n_hallucinations} hallucinations, "
+                                  f"{n_long_word} long words (>5s)")
 
-                        # Diagnóstico: si dropeamos > 30% de las palabras es
-                        # señal de bug (timestamps raros, audio mal cortado,
-                        # padding mal calculado). Logueamos para debugear.
+                        # Diagnóstico verbose si retention baja
                         if n_raw > 0 and retention < 70:
-                            print(f"   ⚠️ Word retention baja ({retention:.0f}%) — "
-                                  f"primeras 3 raw: "
+                            print(f"   ⚠️ Retention baja — primeras 3: "
                                   + str([(w.get("word"), w.get("start"), w.get("end"))
                                          for w in raw_words[:3]]))
-                            print(f"   ⚠️ Últimas 3 raw: "
+                            print(f"   ⚠️ Últimas 3: "
                                   + str([(w.get("word"), w.get("start"), w.get("end"))
                                          for w in raw_words[-3:]]))
-                            print(f"   ⚠️ Dropped sample: {dropped_for_diag[:5]}")
 
-                            # Si la retención es MUY baja (<30%), descartamos
-                            # Whisper y caemos al YT transcript que abarca todo
-                            # el clip. Es mejor tener subs aproximados que
-                            # subs en solo 9 palabras de 34.
-                            if retention < 30:
-                                print(f"   🔄 Retención <30% — descarto Whisper y uso YT transcript")
-                                clip_words = None
-                                clip_segments_whisper = None
+                        # Whisper falla / da output sparse: caemos al YT transcript.
+                        # Criterio: para clips >= 8s, esperamos al menos 0.7 palabras/s
+                        # (habla normal en español = ~2-3 w/s; viral content usualmente
+                        # >1.5 w/s). Bajo 0.7 = Whisper rindiéndose ante silencio/música.
+                        MIN_DENSITY = 0.7
+                        if (clip_duration >= 8 and words_per_sec < MIN_DENSITY) or n_kept < 3:
+                            print(f"   🔄 Whisper sparse (density {words_per_sec:.2f} w/s) — "
+                                  f"descarto y uso YT transcript que cubre todo el clip")
+                            clip_words = None
+                            clip_segments_whisper = None
                     except Exception as e_whisper:
                         print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
                               f"fallback a YT Transcript API")
