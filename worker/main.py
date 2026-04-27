@@ -124,6 +124,7 @@ def process_job(job_data: dict) -> None:
     audio_path = None
     video_path = None
     video_id = None
+    muxed_video_path = None  # se setea solo en path B (partial download fallback)
     timed_out = threading.Event()  # C5: timeout flag
     
     # C5: Start a timeout timer (Windows-compatible, using threading instead of signal)

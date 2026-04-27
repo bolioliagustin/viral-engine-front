@@ -53,7 +53,9 @@ class Verification(BaseModel):
     """Verification keys to ensure AI didn't hallucinate content (Sprint 2)"""
     first_phrase_in_audio: str  # First 5-8 words of the clip
     last_phrase_in_audio: str  # Last 5-8 words of the clip
-    narrative_goal: str  # Why this fragment is a complete idea
+    # narrative_goal es solo informativo — algunos modelos lo omiten al
+    # devolver el JSON. Lo dejamos opcional para no romper el job entero.
+    narrative_goal: Optional[str] = None
 
 
 class ViralMoment(BaseModel):
