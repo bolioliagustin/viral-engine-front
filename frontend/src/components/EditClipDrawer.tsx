@@ -109,6 +109,57 @@ export function EditClipDrawer({
     };
   }, [open, contentResultId]);
 
+  // ─── Poll status while queued/processing ──────────────────────────
+  // Mientras el drawer esté abierto y el edit esté en cola/render,
+  // refrescamos cada 4s para ver cuándo completa o falla.
+  useEffect(() => {
+    if (!open || !contentResultId) return;
+    if (!latestEdit) return;
+    if (latestEdit.status !== "queued" && latestEdit.status !== "processing")
+      return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await apiFetch(`/api/clips/${contentResultId}/edit`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const edit: ClipEdit | null = data.edit ?? null;
+        if (edit) {
+          setLatestEdit((prev) => {
+            // Toast cuando transiciona a estado terminal
+            if (prev && prev.status !== edit.status) {
+              if (edit.status === "completed") {
+                toast({
+                  title: "🎉 Clip listo",
+                  description: "Tu nuevo clip está disponible.",
+                });
+              } else if (edit.status === "failed") {
+                toast({
+                  title: "❌ Re-render falló",
+                  description: edit.error_message || "Intentá de nuevo.",
+                  variant: "destructive",
+                });
+              }
+            }
+            return edit;
+          });
+        }
+      } catch (e) {
+        // silencio - reintentaremos en el próximo tick
+      }
+    };
+
+    const id = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+    // Re-suscribe sólo cuando cambia status o id (no en cada setLatestEdit)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, contentResultId, latestEdit?.id, latestEdit?.status]);
+
   // ─── Save draft ────────────────────────────────────────────────────
   const handleSaveDraft = async () => {
     try {
