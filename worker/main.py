@@ -392,33 +392,75 @@ def process_job(job_data: dict) -> None:
                         # Shift por el prepad: los timestamps de Whisper están
                         # relativos al audio extraído; restamos actual_pre_pad
                         # para que queden relativos al inicio del clip real.
+                        # Damos un poco de tolerancia (0.5s) al final para que
+                        # palabras dichas justo en el corte no se pierdan.
                         clip_duration = src_end - src_start
+                        END_TOLERANCE = 0.5  # palabras al final del clip
                         clip_words = []
+                        dropped_for_diag = []
                         for w in raw_words:
-                            ws = float(w.get("start", 0)) - actual_pre_pad
-                            we = float(w.get("end", ws + 0.1)) - actual_pre_pad
-                            # Filtrar palabras fuera del rango del clip real
-                            if we <= 0 or ws >= clip_duration:
+                            raw_ws = float(w.get("start", 0))
+                            raw_we = float(w.get("end", raw_ws + 0.1))
+                            ws = raw_ws - actual_pre_pad
+                            we = raw_we - actual_pre_pad
+                            # Skip SOLO si la palabra está totalmente fuera
+                            # del clip (incluyendo tolerancia al final).
+                            if we <= 0:
+                                dropped_for_diag.append((w.get("word"), raw_ws, raw_we, "before"))
+                                continue
+                            if ws >= clip_duration + END_TOLERANCE:
+                                dropped_for_diag.append((w.get("word"), raw_ws, raw_we, "after"))
                                 continue
                             w2 = dict(w)
                             w2["start"] = max(0.0, ws)
                             w2["end"] = min(clip_duration, we)
+                            # Garantizar duración mínima de 30ms (algunas
+                            # palabras tras el clamp pueden quedar en 0).
+                            if w2["end"] - w2["start"] < 0.03:
+                                w2["end"] = min(clip_duration, w2["start"] + 0.05)
                             clip_words.append(w2)
 
                         clip_segments_whisper = []
                         for sg in raw_segments:
                             ss = float(sg.get("start", 0)) - actual_pre_pad
                             se = float(sg.get("end", ss + 0.1)) - actual_pre_pad
-                            if se <= 0 or ss >= clip_duration:
+                            if se <= 0 or ss >= clip_duration + END_TOLERANCE:
                                 continue
                             sg2 = dict(sg)
                             sg2["start"] = max(0.0, ss)
                             sg2["end"] = min(clip_duration, se)
                             clip_segments_whisper.append(sg2)
 
-                        print(f"   ✅ Whisper: {len(clip_words)} words, "
-                              f"{len(clip_segments_whisper)} segments "
-                              f"(pre_pad={actual_pre_pad:.2f}s)")
+                        n_raw = len(raw_words)
+                        n_kept = len(clip_words)
+                        retention = (n_kept / n_raw * 100) if n_raw else 0
+
+                        print(f"   ✅ Whisper: {n_kept}/{n_raw} words ({retention:.0f}%), "
+                              f"{len(clip_segments_whisper)}/{len(raw_segments)} segments "
+                              f"(pre_pad={actual_pre_pad:.2f}s, "
+                              f"clip_duration={clip_duration:.1f}s)")
+
+                        # Diagnóstico: si dropeamos > 30% de las palabras es
+                        # señal de bug (timestamps raros, audio mal cortado,
+                        # padding mal calculado). Logueamos para debugear.
+                        if n_raw > 0 and retention < 70:
+                            print(f"   ⚠️ Word retention baja ({retention:.0f}%) — "
+                                  f"primeras 3 raw: "
+                                  + str([(w.get("word"), w.get("start"), w.get("end"))
+                                         for w in raw_words[:3]]))
+                            print(f"   ⚠️ Últimas 3 raw: "
+                                  + str([(w.get("word"), w.get("start"), w.get("end"))
+                                         for w in raw_words[-3:]]))
+                            print(f"   ⚠️ Dropped sample: {dropped_for_diag[:5]}")
+
+                            # Si la retención es MUY baja (<30%), descartamos
+                            # Whisper y caemos al YT transcript que abarca todo
+                            # el clip. Es mejor tener subs aproximados que
+                            # subs en solo 9 palabras de 34.
+                            if retention < 30:
+                                print(f"   🔄 Retención <30% — descarto Whisper y uso YT transcript")
+                                clip_words = None
+                                clip_segments_whisper = None
                     except Exception as e_whisper:
                         print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
                               f"fallback a YT Transcript API")
