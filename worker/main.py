@@ -477,23 +477,16 @@ def process_job(job_data: dict) -> None:
                             print(f"   🧹 Filtered: {n_hallucinations} hallucinations, "
                                   f"{n_long_word} long words (>5s)")
 
-                        # Diagnóstico verbose si retention baja
-                        if n_raw > 0 and retention < 70:
-                            print(f"   ⚠️ Retention baja — primeras 3: "
-                                  + str([(w.get("word"), w.get("start"), w.get("end"))
-                                         for w in raw_words[:3]]))
-                            print(f"   ⚠️ Últimas 3: "
-                                  + str([(w.get("word"), w.get("start"), w.get("end"))
-                                         for w in raw_words[-3:]]))
-
-                        # Whisper falla / da output sparse: caemos al YT transcript.
-                        # Criterio: para clips >= 8s, esperamos al menos 0.7 palabras/s
-                        # (habla normal en español = ~2-3 w/s; viral content usualmente
-                        # >1.5 w/s). Bajo 0.7 = Whisper rindiéndose ante silencio/música.
-                        MIN_DENSITY = 0.7
-                        if (clip_duration >= 8 and words_per_sec < MIN_DENSITY) or n_kept < 3:
-                            print(f"   🔄 Whisper sparse (density {words_per_sec:.2f} w/s) — "
-                                  f"descarto y uso YT transcript que cubre todo el clip")
+                        # ⚠️ Filosofía: confiar en Whisper. Si dice "8 palabras
+                        # en 30s", el audio realmente tiene 8 palabras (el resto
+                        # es música/silencio/transición). Mostrar esas 8 con
+                        # su timing exacto > fabricar subs falsos del YT transcript.
+                        #
+                        # Solo si Whisper devuelve CERO palabras útiles (n_kept=0)
+                        # caemos al YT transcript como último recurso.
+                        if n_kept == 0:
+                            print(f"   🔄 Whisper devolvió 0 words útiles — "
+                                  f"fallback a YT transcript")
                             clip_words = None
                             clip_segments_whisper = None
                     except Exception as e_whisper:
