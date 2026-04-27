@@ -187,6 +187,128 @@ def upload_clip_to_storage(file_path: str, job_id: str, moment_index: int) -> Op
         return None
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# clip_edits — Phase 3: post-clip re-render queue
+# ═══════════════════════════════════════════════════════════════════════════
+def claim_next_clip_edit() -> Optional[dict]:
+    """
+    Atomically claim the oldest queued clip_edit and mark it 'processing'.
+    Returns the row, or None if there's nothing queued.
+    """
+    supabase = get_supabase()
+    if not supabase:
+        return None
+
+    try:
+        # Fetch oldest queued
+        res = (
+            supabase.table("clip_edits")
+            .select("*")
+            .eq("status", "queued")
+            .order("created_at")
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return None
+
+        edit = res.data[0]
+
+        # Atomically claim (only succeeds if still 'queued')
+        upd = (
+            supabase.table("clip_edits")
+            .update({"status": "processing", "error_message": None})
+            .eq("id", edit["id"])
+            .eq("status", "queued")
+            .execute()
+        )
+        if not upd.data:
+            # Lost the race, another worker claimed it
+            return None
+
+        return upd.data[0]
+    except Exception as e:
+        print(f"⚠️ claim_next_clip_edit failed: {e}")
+        return None
+
+
+def mark_clip_edit_completed(edit_id: str, rendered_clip_url: str) -> None:
+    supabase = get_supabase()
+    if not supabase:
+        return
+    try:
+        supabase.table("clip_edits").update({
+            "status": "completed",
+            "rendered_clip_url": rendered_clip_url,
+            "error_message": None,
+        }).eq("id", edit_id).execute()
+    except Exception as e:
+        print(f"⚠️ mark_clip_edit_completed failed: {e}")
+
+
+def mark_clip_edit_failed(edit_id: str, error_message: str) -> None:
+    supabase = get_supabase()
+    if not supabase:
+        return
+    try:
+        supabase.table("clip_edits").update({
+            "status": "failed",
+            "error_message": (error_message or "")[:500],
+        }).eq("id", edit_id).execute()
+    except Exception as e:
+        print(f"⚠️ mark_clip_edit_failed failed: {e}")
+
+
+def get_content_result(content_result_id: str) -> Optional[dict]:
+    supabase = get_supabase()
+    if not supabase:
+        return None
+    try:
+        res = (
+            supabase.table("content_results")
+            .select("*")
+            .eq("id", content_result_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        print(f"⚠️ get_content_result failed: {e}")
+        return None
+
+
+def get_job(job_id: str) -> Optional[dict]:
+    supabase = get_supabase()
+    if not supabase:
+        return None
+    try:
+        res = (
+            supabase.table("jobs")
+            .select("*")
+            .eq("id", job_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        print(f"⚠️ get_job failed: {e}")
+        return None
+
+
+def upload_edited_clip_to_storage(file_path: str, edit_id: str) -> Optional[str]:
+    """Upload re-rendered clip to R2 under a stable path keyed by edit_id."""
+    try:
+        from services.storage_client import upload_file
+        object_name = f"clip_edits/{edit_id}.mp4"
+        url = upload_file(file_path, object_name)
+        if url:
+            print(f"✅ Edited clip uploaded: {url[:70]}...")
+        return url
+    except Exception as e:
+        print(f"❌ Failed to upload edited clip: {e}")
+        return None
+
+
 def deduct_credit(user_id: str, job_id: str, video_url: str) -> bool:
     """
     Deduct 1 credit from user using atomic SQL function.

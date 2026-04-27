@@ -41,8 +41,10 @@ from services.supabase_client import (
     update_job_error,
     save_content_result,
     upload_clip_to_storage,
-    get_supabase
+    get_supabase,
+    claim_next_clip_edit,
 )
+from services.clip_edit_processor import process_clip_edit
 
 DOWNLOADS_DIR = Path(__file__).parent / "downloads"
 CLIPS_DIR = Path(__file__).parent / "clips"
@@ -692,15 +694,16 @@ def watch_queue():
     recover_stale_jobs()
     
     active_jobs = set()  # Track job IDs currently being processed
-    
+    active_edits = set()  # Track clip_edit IDs currently being processed
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {}
-        
+        futures = {}  # future -> ("job", id) or ("edit", id)
+
         while True:
             try:
                 # S2: Determine how many slots are available
                 available_slots = max_workers - len(futures)
-                
+
                 if available_slots > 0:
                     # S1: Poll Supabase for pending jobs
                     result = supabase.table("jobs") \
@@ -709,39 +712,52 @@ def watch_queue():
                         .order("created_at") \
                         .limit(available_slots) \
                         .execute()
-                    
+
                     if result.data:
                         for job in result.data:
                             if job["id"] in active_jobs:
                                 continue
-                            
+
                             # Atomically claim the job
                             supabase.table("jobs") \
                                 .update({"status": "processing"}) \
                                 .eq("id", job["id"]) \
                                 .eq("status", "pending") \
                                 .execute()
-                            
+
                             job_data = {
                                 "id": job["id"],
                                 "videoUrl": job["video_url"],
                                 "userId": job.get("user_id"),
                             }
-                            
+
                             active_jobs.add(job["id"])
                             future = executor.submit(process_job, job_data)
-                            futures[future] = job["id"]
-                
+                            futures[future] = ("job", job["id"])
+
+                # ── Phase 3: Poll clip_edits queue (post-clip re-render) ─────
+                # Procesamos como máximo 1 edit por iteración para no monopolizar
+                # los slots cuando hay jobs principales pendientes.
+                if (max_workers - len(futures)) > 0:
+                    edit = claim_next_clip_edit()
+                    if edit and edit["id"] not in active_edits:
+                        active_edits.add(edit["id"])
+                        future = executor.submit(process_clip_edit, edit)
+                        futures[future] = ("edit", edit["id"])
+
                 # Check for completed futures
                 done_futures = [f for f in futures if f.done()]
                 for future in done_futures:
-                    job_id = futures.pop(future)
-                    active_jobs.discard(job_id)
+                    kind, fid = futures.pop(future)
+                    if kind == "job":
+                        active_jobs.discard(fid)
+                    else:
+                        active_edits.discard(fid)
                     try:
                         future.result()  # Raise any exceptions
                     except Exception as e:
-                        print(f"❌ Job {job_id} failed: {e}")
-                
+                        print(f"❌ {kind} {fid} failed: {e}")
+
                 time.sleep(POLL_INTERVAL)
                 
             except KeyboardInterrupt:
