@@ -15,7 +15,11 @@ para que la UI lo muestre.
 import gc
 from pathlib import Path
 
-from services.downloader import download_clip_ytdlp
+from services.downloader import (
+    download_clip_ytdlp,
+    get_stream_urls,
+    download_video_for_clips,
+)
 from services.clip_generator import generate_clip, ClipGenerationError
 from services.supabase_client import (
     get_content_result,
@@ -27,6 +31,94 @@ from services.supabase_client import (
 
 DOWNLOADS_DIR = Path(__file__).parent.parent / "downloads"
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
+
+
+def _download_segment_with_fallback(
+    video_url: str,
+    start_s: float,
+    end_s: float,
+    edit_id: str,
+) -> str:
+    """
+    Descarga el segmento [start_s, end_s] del video con fallback chain:
+      1. yt-dlp download_ranges (~50MB, rápido)
+      2. Si falla: get_stream_urls + descarga parcial desde byte 0 + corte
+         con ffmpeg al rango pedido.
+
+    Retorna path a un MP4 local que contiene EXACTAMENTE el rango del clip
+    (start=0, duration=end_s-start_s) para simplificar el resto del pipeline.
+    """
+    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # ── Intento 1: yt-dlp download_ranges ─────────────────────────────
+    try:
+        seg_out = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg")
+        path = download_clip_ytdlp(
+            youtube_url=video_url,
+            start_sec=start_s,
+            end_sec=end_s,
+            output_path=seg_out,
+        )
+        print(f"   ✅ yt-dlp segment OK")
+        return path
+    except Exception as e_ytdlp:
+        print(f"   ⚠️ yt-dlp falló ({e_ytdlp}) — fallback a partial download")
+
+    # ── Intento 2: stream URLs + partial download + ffmpeg cut ────────
+    import subprocess as _sp
+    import shutil as _sh
+    ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
+
+    try:
+        stream_urls = get_stream_urls(video_url)
+    except Exception as e_streams:
+        raise RuntimeError(
+            f"Sin streams disponibles (yt-dlp y RapidAPI fallaron): {e_streams}"
+        ) from e_streams
+
+    video_id = stream_urls.get("video_id") or edit_id
+    pvid, paud = download_video_for_clips(
+        video_url=stream_urls["video_url"],
+        audio_url=stream_urls["audio_url"],
+        max_end_sec=end_s,
+        video_duration=end_s + 30,  # buffer
+        video_id=video_id,
+    )
+
+    muxed = str(DOWNLOADS_DIR / f"edit_{edit_id}_muxed.mp4")
+    mux_r = _sp.run(
+        [ffmpeg, "-y", "-loglevel", "warning",
+         "-i", pvid, "-i", paud, "-c", "copy",
+         "-movflags", "+faststart", muxed],
+        capture_output=True, text=True, timeout=300,
+    )
+    for pp in (pvid, paud):
+        try:
+            Path(pp).unlink(missing_ok=True)
+        except Exception:
+            pass
+    if mux_r.returncode != 0:
+        raise RuntimeError(f"mux falló: {mux_r.stderr[-300:]}")
+
+    # Cut al rango exacto del clip (start=0, end=end_s-start_s)
+    seg = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg.mp4")
+    cut_r = _sp.run(
+        [ffmpeg, "-y", "-loglevel", "warning",
+         "-ss", str(start_s), "-to", str(end_s),
+         "-i", muxed, "-c", "copy",
+         "-avoid_negative_ts", "make_zero",
+         "-movflags", "+faststart", seg],
+        capture_output=True, text=True, timeout=180,
+    )
+    try:
+        Path(muxed).unlink(missing_ok=True)
+    except Exception:
+        pass
+    if cut_r.returncode != 0:
+        raise RuntimeError(f"cut falló: {cut_r.stderr[-300:]}")
+
+    print(f"   ✅ Partial download segment OK ({Path(seg).stat().st_size // (1<<20)}MB)")
+    return seg
 
 
 def _whisper_per_clip(src_path: str, clip_duration: float, edit_id: str):
@@ -135,16 +227,14 @@ def process_clip_edit(edit: dict) -> None:
         if not video_url:
             raise RuntimeError("job sin video_url")
 
-        # 3) Re-download segment (~50MB)
-        DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        # 3) Re-download segment (~50MB) con fallback chain
         CLIPS_DIR.mkdir(parents=True, exist_ok=True)
-        seg_out = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg")
-        print(f"   ⬇️  yt-dlp segment: {int(start_s)}-{int(end_s)}s")
-        seg_path = download_clip_ytdlp(
-            youtube_url=video_url,
-            start_sec=start_s,
-            end_sec=end_s,
-            output_path=seg_out,
+        print(f"   ⬇️  Segment download: {int(start_s)}-{int(end_s)}s")
+        seg_path = _download_segment_with_fallback(
+            video_url=video_url,
+            start_s=start_s,
+            end_s=end_s,
+            edit_id=edit_id,
         )
 
         # 4) Whisper per-clip (best-effort, sync palabra a palabra)
