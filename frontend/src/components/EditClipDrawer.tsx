@@ -42,6 +42,11 @@ interface EditClipDrawerProps {
   contentResultId: string;
   clipUrl?: string;
   overlayText?: string;
+  /**
+   * Notifica al padre cuando un re-render completa con una URL nueva,
+   * para que pueda reemplazar el clip mostrado en la card.
+   */
+  onRendered?: (url: string) => void;
 }
 
 /**
@@ -58,6 +63,7 @@ export function EditClipDrawer({
   contentResultId,
   clipUrl,
   overlayText,
+  onRendered,
 }: EditClipDrawerProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("text");
@@ -97,6 +103,11 @@ export function EditClipDrawer({
         if (edit) {
           if (edit.overlay_text) setTitleDraft(edit.overlay_text);
           if (edit.subtitle_style) setSelectedStyle(edit.subtitle_style);
+          // Si ya hay un re-render completado, notificar al padre para
+          // que reemplace el clip mostrado en la card.
+          if (edit.status === "completed" && edit.rendered_clip_url) {
+            onRendered?.(edit.rendered_clip_url);
+          }
         }
       } catch (e) {
         console.warn("Failed to load latest edit", e);
@@ -133,8 +144,11 @@ export function EditClipDrawer({
               if (edit.status === "completed") {
                 toast({
                   title: "🎉 Clip listo",
-                  description: "Tu nuevo clip está disponible.",
+                  description: "Tu nuevo clip ya reemplaza al original.",
                 });
+                if (edit.rendered_clip_url) {
+                  onRendered?.(edit.rendered_clip_url);
+                }
               } else if (edit.status === "failed") {
                 toast({
                   title: "❌ Re-render falló",
@@ -321,7 +335,8 @@ export function EditClipDrawer({
               <div className="px-5 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span className="text-xs text-emerald-200">
-                  <strong className="font-semibold">Re-render completado</strong>
+                  <strong className="font-semibold">Listo</strong> · el clip
+                  editado ya reemplazó al original en la card
                   {latestEdit.rendered_clip_url && (
                     <>
                       {" "}·{" "}
@@ -331,7 +346,7 @@ export function EditClipDrawer({
                         rel="noreferrer"
                         className="underline hover:text-emerald-100"
                       >
-                        ver clip nuevo
+                        abrir en pestaña
                       </a>
                     </>
                   )}

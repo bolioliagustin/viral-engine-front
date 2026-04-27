@@ -23,9 +23,10 @@ import {
   Target,
   Flame,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
 
 interface ScoreJustification {
   metric: string;
@@ -181,7 +182,35 @@ export function ViralMomentCard({
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  // Si hay un re-render completado, este reemplaza al clipUrl original.
+  const [renderedOverride, setRenderedOverride] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Al montar, ver si ya existe un re-render completado para este clip
+  // (persistente entre recargas de página).
+  useEffect(() => {
+    if (!contentResultId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/clips/${contentResultId}/edit`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const edit = data.edit;
+        if (edit?.status === "completed" && edit.rendered_clip_url) {
+          setRenderedOverride(edit.rendered_clip_url);
+        }
+      } catch {
+        // silencio - no es crítico
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contentResultId]);
+
+  const effectiveClipUrl = renderedOverride || clipUrl;
 
   const globalScore = (
     (scores.hook + scores.retention + scores.shareability) /
@@ -191,8 +220,9 @@ export function ViralMomentCard({
   const pillar = pillarType ? PILLAR_CONFIG[pillarType.toLowerCase()] : null;
 
   const isYouTubeUrl = Boolean(
-    clipUrl &&
-      (clipUrl.includes("youtube.com") || clipUrl.includes("youtu.be"))
+    effectiveClipUrl &&
+      (effectiveClipUrl.includes("youtube.com") ||
+        effectiveClipUrl.includes("youtu.be"))
   );
 
   const getYouTubeEmbedUrl = (url: string): string | null => {
@@ -207,7 +237,7 @@ export function ViralMomentCard({
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      const response = await fetch(clipUrl);
+      const response = await fetch(effectiveClipUrl!);
       if (!response.ok) throw new Error("Network response was not ok");
 
       const blob = await response.blob();
@@ -327,15 +357,16 @@ export function ViralMomentCard({
               <div className="relative rounded-xl overflow-hidden bg-black shadow-lg border border-slate-800 aspect-[9/16]">
                 {isYouTubeUrl ? (
                   <iframe
-                    src={getYouTubeEmbedUrl(clipUrl) ?? undefined}
+                    src={getYouTubeEmbedUrl(effectiveClipUrl!) ?? undefined}
                     className="w-full h-full"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                     title={`Clip momento ${momentIndex}`}
                   />
-                ) : clipUrl ? (
+                ) : effectiveClipUrl ? (
                   <video
-                    src={clipUrl}
+                    key={effectiveClipUrl}
+                    src={effectiveClipUrl}
                     controls
                     playsInline
                     className="w-full h-full object-contain"
@@ -359,6 +390,16 @@ export function ViralMomentCard({
                     </div>
                   </div>
                 )}
+
+                {/* Re-render badge: clip ya fue editado */}
+                {renderedOverride && (
+                  <div className="absolute bottom-2 right-2 pointer-events-none">
+                    <Badge className="bg-emerald-500/90 text-white border-0 text-[10px] uppercase tracking-wider shadow-lg">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Editado
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {/* Action buttons */}
@@ -367,7 +408,7 @@ export function ViralMomentCard({
                   <Button
                     variant="outline"
                     className="w-full border-slate-700 bg-slate-800 text-slate-200 hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all"
-                    onClick={() => window.open(clipUrl, "_blank")}
+                    onClick={() => window.open(effectiveClipUrl, "_blank")}
                   >
                     <ExternalLink className="mr-2 h-4 w-4" />
                     Ver en YouTube
@@ -377,7 +418,7 @@ export function ViralMomentCard({
                     variant="outline"
                     className="w-full border-slate-700 bg-slate-800 text-slate-200 hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all"
                     onClick={handleDownload}
-                    disabled={isDownloading || !clipUrl}
+                    disabled={isDownloading || !effectiveClipUrl}
                   >
                     {isDownloading ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -513,6 +554,13 @@ export function ViralMomentCard({
         contentResultId={contentResultId}
         clipUrl={clipUrl}
         overlayText={overlayText}
+        onRendered={(url) => {
+          setRenderedOverride(url);
+          toast({
+            title: "✨ Clip actualizado",
+            description: "Reemplazamos el original con tu versión editada.",
+          });
+        }}
       />
     </>
   );
