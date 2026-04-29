@@ -165,25 +165,27 @@ export default function ResultsPage() {
         >
           {/* Sticky Header with Glassmorphism */}
           <div className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 shadow-sm">
-            <div className="max-w-5xl mx-auto px-6 py-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+
                 {/* Left: Navigation & Title */}
-                <div className="flex items-center gap-4">
-                  <Button 
-                    variant="ghost" 
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                  <Button
+                    variant="ghost"
                     size="icon"
                     className="shrink-0 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full"
                     onClick={() => window.location.href = "/dashboard"}
                   >
                     <ArrowLeft className="w-5 h-5" />
                   </Button>
-                  <div>
-                    <h1 className="text-lg font-semibold text-white leading-tight line-clamp-1 max-w-md">
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-base sm:text-lg font-semibold text-white leading-tight line-clamp-1">
                       {job.videoTitle}
                     </h1>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-slate-500 font-mono">ID: {job.id.substring(0, 8)}...</span>
+                      <span className="text-[10px] sm:text-xs text-slate-500 font-mono">
+                        ID: {job.id.substring(0, 8)}...
+                      </span>
                       <Badge variant="outline" className="text-[10px] uppercase tracking-wider bg-green-500/10 text-green-400 border-green-500/20 px-2 py-0">
                         Completado
                       </Badge>
@@ -192,20 +194,20 @@ export default function ResultsPage() {
                 </div>
 
                 {/* Right: Key Stats */}
-                <div className="flex items-center gap-3">
-                   <div className="flex items-center gap-3 bg-slate-900/50 rounded-lg p-1.5 border border-slate-800/50">
-                      <div className="px-3 py-1 border-r border-slate-800 text-center">
-                         <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Momentos</div>
-                         <div className="text-lg font-bold text-white">{momentCount}</div>
+                <div className="flex items-center gap-2 sm:gap-3">
+                   <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/50 rounded-lg p-1.5 border border-slate-800/50 flex-1 md:flex-none">
+                      <div className="px-2 sm:px-3 py-1 border-r border-slate-800 text-center flex-1 md:flex-none">
+                         <div className="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-widest font-bold">Momentos</div>
+                         <div className="text-base sm:text-lg font-bold text-white">{momentCount}</div>
                       </div>
-                      <div className="px-3 py-1 text-center flex flex-col items-center">
-                         <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Score Promedio</div>
-                         <div className="text-lg font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                      <div className="px-2 sm:px-3 py-1 text-center flex flex-col items-center flex-1 md:flex-none">
+                         <div className="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-widest font-bold">Score</div>
+                         <div className="text-base sm:text-lg font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                             {avgScore}
                          </div>
                       </div>
                    </div>
-                   <Button 
+                   <Button
                      size="sm"
                      className="hidden md:flex bg-white text-slate-950 hover:bg-slate-200 font-semibold shadow-lg shadow-purple-500/10 transition-all"
                      onClick={() => window.location.href = "/dashboard"}
@@ -219,7 +221,7 @@ export default function ResultsPage() {
           </div>
 
           {/* Content Container */}
-          <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
             
             {/* Analytics Summary Dashboard */}
             <AnalyticsSummary results={job.results} />

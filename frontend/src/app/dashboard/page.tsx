@@ -622,22 +622,23 @@ function DashboardContent() {
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
-            <p className="text-slate-400 text-sm">
-              {jobs.length} total · {completed.length} completados · {active.length} en proceso · {failed.length} con error
+        {/* Header — stack en mobile, lado a lado en sm+ */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1">Dashboard</h1>
+            <p className="text-slate-400 text-xs sm:text-sm">
+              <span className="hidden sm:inline">{jobs.length} total · </span>
+              {completed.length} completados · {active.length} en proceso · {failed.length} con error
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="ghost"
               size="icon"
               onClick={requestNotifications}
-              className={`rounded-full ${
+              className={`rounded-full shrink-0 ${
                 notifsEnabled
                   ? "text-emerald-400 hover:bg-emerald-500/10"
                   : "text-slate-400 hover:bg-slate-800"
@@ -652,10 +653,12 @@ function DashboardContent() {
             </Button>
             <Button
               onClick={() => { setShowForm(!showForm); setError(""); }}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl gap-2"
+              className="flex-1 sm:flex-none bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl gap-2"
             >
               <Sparkles className="w-4 h-4" />
-              {showForm ? "Cancelar" : "Procesar Video"}
+              <span className="whitespace-nowrap">
+                {showForm ? "Cancelar" : "Procesar Video"}
+              </span>
               {credits !== null && !showForm && (
                 <span className="ml-1 text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
                   {credits}
@@ -665,38 +668,38 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* Stats row — solo si hay jobs */}
+        {/* Stats row — más compacto en mobile (px-3 py-2.5) */}
         {jobs.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
-                <BarChart3 className="w-3 h-3" />
-                Clips generados
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-6">
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3">
+              <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5 sm:mb-1">
+                <BarChart3 className="w-3 h-3 shrink-0" />
+                <span className="truncate">Clips generados</span>
               </div>
-              <div className="text-xl font-bold text-white">{totalClips}</div>
+              <div className="text-lg sm:text-xl font-bold text-white">{totalClips}</div>
             </div>
-            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
-                <Sparkles className="w-3 h-3" />
-                Score promedio
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3">
+              <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5 sm:mb-1">
+                <Sparkles className="w-3 h-3 shrink-0" />
+                <span className="truncate">Score promedio</span>
               </div>
-              <div className="text-xl font-bold bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">
+              <div className="text-lg sm:text-xl font-bold bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">
                 {overallScore > 0 ? overallScore.toFixed(1) : "—"}
               </div>
             </div>
-            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
-                <Clock className="w-3 h-3" />
-                Este mes
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3">
+              <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5 sm:mb-1">
+                <Clock className="w-3 h-3 shrink-0" />
+                <span className="truncate">Este mes</span>
               </div>
-              <div className="text-xl font-bold text-white">{jobsThisMonth}</div>
+              <div className="text-lg sm:text-xl font-bold text-white">{jobsThisMonth}</div>
             </div>
-            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
-                <Zap className="w-3 h-3" />
-                Total jobs
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3">
+              <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5 sm:mb-1">
+                <Zap className="w-3 h-3 shrink-0" />
+                <span className="truncate">Total jobs</span>
               </div>
-              <div className="text-xl font-bold text-white">{jobs.length}</div>
+              <div className="text-lg sm:text-xl font-bold text-white">{jobs.length}</div>
             </div>
           </div>
         )}

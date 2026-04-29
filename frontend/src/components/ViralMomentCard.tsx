@@ -272,7 +272,7 @@ export function ViralMomentCard({
     <>
       <Card className="bg-slate-900 border-slate-700 overflow-hidden shadow-xl transition-all hover:border-purple-500/30">
         {/* ════════════════════ PREMIUM HEADER ════════════════════ */}
-        <CardHeader className="bg-gradient-to-b from-slate-950 to-slate-900 border-b border-slate-800 p-5">
+        <CardHeader className="bg-gradient-to-b from-slate-950 to-slate-900 border-b border-slate-800 p-4 sm:p-5">
           <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
             <div className="flex-1 min-w-0 space-y-3">
               {/* Index + metadata row */}
@@ -329,18 +329,18 @@ export function ViralMomentCard({
               </div>
             </div>
 
-            {/* Score block — viral score global + 3 sub-rings */}
-            <div className="flex items-stretch gap-3">
-              <div className="flex flex-col items-center justify-center px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
+            {/* Score block — wrap en mobile para no overflow */}
+            <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
+              <div className="flex flex-col items-center justify-center px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
                 <div className="text-[9px] uppercase tracking-widest text-purple-300 font-bold">
                   Viral Score
                 </div>
-                <div className="text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none mt-0.5">
+                <div className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none mt-0.5">
                   {globalScore}
                 </div>
                 <div className="text-[9px] text-slate-500 mt-0.5">/ 10</div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800">
                 <ScoreRing score={scores.hook} label="Gancho" />
                 <ScoreRing score={scores.retention} label="Reten." />
                 <ScoreRing score={scores.shareability} label="Viral." />
@@ -353,7 +353,7 @@ export function ViralMomentCard({
         <CardContent className="p-0">
           <div className="grid lg:grid-cols-[300px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
             {/* LEFT: sticky video + actions */}
-            <div className="p-5 bg-slate-925 flex flex-col gap-3">
+            <div className="p-4 sm:p-5 bg-slate-925 flex flex-col gap-3">
               <div className="relative rounded-xl overflow-hidden bg-black shadow-lg border border-slate-800 aspect-[9/16]">
                 {isYouTubeUrl ? (
                   <iframe
@@ -543,7 +543,7 @@ export function ViralMomentCard({
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-5 pt-2 grid md:grid-cols-3 gap-4 bg-slate-900/20"
+                    className="p-4 sm:p-5 pt-2 grid md:grid-cols-3 gap-3 sm:gap-4 bg-slate-900/20"
                   >
                     {justifications.map((just, idx) => (
                       <div
