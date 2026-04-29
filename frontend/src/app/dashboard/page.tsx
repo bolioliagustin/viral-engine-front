@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { submitVideo, redirectToCheckout } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, AlertCircle, Clock, ChevronRight, Youtube, Zap, CreditCard, RotateCcw, Trash2, Loader2 } from "lucide-react";
+import { Sparkles, AlertCircle, Clock, ChevronRight, Youtube, Zap, CreditCard, RotateCcw, Trash2, Loader2, Search, BarChart3, Bell, BellOff } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -389,6 +389,11 @@ function DashboardContent() {
   const triggerRefetch = () => setRefetchTrigger((n) => n + 1);
   const { retry, remove, busyJobId } = useJobActions(triggerRefetch);
 
+  // ─── Search + Notifications state ──────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [notifsEnabled, setNotifsEnabled] = useState<boolean>(false);
+  const previousStatusesRef = useRef<Record<string, string>>({});
+
   // hasCredits: null = loading, optimistic
   // (currently unused but kept for future credit-gating UI)
   void (credits === null || credits > 0);
@@ -402,6 +407,84 @@ function DashboardContent() {
       });
     }
   }, [searchParams, toast]);
+
+  // ─── Browser notification permission state ─────────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    setNotifsEnabled(Notification.permission === "granted");
+  }, []);
+
+  const requestNotifications = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      toast({
+        title: "Tu browser no soporta notificaciones",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (Notification.permission === "granted") {
+      setNotifsEnabled(false); // toggle off (UI-only, no real way to revoke from JS)
+      toast({
+        title: "🔕 Notificaciones desactivadas",
+        description: "Para revocarlas del todo, hacelo desde tu browser.",
+      });
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm === "granted") {
+      setNotifsEnabled(true);
+      new Notification("✅ Notificaciones activadas", {
+        body: "Te avisaremos cuando un job termine.",
+      });
+    } else {
+      toast({
+        title: "Permiso no otorgado",
+        description: "Podés cambiarlo en la config del browser.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ─── Detect job status transitions and notify ──────────────────────────────
+  useEffect(() => {
+    if (!notifsEnabled) {
+      // Solo actualizar el ref para no perder transiciones
+      previousStatusesRef.current = jobs.reduce((acc, j) => {
+        acc[j.id] = j.status;
+        return acc;
+      }, {} as Record<string, string>);
+      return;
+    }
+    const prev = previousStatusesRef.current;
+    for (const j of jobs) {
+      const prevStatus = prev[j.id];
+      if (
+        prevStatus &&
+        prevStatus !== j.status &&
+        (j.status === "completed" || j.status === "failed")
+      ) {
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          const title = j.status === "completed"
+            ? "✅ Tu video está listo"
+            : "❌ Falló un job";
+          const body = j.video_title
+            ? j.video_title
+            : "Hacé click para ver detalles";
+          const n = new Notification(title, { body, tag: j.id });
+          n.onclick = () => {
+            window.focus();
+            window.location.href = `/results/${j.id}`;
+            n.close();
+          };
+        }
+      }
+    }
+    // Update ref for next tick
+    previousStatusesRef.current = jobs.reduce((acc, j) => {
+      acc[j.id] = j.status;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [jobs, notifsEnabled]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -498,9 +581,42 @@ function DashboardContent() {
     }
   };
 
-  const completed = jobs.filter(j => j.status === "completed");
-  const active = jobs.filter(j => j.status === "processing" || j.status === "pending");
-  const failed = jobs.filter(j => j.status === "failed");
+  // ─── Filtered jobs by search ─────────────────────────────────────────────
+  const q = searchQuery.trim().toLowerCase();
+  const matchesQuery = (j: Job) =>
+    !q ||
+    (j.video_title || "").toLowerCase().includes(q) ||
+    (j.video_url || "").toLowerCase().includes(q);
+
+  const completed = jobs.filter(j => j.status === "completed").filter(matchesQuery);
+  const active = jobs.filter(j => j.status === "processing" || j.status === "pending").filter(matchesQuery);
+  const failed = jobs.filter(j => j.status === "failed").filter(matchesQuery);
+
+  // ─── Global stats (sobre el listado total, no filtrado) ──────────────────
+  const allCompleted = jobs.filter(j => j.status === "completed");
+  const totalClips = allCompleted.reduce(
+    (sum, j) => sum + (summaries[j.id]?.moment_count ?? 0),
+    0,
+  );
+  const overallScore = (() => {
+    const scored = allCompleted
+      .map(j => summaries[j.id])
+      .filter(Boolean)
+      .filter(s => s!.moment_count > 0);
+    if (scored.length === 0) return 0;
+    const total = scored.reduce(
+      (sum, s) => sum + (s!.avg_hook + s!.avg_retention + s!.avg_shareability) / 3,
+      0,
+    );
+    return Math.round((total / scored.length) * 10) / 10;
+  })();
+  const jobsThisMonth = (() => {
+    const now = new Date();
+    return jobs.filter(j => {
+      const d = new Date(j.created_at);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
+  })();
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -509,26 +625,104 @@ function DashboardContent() {
       <main className="max-w-6xl mx-auto px-6 py-10">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
             <p className="text-slate-400 text-sm">
-              {completed.length} completados · {active.length} en proceso · {failed.length} con error
+              {jobs.length} total · {completed.length} completados · {active.length} en proceso · {failed.length} con error
             </p>
           </div>
-          <Button
-            onClick={() => { setShowForm(!showForm); setError(""); }}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl gap-2"
-          >
-            <Sparkles className="w-4 h-4" />
-            {showForm ? "Cancelar" : "Procesar Video"}
-            {credits !== null && !showForm && (
-              <span className="ml-1 text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
-                {credits}
-              </span>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={requestNotifications}
+              className={`rounded-full ${
+                notifsEnabled
+                  ? "text-emerald-400 hover:bg-emerald-500/10"
+                  : "text-slate-400 hover:bg-slate-800"
+              }`}
+              title={
+                notifsEnabled
+                  ? "Notificaciones activas — click para desactivar"
+                  : "Activar notificaciones del browser"
+              }
+            >
+              {notifsEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+            </Button>
+            <Button
+              onClick={() => { setShowForm(!showForm); setError(""); }}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              {showForm ? "Cancelar" : "Procesar Video"}
+              {credits !== null && !showForm && (
+                <span className="ml-1 text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
+                  {credits}
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {/* Stats row — solo si hay jobs */}
+        {jobs.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
+                <BarChart3 className="w-3 h-3" />
+                Clips generados
+              </div>
+              <div className="text-xl font-bold text-white">{totalClips}</div>
+            </div>
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
+                <Sparkles className="w-3 h-3" />
+                Score promedio
+              </div>
+              <div className="text-xl font-bold bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">
+                {overallScore > 0 ? overallScore.toFixed(1) : "—"}
+              </div>
+            </div>
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
+                <Clock className="w-3 h-3" />
+                Este mes
+              </div>
+              <div className="text-xl font-bold text-white">{jobsThisMonth}</div>
+            </div>
+            <div className="bg-slate-900/60 border border-white/5 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
+                <Zap className="w-3 h-3" />
+                Total jobs
+              </div>
+              <div className="text-xl font-bold text-white">{jobs.length}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        {jobs.length > 0 && (
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por título de video..."
+              className="w-full pl-10 pr-10 py-2.5 bg-slate-900/60 border border-white/5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/40 focus:ring-1 focus:ring-purple-500/30"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs"
+                title="Limpiar"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Submit form */}
         {showForm && (
@@ -616,6 +810,22 @@ function DashboardContent() {
             <p className="text-slate-500 text-sm mb-6">Pegá el link de un video de YouTube y la IA hace el resto</p>
             <Button onClick={() => setShowForm(true)} className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl">
               Procesar mi primer video
+            </Button>
+          </div>
+        ) : (active.length + completed.length + failed.length === 0 && q) ? (
+          <div className="text-center py-16 border border-white/5 rounded-2xl bg-white/[0.02]">
+            <Search className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+            <p className="text-base text-slate-300 mb-1">Sin resultados</p>
+            <p className="text-slate-500 text-sm mb-4">
+              No encontramos jobs que coincidan con &quot;{searchQuery}&quot;
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSearchQuery("")}
+              className="border-slate-700 bg-slate-900 text-slate-300"
+            >
+              Limpiar búsqueda
             </Button>
           </div>
         ) : (

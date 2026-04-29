@@ -445,10 +445,49 @@ export function ViralMomentCard({
                     <span className="text-xs">Editar</span>
                   </Button>
                   <Button
-                    variant="ghost"
-                    className="w-full text-slate-500 hover:bg-slate-800 hover:text-slate-400"
-                    disabled
-                    title="Próximamente"
+                    variant="outline"
+                    className="w-full border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                    onClick={async () => {
+                      const shareUrl = effectiveClipUrl;
+                      if (!shareUrl) return;
+                      const shareData = {
+                        title: hook ? `"${hook}"` : `Clip viral #${momentIndex}`,
+                        text: hook
+                          ? `Mirá este momento viral: "${hook}"`
+                          : `Clip generado con IA`,
+                        url: shareUrl,
+                      };
+                      try {
+                        // Web Share API (mobile + supported browsers)
+                        if (
+                          typeof navigator !== "undefined" &&
+                          typeof navigator.share === "function"
+                        ) {
+                          await navigator.share(shareData);
+                          return;
+                        }
+                        // Fallback: copy URL to clipboard
+                        await navigator.clipboard.writeText(shareUrl);
+                        toast({
+                          title: "🔗 Link copiado",
+                          description: "El URL del clip está en tu portapapeles.",
+                        });
+                      } catch (e: unknown) {
+                        // User cancelled share — silencio
+                        if (e instanceof Error && e.name === "AbortError") return;
+                        toast({
+                          title: "❌ No se pudo compartir",
+                          description: e instanceof Error ? e.message : "Error",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={!effectiveClipUrl || isYouTubeUrl}
+                    title={
+                      isYouTubeUrl
+                        ? "Compartir solo disponible para clips MP4"
+                        : "Compartir clip o copiar link"
+                    }
                   >
                     <Share2 className="mr-1.5 h-3.5 w-3.5" />
                     <span className="text-xs">Compartir</span>
