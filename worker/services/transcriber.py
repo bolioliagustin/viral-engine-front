@@ -333,24 +333,98 @@ def _save_transcript(audio_path: str, result: Dict):
 def format_transcript_for_prompt(transcript: Dict) -> str:
     """
     Format transcript segments into readable timeline for AI prompt
-    
+
     Args:
         transcript: Output from transcribe_with_whisper_openrouter
-        
+
     Returns:
         Formatted string with timestamps and text
     """
     if not transcript or 'segments' not in transcript:
         return "No transcript available"
-    
+
     lines = []
     for segment in transcript['segments']:
         start = segment.get('start', 0)
         end = segment.get('end', 0)
         text = segment.get('text', '').strip()
-        
+
         lines.append(f"[{start:.1f}s - {end:.1f}s]: {text}")
-    
+
+    return "\n".join(lines)
+
+
+def format_transcript_for_prompt_compact(
+    transcript: Dict,
+    max_block_duration: float = 30.0,
+    max_block_chars: int = 500,
+    gap_threshold: float = 1.0,
+    min_segment_duration: float = 0.5,
+) -> str:
+    """
+    Versión compacta del formato del transcript para el prompt del AI.
+
+    Mismo contenido pero con ~50% menos chars que `format_transcript_for_prompt`:
+      - Mergea segmentos consecutivos cuando el gap entre ellos < gap_threshold
+        y el bloque resultante no supera max_block_duration o max_block_chars
+      - Timestamps a int seconds: `[5-30]: ...` en vez de `[5.2s - 30.1s]: ...`
+      - Filtra labels auto-generados ([Music], [Applause], [silence])
+      - Filtra segmentos muy cortos (< min_segment_duration) que suelen ser ruido
+
+    Mantiene resolución temporal donde importa: NO mergea cuando hay pausas
+    reales (gap > 1s) — eso preserva los boundaries que necesita el modelo
+    para `surgical_clipping`.
+    """
+    if not transcript or 'segments' not in transcript:
+        return "No transcript available"
+
+    blocks = []
+    current = None
+
+    for seg in transcript['segments']:
+        start = float(seg.get('start', 0))
+        end = float(seg.get('end', start))
+        text = (seg.get('text') or "").strip()
+
+        # Filtros de ruido
+        if not text:
+            continue
+        if end - start < min_segment_duration:
+            continue
+        if text.startswith("[") and text.endswith("]"):
+            continue  # [Music], [Applause], [silence], etc
+
+        if current is None:
+            current = {"start": start, "end": end, "texts": [text]}
+            continue
+
+        gap = start - current["end"]
+        merged_duration = end - current["start"]
+        merged_chars = sum(len(t) for t in current["texts"]) + len(text) + len(current["texts"])
+
+        # Mergear si: gap chico Y duración acumulada razonable Y chars OK
+        can_merge = (
+            gap < gap_threshold
+            and merged_duration <= max_block_duration
+            and merged_chars <= max_block_chars
+        )
+        if can_merge:
+            current["end"] = end
+            current["texts"].append(text)
+        else:
+            blocks.append(current)
+            current = {"start": start, "end": end, "texts": [text]}
+
+    if current is not None:
+        blocks.append(current)
+
+    lines = []
+    for b in blocks:
+        s = int(round(b["start"]))
+        e = int(round(b["end"]))
+        text = " ".join(b["texts"])
+        lines.append(f"[{s}-{e}]: {text}")
+
     return "\n".join(lines)
 
 

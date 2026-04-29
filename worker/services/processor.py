@@ -472,18 +472,52 @@ def analyze_with_openrouter(transcript: dict, video_info: dict, tone: str = "pro
         base_url="https://openrouter.ai/api/v1",
         api_key=os.getenv("OPENROUTER_API_KEY")
     )
-    
+
     # Get model from env or use default
     model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
-    
-    # PHASE 0: META-CLASSIFIER - Detect content category
-    print(f"📂 Detecting content category...")
-    category = get_video_category(video_info, client)
-    print(f"✅ Category detected: {category.upper()}")
-    
-    # Format transcript for prompt injection
-    from services.transcriber import format_transcript_for_prompt
-    transcript_text = format_transcript_for_prompt(transcript)
+
+    # ── Cache lookup: evita re-llamar al modelo si ya analizamos ────────────
+    # Si reprocesamos el mismo video con la misma config, devolvemos el
+    # AnalysisResult guardado.
+    video_id = video_info.get("id")
+    from services.analysis_cache import (
+        get_cached_analysis, save_analysis,
+        get_cached_category, save_category,
+    )
+    if video_id:
+        cached = get_cached_analysis(video_id, model, tone)
+        if cached:
+            try:
+                return AnalysisResult(**cached)
+            except Exception as e:
+                # Cache row corrupto/desactualizado — seguir y re-analizar
+                print(f"   ⚠️ Cached analysis no valida ({e}), re-analizando")
+
+    # PHASE 0: META-CLASSIFIER - Detect content category (con cache)
+    category = None
+    if video_id:
+        category = get_cached_category(video_id, model)
+        if category:
+            print(f"✅ Category cached: {category.upper()}")
+    if not category:
+        print(f"📂 Detecting content category...")
+        category = get_video_category(video_info, client)
+        print(f"✅ Category detected: {category.upper()}")
+        if video_id:
+            save_category(video_id, model, category)
+
+    # Format transcript: usar formato compacto (50% menos tokens, sin perder
+    # información clave). Override con env var COMPACT_TRANSCRIPT=false si es
+    # necesario debugear con el formato anterior.
+    from services.transcriber import (
+        format_transcript_for_prompt,
+        format_transcript_for_prompt_compact,
+    )
+    if os.getenv("COMPACT_TRANSCRIPT", "true").lower() in ("false", "0", "no"):
+        transcript_text = format_transcript_for_prompt(transcript)
+    else:
+        transcript_text = format_transcript_for_prompt_compact(transcript)
+    print(f"   📝 Transcript prompt: {len(transcript_text)} chars")
     
     # Get dynamic prompt based on video duration AND CATEGORY
     duration = video_info.get('duration', 180)
@@ -578,6 +612,21 @@ VIDEO INFO:
         
         result = AnalysisResult(**result_dict)
         print(f"✅ Analysis complete: {len(result.viral_moments)} viral moments found")
+
+        # ── Guardar al cache para futuros re-procesos ─────────────────────
+        if video_id:
+            try:
+                save_analysis(
+                    video_id=video_id,
+                    model=model,
+                    result=result_dict,  # serializable
+                    tone=tone,
+                    category_detected=category,
+                    prompt_chars=len(transcript_text),
+                )
+            except Exception as e:
+                print(f"   ⚠️ No se pudo guardar al analysis_cache: {e}")
+
         return result
     except Exception as e:
         print(f"❌ Failed to parse/validate JSON response: {e}")
