@@ -240,7 +240,9 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
                 time.sleep(1 + attempt)
         raise RuntimeError(f"chunk {i} failed after 3 attempts: {last_err}")
 
-    with ThreadPoolExecutor(max_workers=len(ranges)) as ex:
+    # Cap at 8 threads — beyond that, the network bottleneck dominates and
+    # extra threads only add context-switch overhead + memory pressure.
+    with ThreadPoolExecutor(max_workers=min(len(ranges), 8)) as ex:
         futures = {ex.submit(fetch, i, s, e): i for i, s, e in ranges}
         for fut in as_completed(futures):
             fut.result()
@@ -668,7 +670,7 @@ def download_clip_segment(
                     time.sleep(1 + attempt)
             raise RuntimeError(f"chunk {i} falló: {last_err}")
 
-        with ThreadPoolExecutor(max_workers=len(ranges)) as ex:
+        with ThreadPoolExecutor(max_workers=min(len(ranges), 8)) as ex:
             futures = {ex.submit(fetch, i, bs, be): i for i, bs, be in ranges}
             for fut in as_completed(futures):
                 fut.result()

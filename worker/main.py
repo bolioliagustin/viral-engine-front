@@ -837,12 +837,20 @@ def watch_queue():
                             if job["id"] in active_jobs:
                                 continue
 
-                            # Atomically claim the job
-                            supabase.table("jobs") \
+                            # Atomically claim the job — the WHERE status='pending'
+                            # prevents double-claiming in multi-instance deployments.
+                            # We verify the response actually modified a row before
+                            # submitting to the executor.
+                            claim = supabase.table("jobs") \
                                 .update({"status": "processing"}) \
                                 .eq("id", job["id"]) \
                                 .eq("status", "pending") \
                                 .execute()
+
+                            if not claim.data:
+                                # Another worker claimed it first — skip silently
+                                print(f"⚠️ Job {job['id']} ya fue reclamado por otra instancia, saltando")
+                                continue
 
                             job_data = {
                                 "id": job["id"],

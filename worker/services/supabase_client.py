@@ -2,26 +2,50 @@
 Supabase client for Python worker
 """
 import os
+import time
 from typing import Optional
 from supabase import create_client, Client
 
 _supabase: Optional[Client] = None
+_last_connect_attempt: float = 0.0
+_RECONNECT_COOLDOWN = 30.0  # seconds between reconnect attempts
 
 
 def get_supabase() -> Optional[Client]:
-    """Get Supabase client singleton"""
-    global _supabase
-    
-    if _supabase is not None:
-        return _supabase
-    
+    """
+    Get Supabase client singleton with automatic reconnection.
+
+    On first call, creates the client. On subsequent calls, validates the
+    connection with a lightweight ping. If the ping fails (dropped connection),
+    resets the singleton and reconnects — but waits RECONNECT_COOLDOWN seconds
+    between attempts to avoid hammering Supabase on repeated failures.
+    """
+    global _supabase, _last_connect_attempt
+
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_KEY")
-    
+
     if not url or not key:
         print("⚠️ Supabase credentials not found. Using SQLite fallback.")
         return None
-    
+
+    if _supabase is not None:
+        # Lightweight connectivity check — a failed query means the connection dropped
+        try:
+            _supabase.table("jobs").select("id").limit(1).execute()
+            return _supabase
+        except Exception:
+            print("⚠️ Supabase connection lost — intentando reconectar...")
+            _supabase = None
+
+    # Enforce cooldown between reconnect attempts
+    now = time.time()
+    if now - _last_connect_attempt < _RECONNECT_COOLDOWN:
+        print(f"⏳ Cooldown activo ({_RECONNECT_COOLDOWN:.0f}s entre reintentos) — retornando None")
+        return None
+
+    _last_connect_attempt = now
+
     try:
         print(f"🔌 Connecting to Supabase: {url}")
         _supabase = create_client(url, key)
@@ -29,6 +53,7 @@ def get_supabase() -> Optional[Client]:
         return _supabase
     except Exception as e:
         print(f"❌ Failed to create Supabase client: {e}")
+        _supabase = None
         return None
 
 

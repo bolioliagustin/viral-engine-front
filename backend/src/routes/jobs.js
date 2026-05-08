@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const { supabase } = require('../lib/supabase');
 const rateLimit = require('express-rate-limit');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -125,14 +125,16 @@ router.post('/process', requireAuth, processLimiter, async (req, res) => {
 
 /**
  * GET /status/:jobId
- * Returns the status and results of a job
+ * Returns the status and results of a job.
+ * If the caller is authenticated, enforces ownership (can only see own jobs).
+ * Anonymous callers can still poll (useful for public share links) but only
+ * if the job has no owner (user_id IS NULL).
  */
-router.get('/status/:jobId', async (req, res) => {
+router.get('/status/:jobId', optionalAuth, async (req, res) => {
     try {
         const { jobId } = req.params;
 
         if (process.env.SUPABASE_URL) {
-            // Get job from Supabase
             const { data: job, error: jobError } = await supabase
                 .from('jobs')
                 .select('*')
@@ -143,8 +145,17 @@ router.get('/status/:jobId', async (req, res) => {
                 return res.status(404).json({ error: 'Job not found' });
             }
 
-            // Get results
-            const { data: results, error: resultsError } = await supabase
+            // Ownership check: authenticated users can only see their own jobs.
+            // Jobs without an owner (anonymous submissions) are accessible to anyone.
+            if (req.user && job.user_id && job.user_id !== req.user.id) {
+                return res.status(403).json({ error: 'Forbidden' });
+            }
+            // Unauthenticated callers cannot see jobs that belong to a user.
+            if (!req.user && job.user_id) {
+                return res.status(401).json({ error: 'Authentication required' });
+            }
+
+            const { data: results } = await supabase
                 .from('content_results')
                 .select('*')
                 .eq('job_id', jobId)
@@ -155,15 +166,14 @@ router.get('/status/:jobId', async (req, res) => {
                 videoUrl: job.video_url,
                 videoTitle: job.video_title,
                 status: job.status,
-                current_step: job.current_step,  // NEW: for ProcessingScreen
-                progress_percentage: job.progress_percentage,  // NEW: for progress bar
+                current_step: job.current_step,
+                progress_percentage: job.progress_percentage,
                 errorMessage: job.error_message,
                 createdAt: job.created_at,
                 updatedAt: job.updated_at,
                 results: results || []
             });
         } else {
-            // Fallback to SQLite
             const { statements } = require('../db/database');
             const row = statements.getJobWithResults.get(jobId);
 
@@ -198,14 +208,17 @@ router.get('/status/:jobId', async (req, res) => {
 
 /**
  * GET /jobs
- * Returns all jobs (for debugging/admin)
+ * Returns jobs for the authenticated user only.
  */
-router.get('/jobs', async (req, res) => {
+router.get('/jobs', requireAuth, async (req, res) => {
     try {
+        const userId = req.user.id;
+
         if (process.env.SUPABASE_URL) {
             const { data: jobs, error } = await supabase
                 .from('jobs')
                 .select('*')
+                .eq('user_id', userId)
                 .order('created_at', { ascending: false })
                 .limit(50);
 
@@ -213,7 +226,9 @@ router.get('/jobs', async (req, res) => {
             res.json(jobs);
         } else {
             const { db } = require('../db/database');
-            const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 50').all();
+            const jobs = db.prepare(
+                'SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+            ).all(userId);
             res.json(jobs);
         }
     } catch (error) {
