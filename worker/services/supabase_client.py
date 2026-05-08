@@ -3,22 +3,34 @@ Supabase client for Python worker
 """
 import os
 import time
+import threading
 from typing import Optional
 from supabase import create_client, Client
 
 _supabase: Optional[Client] = None
 _last_connect_attempt: float = 0.0
 _RECONNECT_COOLDOWN = 30.0  # seconds between reconnect attempts
+_reconnect_lock = threading.Lock()
+
+
+def reset_supabase() -> None:
+    """
+    Mark the current client as broken so the next get_supabase() call
+    triggers a reconnect. Call this when a Supabase query raises an
+    unexpected exception (e.g. 'Server disconnected').
+    """
+    global _supabase
+    _supabase = None
 
 
 def get_supabase() -> Optional[Client]:
     """
-    Get Supabase client singleton with automatic reconnection.
+    Get Supabase client singleton with thread-safe automatic reconnection.
 
-    On first call, creates the client. On subsequent calls, validates the
-    connection with a lightweight ping. If the ping fails (dropped connection),
-    resets the singleton and reconnects — but waits RECONNECT_COOLDOWN seconds
-    between attempts to avoid hammering Supabase on repeated failures.
+    Fast path: returns the existing client immediately (no ping overhead).
+    Slow path: acquires a lock, double-checks, then reconnects. The lock
+    prevents multiple threads from hammering Supabase simultaneously when
+    the connection drops mid-job.
     """
     global _supabase, _last_connect_attempt
 
@@ -29,32 +41,33 @@ def get_supabase() -> Optional[Client]:
         print("⚠️ Supabase credentials not found. Using SQLite fallback.")
         return None
 
+    # Fast path — client is healthy, return immediately
     if _supabase is not None:
-        # Lightweight connectivity check — a failed query means the connection dropped
-        try:
-            _supabase.table("jobs").select("id").limit(1).execute()
-            return _supabase
-        except Exception:
-            print("⚠️ Supabase connection lost — intentando reconectar...")
-            _supabase = None
-
-    # Enforce cooldown between reconnect attempts
-    now = time.time()
-    if now - _last_connect_attempt < _RECONNECT_COOLDOWN:
-        print(f"⏳ Cooldown activo ({_RECONNECT_COOLDOWN:.0f}s entre reintentos) — retornando None")
-        return None
-
-    _last_connect_attempt = now
-
-    try:
-        print(f"🔌 Connecting to Supabase: {url}")
-        _supabase = create_client(url, key)
-        print("✅ Supabase client created successfully")
         return _supabase
-    except Exception as e:
-        print(f"❌ Failed to create Supabase client: {e}")
-        _supabase = None
-        return None
+
+    # Slow path — reconnect, serialized by lock
+    with _reconnect_lock:
+        # Double-check: another thread may have reconnected while we waited
+        if _supabase is not None:
+            return _supabase
+
+        now = time.time()
+        if now - _last_connect_attempt < _RECONNECT_COOLDOWN:
+            remaining = _RECONNECT_COOLDOWN - (now - _last_connect_attempt)
+            print(f"⏳ Cooldown activo — esperando {remaining:.1f}s para reconectar...")
+            time.sleep(remaining + 0.5)
+
+        _last_connect_attempt = time.time()
+
+        try:
+            print(f"🔌 Connecting to Supabase: {url}")
+            _supabase = create_client(url, key)
+            print("✅ Supabase client created successfully")
+            return _supabase
+        except Exception as e:
+            print(f"❌ Failed to create Supabase client: {e}")
+            _supabase = None
+            return None
 
 
 def update_job_status(job_id: str, status: str, video_title: str = None) -> None:

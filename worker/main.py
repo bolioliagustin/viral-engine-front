@@ -43,6 +43,7 @@ from services.supabase_client import (
     upload_clip_to_storage,
     get_supabase,
     claim_next_clip_edit,
+    reset_supabase,
 )
 from services.clip_edit_processor import process_clip_edit
 
@@ -759,6 +760,11 @@ def process_job(job_data: dict) -> None:
         
     except Exception as e:
         print(f"\n❌ Job {job_id} failed: {str(e)}")
+        # Si el error fue una desconexión de Supabase, reseteamos el cliente
+        # para que update_job_error reconecte en vez de caer al fallback SQLite.
+        err_str = str(e).lower()
+        if "server disconnected" in err_str or "connection" in err_str:
+            reset_supabase()
         update_job_error(job_id, str(e))
         
     finally:

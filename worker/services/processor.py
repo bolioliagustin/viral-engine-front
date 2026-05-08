@@ -74,8 +74,11 @@ Responde con UNA SOLA PALABRA (la categoría exacta). Sin explicaciones."""
             timeout=3  # 3 second timeout for speed
         )
         
-        category = response.choices[0].message.content.strip().lower()
-        
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("LLM devolvió respuesta vacía para categoría")
+        category = content.strip().lower()
+
         # Validate response
         valid_categories = ['business', 'entertainment', 'tech', 'lifestyle', 'podcast']
         if category in valid_categories:
