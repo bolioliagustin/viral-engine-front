@@ -23,6 +23,28 @@ def reset_supabase() -> None:
     _supabase = None
 
 
+def start_keepalive(interval: int = 45) -> None:
+    """
+    Lanza un thread daemon que pinga Supabase cada `interval` segundos.
+    Previene que PostgreSQL cierre la conexión idle (suele ocurrir después
+    de ~2 min sin actividad, justo durante análisis largos con Gemini).
+    """
+    def _ping_loop():
+        while True:
+            time.sleep(interval)
+            try:
+                sb = get_supabase()
+                if sb:
+                    sb.table("jobs").select("id").limit(1).execute()
+            except Exception as e:
+                print(f"⚠️ Keepalive ping falló ({e}) — reseteando conexión")
+                reset_supabase()
+
+    t = threading.Thread(target=_ping_loop, daemon=True, name="supabase-keepalive")
+    t.start()
+    print(f"💓 Supabase keepalive activo (ping cada {interval}s)")
+
+
 def get_supabase() -> Optional[Client]:
     """
     Get Supabase client singleton with thread-safe automatic reconnection.
@@ -129,6 +151,11 @@ def update_job_progress(
         sqlite_update(job_id, current_step, progress_percentage)
 
 
+def _is_connection_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return any(k in msg for k in ("server disconnected", "connection", "broken pipe", "eof"))
+
+
 def save_content_result(
     job_id: str,
     content_type: str,
@@ -194,7 +221,19 @@ def save_content_result(
         if whisper_words:
             data["whisper_words"] = json.dumps(whisper_words) if not isinstance(whisper_words, str) else whisper_words
 
-        supabase.table("content_results").insert(data).execute()
+        try:
+            supabase.table("content_results").insert(data).execute()
+        except Exception as e:
+            if _is_connection_error(e):
+                print(f"⚠️ save_content_result: conexión perdida, reconectando y reintentando...")
+                reset_supabase()
+                supabase = get_supabase()
+                if supabase:
+                    supabase.table("content_results").insert(data).execute()
+                else:
+                    raise RuntimeError("No se pudo reconectar a Supabase para guardar resultado")
+            else:
+                raise
     else:
         from services.database import save_content_result as sqlite_save
         metadata = json.dumps({

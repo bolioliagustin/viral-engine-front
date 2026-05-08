@@ -44,6 +44,7 @@ from services.supabase_client import (
     get_supabase,
     claim_next_clip_edit,
     reset_supabase,
+    start_keepalive,
 )
 from services.clip_edit_processor import process_clip_edit
 
@@ -814,9 +815,12 @@ def watch_queue():
     
     # Q3: Cleanup old files on startup
     cleanup_old_files()
-    
+
     # C5: Recover stale jobs on startup
     recover_stale_jobs()
+
+    # Keepalive: evita que Supabase corte la conexión idle durante análisis largos
+    start_keepalive(interval=45)
     
     active_jobs = set()  # Track job IDs currently being processed
     active_edits = set()  # Track clip_edit IDs currently being processed
