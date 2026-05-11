@@ -47,8 +47,9 @@ def get_video_category(video_info: dict, client=None) -> str:
         return max(scores.items(), key=lambda x: (x[1], x[0]))[0] if max(scores.values()) > 0 else 'entertainment'
     
     # LLM-based classification (ultra-fast with timeout)
+    # Usamos Flash siempre para clasificación — Pro es demasiado lento para 3s.
     try:
-        model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+        model = os.getenv("OPENROUTER_CLASSIFIER_MODEL", "google/gemini-2.0-flash-exp:free")
         
         classification_prompt = f"""Clasifica este video en UNA categoría basándote en título.
 
@@ -602,17 +603,48 @@ VIDEO INFO:
         except json.JSONDecodeError:
             print("⚠️ Standard JSON parse failed, attempting repair with json_repair...")
             from json_repair import repair_json
-            # repair_json returns the repaired JSON string
             repaired_json = repair_json(response_text)
             result_dict = json.loads(repaired_json)
             print("✅ JSON repaired successfully")
-        
-        # Debug: Check if pillar_type and scores are in response
+
+        # Si Gemini envolvió el objeto raíz en un array, desenvuelve
+        if isinstance(result_dict, list):
+            if len(result_dict) == 1 and isinstance(result_dict[0], dict):
+                print("⚠️ Gemini devolvió array raíz — desenvuelto a objeto")
+                result_dict = result_dict[0]
+            else:
+                raise ValueError(f"Respuesta JSON es un array de {len(result_dict)} elementos (esperado: objeto)")
+
+        # Sanitizar campos de objeto anidado que Gemini a veces devuelve
+        # como lista de un elemento [{...}] en vez de objeto {...}.
+        # Campos afectados: content_pieces, surgical_clipping, tiktok_package,
+        # scores, verification.
+        _NESTED_OBJECT_FIELDS = {
+            'content_pieces', 'surgical_clipping', 'tiktok_package',
+            'scores', 'verification',
+        }
+
+        def _unwrap_single_item_lists(moment: dict) -> dict:
+            for field in _NESTED_OBJECT_FIELDS:
+                val = moment.get(field)
+                if isinstance(val, list) and len(val) == 1 and isinstance(val[0], dict):
+                    print(f"   ⚠️ Campo '{field}' era lista de 1 elemento — desenvuelto a objeto")
+                    moment[field] = val[0]
+            return moment
+
+        moments = result_dict.get('viral_moments', [])
+        if isinstance(moments, list):
+            result_dict['viral_moments'] = [
+                _unwrap_single_item_lists(m) if isinstance(m, dict) else m
+                for m in moments
+            ]
+
+        # Debug rápido
         if result_dict.get('viral_moments'):
             first_moment = result_dict['viral_moments'][0]
             print(f"📊 Debug - pillar_type: {first_moment.get('pillar_type', 'NOT FOUND')}")
             print(f"📊 Debug - scores: {first_moment.get('scores', 'NOT FOUND')}")
-        
+
         result = AnalysisResult(**result_dict)
         print(f"✅ Analysis complete: {len(result.viral_moments)} viral moments found")
 
@@ -622,7 +654,7 @@ VIDEO INFO:
                 save_analysis(
                     video_id=video_id,
                     model=model,
-                    result=result_dict,  # serializable
+                    result=result_dict,
                     tone=tone,
                     category_detected=category,
                     prompt_chars=len(transcript_text),
@@ -633,13 +665,13 @@ VIDEO INFO:
         return result
     except Exception as e:
         print(f"❌ Failed to parse/validate JSON response: {e}")
-        # print(f"Response was: {response_text[:500]}...")
-        raise ValueError(f"Invalid JSON response: {e}")
-    except Exception as e:
-        print(f"❌ Failed to validate response: {e}")
         if 'result_dict' in locals():
-            print(f"Raw dict: {result_dict}")
-        raise
+            # Log los primeros 300 chars de cada momento para debuggear
+            moments_preview = []
+            for m in (result_dict.get('viral_moments') or [])[:3]:
+                moments_preview.append({k: str(v)[:80] for k, v in (m or {}).items()})
+            print(f"   Momentos (preview): {moments_preview}")
+        raise ValueError(f"Invalid JSON response: {e}")
 
 
 # Keep old function name for backwards compatibility
