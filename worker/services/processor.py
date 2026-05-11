@@ -374,7 +374,7 @@ En esos momentos, el visual debe REFORZAR con:
 ✅ **Tiempos en segundos enteros**
 ✅ **{tone_style}**
 ✅ **NUNCA valores null o vacíos - CREA contenido si no existe**
-✅ **UN SOLO pillar_type por momento: "authority" | "utility" | "connection"**
+✅ **UN SOLO pillar_type por momento: "authority" | "utility" | "connection" | "entertainment"**
 ✅ **Twitter: 7 tweets separados por \\n\\n, SIN prefijos "Tweet 1:", SIN "[Link]"**
 ✅ **Twitter: cada tweet funciona SOLO fuera del hilo**
 ✅ **LinkedIn debe tener 800-1200 caracteres totales**
@@ -644,6 +644,22 @@ VIDEO INFO:
             first_moment = result_dict['viral_moments'][0]
             print(f"📊 Debug - pillar_type: {first_moment.get('pillar_type', 'NOT FOUND')}")
             print(f"📊 Debug - scores: {first_moment.get('scores', 'NOT FOUND')}")
+
+        # ── Post-process: strip [Link] placeholders from text content ────────
+        # Gemini sometimes outputs "[Link]" despite explicit instructions not to.
+        # Removing it here ensures it never reaches the user, regardless of prompt.
+        import re as _re
+        for _m in result_dict.get('viral_moments', []):
+            _cp = _m.get('content_pieces')
+            if isinstance(_cp, dict):
+                for _field in ('twitter_thread', 'linkedin_post', 'tiktok_caption'):
+                    if _cp.get(_field):
+                        _cp[_field] = _re.sub(
+                            r'\[Link(?:\s*\w*)?\]',  # matches [Link], [Link aquí], etc.
+                            '',
+                            _cp[_field],
+                            flags=_re.IGNORECASE,
+                        ).strip()
 
         result = AnalysisResult(**result_dict)
         print(f"✅ Analysis complete: {len(result.viral_moments)} viral moments found")

@@ -464,6 +464,11 @@ def process_job(job_data: dict) -> None:
                             w2 = dict(w)
                             w2["start"] = max(0.0, ws)
                             w2["end"] = min(clip_duration, we)
+                            # Skip words with inverted timestamps after clamping
+                            # (Whisper bug: occasionally returns start > end).
+                            if w2["start"] >= w2["end"]:
+                                dropped_for_diag.append((w.get("word"), raw_ws, raw_we, "inverted"))
+                                continue
                             # Garantizar duración mínima de 30ms (algunas
                             # palabras tras el clamp pueden quedar en 0).
                             if w2["end"] - w2["start"] < 0.03:
@@ -600,7 +605,7 @@ def process_job(job_data: dict) -> None:
             # Sanitize pillar_type - extract first valid value
             pillar = None
             if pillar_raw:
-                valid_pillars = ['authority', 'utility', 'connection']
+                valid_pillars = ['authority', 'utility', 'connection', 'entertainment']
                 for p in pillar_raw.lower().replace('|', ' ').split():
                     if p.strip() in valid_pillars:
                         pillar = p.strip()
