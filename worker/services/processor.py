@@ -533,6 +533,7 @@ VIDEO INFO:
     max_retries = 3
     last_error = None
     
+    response_text = None
     for attempt in range(max_retries + 1):
         try:
             response = client.chat.completions.create(
@@ -542,20 +543,32 @@ VIDEO INFO:
                 max_tokens=16000,
                 response_format={"type": "json_object"}
             )
-            
-            response_text = response.choices[0].message.content.strip()
+
+            # Defensive: Gemini Pro occasionally returns choices[0].message.content = None
+            # (safety filter trip, rate limit, or upstream timeout). Treat as failure
+            # and retry instead of crashing with `NoneType has no attribute strip`.
+            raw = response.choices[0].message.content if response.choices else None
+            if not raw or not raw.strip():
+                finish = response.choices[0].finish_reason if response.choices else "no_choices"
+                raise ValueError(f"LLM returned empty content (finish_reason={finish})")
+
+            response_text = raw.strip()
             break
         except Exception as e:
             last_error = e
             if attempt < max_retries:
                 wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
-                print(f"⚠️ Attempt {attempt + 1} failed: {str(e)[:80]}")
+                print(f"⚠️ Attempt {attempt + 1} failed: {str(e)[:120]}")
                 print(f"   Retrying in {wait_time}s... ({attempt + 1}/{max_retries})")
                 import time
                 time.sleep(wait_time)
             else:
                 print(f"❌ All {max_retries} retries exhausted")
                 raise last_error
+
+    if not response_text:
+        # Should never happen — loop above either sets it or raises — but guard anyway
+        raise RuntimeError("analyze_with_openrouter: no response_text after retry loop")
     
     # Clean up response if wrapped in markdown
     if response_text.startswith("```json"):
