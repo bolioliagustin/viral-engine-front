@@ -242,10 +242,28 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
 
     # Cap at 8 threads — beyond that, the network bottleneck dominates and
     # extra threads only add context-switch overhead + memory pressure.
+    #
+    # Global watchdog: 8 min absolute deadline for the whole parallel download.
+    # If a single chunk hangs (slow proxy, broken connection silently delivering
+    # bytes too slowly to trip the socket timeout) we used to wait forever.
+    # Now we cap it. 8 min covers a worst-case 170MB at 350KB/s safely.
+    DOWNLOAD_DEADLINE_SEC = 8 * 60
     with ThreadPoolExecutor(max_workers=min(len(ranges), 8)) as ex:
         futures = {ex.submit(fetch, i, s, e): i for i, s, e in ranges}
-        for fut in as_completed(futures):
-            fut.result()
+        try:
+            for fut in as_completed(futures, timeout=DOWNLOAD_DEADLINE_SEC):
+                fut.result()
+        except TimeoutError:
+            done_count = sum(1 for f in futures if f.done())
+            print(f"   ⏰ {label}: timeout global tras {DOWNLOAD_DEADLINE_SEC}s "
+                  f"({done_count}/{len(futures)} chunks completos)")
+            for f in futures:
+                if not f.done():
+                    f.cancel()
+            raise RuntimeError(
+                f"{label}: parallel download timed out after "
+                f"{DOWNLOAD_DEADLINE_SEC}s ({done_count}/{len(futures)} chunks)"
+            )
 
     elapsed = time.time() - t0
     mbps = (effective_total / (1 << 20)) / max(elapsed, 0.01)
@@ -670,10 +688,22 @@ def download_clip_segment(
                     time.sleep(1 + attempt)
             raise RuntimeError(f"chunk {i} falló: {last_err}")
 
+        # Same 8-min watchdog as _parallel_download (see note there).
+        RANGE_DOWNLOAD_DEADLINE_SEC = 8 * 60
         with ThreadPoolExecutor(max_workers=min(len(ranges), 8)) as ex:
             futures = {ex.submit(fetch, i, bs, be): i for i, bs, be in ranges}
-            for fut in as_completed(futures):
-                fut.result()
+            try:
+                for fut in as_completed(futures, timeout=RANGE_DOWNLOAD_DEADLINE_SEC):
+                    fut.result()
+            except TimeoutError:
+                done_count = sum(1 for f in futures if f.done())
+                for f in futures:
+                    if not f.done():
+                        f.cancel()
+                raise RuntimeError(
+                    f"{label}: range download timed out after "
+                    f"{RANGE_DOWNLOAD_DEADLINE_SEC}s ({done_count}/{len(futures)} chunks)"
+                )
 
         elapsed = time.time() - t0
         print(f"   ✅ {label}: {total // (1 << 20)}MB en {elapsed:.1f}s ({total // (1 << 20) / max(elapsed, 0.01):.1f}MB/s)")
