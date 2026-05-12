@@ -1,0 +1,49 @@
+{
+  "_doc": "Golden test set para regresión de calidad. Usado por Fase 2 (prompt podcast), Fase 3 (prompt business) y Fase 4 (eval automático). Cada video tiene una 'expected_category' que el clasificador debería detectar correctamente.",
+  "videos": [
+    {
+      "id": "business_spanish_01",
+      "url": "https://www.youtube.com/watch?v=Lqq78q17jDY",
+      "note": "Podcast/charla de negocios en español — caso de uso prioritario",
+      "expected_category": "podcast",
+      "test_focus": [
+        "El clasificador debe devolver 'podcast' (conversación 2+ personas)",
+        "Twitter thread de 7 tweets con char counts válidos",
+        "LinkedIn post 800-1200 chars",
+        "Cero clichés AI",
+        "viral_overlay <=4 palabras UPPERCASE"
+      ]
+    },
+    {
+      "id": "podcast_general_01",
+      "url": "https://www.youtube.com/watch?v=XxoVRjTySsM",
+      "note": "Podcast general — caso de uso prioritario",
+      "expected_category": "podcast",
+      "test_focus": [
+        "Surgical clipping (15-40s por clip)",
+        "Hooks contraintuitivos sin contexto previo",
+        "tiktok_package.overlay_text breve y pattern-interrupt"
+      ]
+    },
+    {
+      "id": "user_recommended_01",
+      "url": "https://www.youtube.com/watch?v=MaXgAEI4Vm8",
+      "note": "Recomendación personal del usuario — referencia de calidad target",
+      "expected_category": "podcast",
+      "test_focus": [
+        "Calidad 'publicable sin editar' — benchmark visual del producto final"
+      ]
+    }
+  ],
+  "scoring_criteria": {
+    "_doc": "Criterios para evaluar manualmente cada output del golden set. Phase 4 lo automatizará parcialmente.",
+    "clip_selection": "¿Los 5 clips elegidos son los mejores momentos del video?",
+    "clip_timing": "¿El inicio captura el setup? ¿El final corta después de la reacción?",
+    "twitter_quality": "¿Cada tweet funciona solo? ¿7 tweets? ¿200-280 chars cada uno?",
+    "linkedin_quality": "¿Estructura A.I.D.A? ¿800-1200 chars? ¿Pregunta de engagement al final?",
+    "tiktok_overlay": "¿4 palabras MAX UPPERCASE? ¿Frena el scroll en <1s?",
+    "no_ai_clones": "¿Cero clichés tipo 'en el mundo de hoy', 'descubre cómo'?",
+    "no_link_placeholders": "¿Cero '[Link]' / 'Tweet N:' prefixes?",
+    "voice_consistency": "¿El tono se mantiene a lo largo de los 3 outputs (Twitter+LinkedIn+TikTok)?"
+  }
+}
