@@ -9,101 +9,79 @@ from models.schemas import AnalysisResult
 
 def get_video_category(video_info: dict, client=None) -> str:
     """
-    Meta-Classifier: Ultra-fast LLM call to detect video category.
-    Uses Gemini Flash for 100% precision on intent detection.
-    
+    Meta-Classifier: Binary classifier — podcast vs business.
+
+    Phase 1.4: Reduced from 5 categories to 2 (the only ones with professionally
+    tuned prompts). Anything that isn't clearly a podcast/interview falls back
+    to 'business' (broader prompt that handles monologues, keynotes, talks,
+    tutorials and general content reasonably).
+
     Args:
         video_info: Dict with 'title' and optionally 'description'
         client: OpenAI client for OpenRouter (reuses existing connection)
-    
+
     Returns:
-        Category string: 'business', 'entertainment', 'lifestyle', or 'tech'
+        Category string: 'podcast' or 'business'
     """
-    import os
-    from openai import OpenAI
-    
     title = video_info.get('title', '')
-    description = video_info.get('description', '')[:200]  # Limit for speed
-    
-    # Fallback to keyword matching if no client
-    if not client:
-        # Quick keyword matching fallback
+    description = video_info.get('description', '')[:300]
+
+    # Keyword fallback (used if no client or LLM fails)
+    def _keyword_classify() -> str:
         text = (title + ' ' + description).lower()
-        
-        comedy_score = sum(1 for k in ['comedia', 'humor', 'chiste', 'risa', 'gracioso', 'meme', 'divertido'] if k in text)
-        business_score = sum(1 for k in ['invertir', 'negocio', 'finanzas', 'marketing', 'dinero', 'empresa'] if k in text)
-        tech_score = sum(1 for k in ['tutorial', 'cómo', 'programación', 'código', 'app', 'tech'] if k in text)
-        lifestyle_score = sum(1 for k in ['vida', 'experiencia', 'historia', 'motivación', 'inspiración'] if k in text)
-        podcast_score = sum(1 for k in ['entrevista', 'podcast', 'conversación', 'charlando', 'invitado', 'entre dos'] if k in text)
-        sports_score = sum(1 for k in ['fútbol', 'mundial', 'deporte', 'gol', 'partido', 'selección', 'jugador', 'copa'] if k in text)
-        
-        scores = {
-            'entertainment': max(comedy_score, sports_score),  # Sports = entertainment
-            'business': business_score,
-            'tech': tech_score,
-            'lifestyle': lifestyle_score,
-            'podcast': podcast_score
-        }
-        return max(scores.items(), key=lambda x: (x[1], x[0]))[0] if max(scores.values()) > 0 else 'entertainment'
-    
-    # LLM-based classification (ultra-fast with timeout)
-    # Usamos Flash siempre para clasificación — Pro es demasiado lento para 3s.
+        podcast_keywords = [
+            'podcast', 'entrevista', 'interview', 'conversación', 'conversation',
+            'charla con', 'episodio', 'episode', 'invitado', 'invitada',
+            'guest', 'host', 'capítulo', 'mesa redonda',
+        ]
+        if any(k in text for k in podcast_keywords):
+            return 'podcast'
+        return 'business'
+
+    if not client:
+        return _keyword_classify()
+
+    # LLM classification — Gemini Flash with longer timeout for reliability
     try:
-        model = os.getenv("OPENROUTER_CLASSIFIER_MODEL", "google/gemini-2.0-flash-exp:free")
-        
-        classification_prompt = f"""Clasifica este video en UNA categoría basándote en título.
+        model = os.getenv("OPENROUTER_CLASSIFIER_MODEL", "google/gemini-2.0-flash-001")
+
+        classification_prompt = f"""Clasifica este video en UNA de DOS categorías:
 
 Título: {title}
+Descripción: {description}
 
-Categorías disponibles:
-- business: Negocios, finanzas, inversión, marketing, emprendimiento
-- entertainment: Comedia, humor, entretenimiento, memes, sketches, deportes, fútbol
-- tech: Tutoriales, programación, tecnología, how-to
-- lifestyle: Crecimiento personal, motivación, historias de vida
-- podcast: Entrevistas, conversaciones, diálogos entre personas
+Categorías:
+- podcast: Entrevistas, conversaciones entre 2+ personas, episodios de podcast, mesas redondas, charlas con invitados.
+- business: TODO lO DEMÁS — monólogos, keynotes, talks, tutoriales, contenido de un solo orador, vlogs, contenido educativo, comedia, deportes, lifestyle, motivacional, tech.
 
-Responde con UNA SOLA PALABRA (la categoría exacta). Sin explicaciones."""
+REGLA: Si NO es claramente una conversación entre 2+ personas, es 'business'.
+
+Responde con UNA SOLA PALABRA: podcast o business."""
 
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "Eres un clasificador de contenido experto. Respondes con una sola palabra."},
+                {"role": "system", "content": "Clasificador binario. Respondes con una sola palabra: podcast o business."},
                 {"role": "user", "content": classification_prompt}
             ],
-            max_tokens=10,
+            max_tokens=5,
             temperature=0,
-            timeout=3  # 3 second timeout for speed
+            timeout=10,  # Phase 1.4: bumped from 3s — was failing too often
         )
-        
+
         content = response.choices[0].message.content
         if not content:
-            raise ValueError("LLM devolvió respuesta vacía para categoría")
+            raise ValueError("LLM devolvió respuesta vacía")
         category = content.strip().lower()
 
-        # Validate response
-        valid_categories = ['business', 'entertainment', 'tech', 'lifestyle', 'podcast']
-        if category in valid_categories:
+        if category in ('podcast', 'business'):
             return category
-        else:
-            print(f"⚠️ Invalid category '{category}', using keyword fallback")
-            raise ValueError("Invalid category")
-            
+        print(f"⚠️ Categoría inválida del LLM ('{category}'), usando fallback de keywords")
+        return _keyword_classify()
+
     except Exception as e:
-        print(f"⚠️ LLM classification failed ({str(e)[:50]}), using keyword fallback")
-        # Fallback to keyword matching
-        text = (title + ' ' + description).lower()
-        
-        # Enhanced keywords for entertainment
-        if any(k in text for k in ['comedia', 'humor', 'chiste', 'risa', 'entrevista', 'suculentas', 
-                                     'mortedor', 'podcast', 'charla', 'conversación', 'entretenimiento']):
-            return 'entertainment'
-        elif any(k in text for k in ['invertir', 'negocio', 'finanzas', 'marketing', 'dinero']):
-            return 'business'
-        elif any(k in text for k in ['tutorial', 'programación', 'código', 'cómo']):
-            return 'tech'
-        else:
-            # Default to entertainment if no clear match (safer for comedy)
-            return 'entertainment'
+        print(f"⚠️ LLM classification falló ({str(e)[:60]}), usando keyword fallback")
+        return _keyword_classify()
 
 
 
@@ -139,28 +117,20 @@ def get_dynamic_prompt(duration: int, tone: str = "profesional", category: str =
     }
     tone_style = tone_instructions.get(tone.lower(), tone_instructions["profesional"])
     
-    # CATEGORY ROUTING: Different strategy per content type
-    if category == "entertainment":
-        print(f"🎭 Using ENTERTAINMENT strategy")
-        # For entertainment: shorter, teaser-focused, comedy timing
-        import services.category_prompts as cp
-        try:
-            return cp.get_entertainment_prompt(duration, num_moments, moments_instruction, tone_style, user_name, user_title)
-        except:
-            pass  # Fallback to business if import fails
-    
-    # Podcast: dialogue-focused, interaction moments
+    # Phase 1.4: Binary routing — podcast OR business (default).
+    # Other category values (entertainment/tech/lifestyle) are legacy and now
+    # all fall through to the business prompt, which handles general content
+    # better than the half-finished alternatives. Entertainment-specific
+    # prompt is parked in category_prompts.py for a possible future reactivation.
     if category == 'podcast':
-        print(f"🎙️ Using PODCAST strategy (category: {category})")
+        print(f"🎙️ Using PODCAST strategy")
         import services.podcast_prompt as pp
         try:
             return pp.get_podcast_prompt(duration, num_moments, moments_instruction, tone_style, user_name, user_title)
         except Exception as e:
-            print(f"⚠️ Podcast prompt import failed, using business fallback: {e}")
-            pass  # Fallback to business
-    
-    # Default to BUSINESS strategy (most robust, Phases A-C)
-    print(f"💼 Using BUSINESS strategy (category: {category})")
+            print(f"⚠️ Podcast prompt import failed, falling back to business: {e}")
+
+    print(f"💼 Using BUSINESS strategy (category={category})")
     
     return f"""Actúa como un Director de Contenido Viral con 15 años de experiencia en psicología de masas y algoritmos de redes sociales.
 
@@ -639,27 +609,79 @@ VIDEO INFO:
                 for m in moments
             ]
 
+        # ── Schema migration (Phase 1.1): surgical_clipping → flat fields ────
+        # Canonical schema uses moment.start_time / moment.end_time as the
+        # single source of truth. Some prompts still emit surgical_clipping
+        # (nested). We migrate here so downstream code (validators, main.py,
+        # subtitle alignment) never has to handle both shapes.
+        for _m in result_dict.get('viral_moments', []):
+            if not isinstance(_m, dict):
+                continue
+            _sc = _m.get('surgical_clipping')
+            if isinstance(_sc, dict):
+                # Migrate timestamps only if the canonical fields are missing.
+                # Use floor for start (capture full setup) and ceil for end
+                # (capture full reaction) — matches what int() does for start
+                # but rounds up for end so we never truncate the punchline.
+                import math as _math
+                if _m.get('start_time') is None and _sc.get('start_time') is not None:
+                    _m['start_time'] = int(_math.floor(float(_sc['start_time'])))
+                if _m.get('end_time') is None and _sc.get('end_time') is not None:
+                    _m['end_time'] = int(_math.ceil(float(_sc['end_time'])))
+                if _m.get('clipping_reason') is None and _sc.get('reason'):
+                    _m['clipping_reason'] = _sc['reason']
+
         # Debug rápido
         if result_dict.get('viral_moments'):
             first_moment = result_dict['viral_moments'][0]
             print(f"📊 Debug - pillar_type: {first_moment.get('pillar_type', 'NOT FOUND')}")
             print(f"📊 Debug - scores: {first_moment.get('scores', 'NOT FOUND')}")
 
-        # ── Post-process: strip [Link] placeholders from text content ────────
-        # Gemini sometimes outputs "[Link]" despite explicit instructions not to.
-        # Removing it here ensures it never reaches the user, regardless of prompt.
-        import re as _re
-        for _m in result_dict.get('viral_moments', []):
-            _cp = _m.get('content_pieces')
-            if isinstance(_cp, dict):
-                for _field in ('twitter_thread', 'linkedin_post', 'tiktok_caption'):
-                    if _cp.get(_field):
-                        _cp[_field] = _re.sub(
-                            r'\[Link(?:\s*\w*)?\]',  # matches [Link], [Link aquí], etc.
-                            '',
-                            _cp[_field],
-                            flags=_re.IGNORECASE,
-                        ).strip()
+        # ── Phase 1.3: content validators ────────────────────────────────────
+        # Auto-clean what's safely fixable ([Link], "Tweet N:" prefixes, overlay
+        # formatting) and emit telemetry on what needs attention (wrong tweet
+        # count, char overflow, AI clichés). The cleaned dict is then validated
+        # by Pydantic. Future Phase 2/3 may trigger retries based on warnings.
+        from services.content_validators import clean_analysis
+        validation_stats = clean_analysis(result_dict)
+        print(f"🧹 Content validators: {validation_stats.summary_line()}")
+        if validation_stats.problems:
+            for p in validation_stats.problems[:5]:
+                print(f"   ⚠️ {p}")
+            if len(validation_stats.problems) > 5:
+                print(f"   ... +{len(validation_stats.problems) - 5} more")
+
+        # Phase 1.5: emit metrics to Sentry as breadcrumb + tag.
+        # Lets us build a dashboard "% of jobs with wrong_tweet_count > 0" and
+        # alert when quality regresses (e.g. after a prompt change).
+        try:
+            import sentry_sdk as _sentry
+            _sentry.add_breadcrumb(
+                category="content_quality",
+                message="content validators",
+                level="warning" if validation_stats.problems else "info",
+                data={
+                    "moments_checked": validation_stats.moments_checked,
+                    "model": model,
+                    "category": category,
+                    "links_stripped": validation_stats.links_stripped,
+                    "tweet_prefixes_stripped": validation_stats.tweet_prefixes_stripped,
+                    "overlay_fixes": validation_stats.overlay_truncated + validation_stats.overlay_uppercased,
+                    "wrong_tweet_count": validation_stats.wrong_tweet_count,
+                    "tweets_too_long": validation_stats.tweets_too_long,
+                    "tweets_too_short": validation_stats.tweets_too_short,
+                    "cliche_hits": validation_stats.cliche_hits,
+                    "linkedin_out_of_range": validation_stats.linkedin_out_of_range,
+                    "missing_twitter": validation_stats.missing_twitter,
+                    "missing_linkedin": validation_stats.missing_linkedin,
+                    "missing_tiktok_caption": validation_stats.missing_tiktok_caption,
+                },
+            )
+            # Tag the scope so the metric is queryable in Sentry's UI per-job
+            _sentry.set_tag("content_quality.has_problems", bool(validation_stats.problems))
+            _sentry.set_tag("content_quality.category", category)
+        except Exception as _e:
+            print(f"   (sentry telemetry skipped: {_e})")
 
         result = AnalysisResult(**result_dict)
         print(f"✅ Analysis complete: {len(result.viral_moments)} viral moments found")

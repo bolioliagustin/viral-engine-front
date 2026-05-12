@@ -186,17 +186,12 @@ def process_job(job_data: dict) -> None:
         update_job_progress(job_id, progress_percentage=65)
         check_timeout()  # C5
         
-        # Step 3.5: Quality Filter - Validate durations (Sprint 1)
-        # IMPORTANT: Populate start_time/end_time from surgical_clipping FIRST.
-        # Podcast/entertainment prompts use surgical_clipping instead of direct timestamps.
-        # If we validate before populating, all moments appear to have None timestamps and get dropped.
-        print("\n🔍 Step 3.5: Populating timestamps + quality filter...")
-        for moment in result.viral_moments:
-            if moment.start_time is None and hasattr(moment, 'surgical_clipping') and moment.surgical_clipping:
-                moment.start_time = int(moment.surgical_clipping.start_time)
-                moment.end_time = int(moment.surgical_clipping.end_time)
-                print(f"📋 Pre-populated timestamps from surgical_clipping: {moment.start_time}s - {moment.end_time}s")
-
+        # Step 3.5: Quality Filter - Validate durations
+        # Phase 1.1: surgical_clipping is now migrated to flat start_time/end_time
+        # inside processor.py BEFORE Pydantic validation, so timestamps are
+        # guaranteed to be populated here (the workaround that used to live
+        # in this step has been removed).
+        print("\n🔍 Step 3.5: Quality filter...")
         from services.validation import validate_durations
         result.viral_moments = validate_durations(result.viral_moments, min_duration=10)
 
@@ -618,46 +613,22 @@ def process_job(job_data: dict) -> None:
             if hasattr(moment, 'score_justifications') and moment.score_justifications:
                 justifications = [j.model_dump() if hasattr(j, 'model_dump') else j for j in moment.score_justifications]
             
-            # Get category for routing (default to entertainment if not set)
-            category = getattr(moment, 'category', 'entertainment')
-            if category is None:
-                category = 'entertainment'
-            
-            # ═══════════════════════════════════════════════════════
-            # 📂 CATEGORY NORMALIZATION & MAPPING
-            # ═══════════════════════════════════════════════════════
-            # Normalize to lowercase
+            # Phase 1.4: Binary categories — podcast or business (default).
+            # Both categories produce the full content package
+            # (Twitter + LinkedIn + TikTok caption). We save whatever the
+            # prompt actually filled, no category-based gating.
+            category = getattr(moment, 'category', None) or 'business'
             category = category.lower().strip()
-            
-            # Category aliases (map variations to canonical categories)
-            CATEGORY_ALIASES = {
-                'finance': 'business',
-                'finanzas': 'business',
-                'inversiones': 'business',
-                'startups': 'tech',
-                'tecnología': 'tech',
-                'comedy': 'entertainment',
-                'humor': 'entertainment',
-                'interview': 'podcast',
-                'entrevista': 'podcast',
-            }
-            
-            # Apply alias mapping
-            if category in CATEGORY_ALIASES:
-                original = category
-                category = CATEGORY_ALIASES[category]
-                print(f"   📝 Category mapped: {original} → {category}")
-            
-            # ═══════════════════════════════════════════════════════
-            # 🎯 CATEGORY ROUTER (Sprint 2 - Phase 4B)
-            # ═══════════════════════════════════════════════════════
-            print(f"\n📊 Category Router: {category.upper()}")
-            
-            # ALWAYS save Twitter thread (universal)
-            save_content_result(
+            if category not in ('podcast', 'business'):
+                # Legacy values (entertainment / tech / lifestyle) fall back
+                # silently — the business prompt was used anyway in this run.
+                category = 'business'
+
+            print(f"\n📊 Category: {category.upper()} — saving full content package")
+
+            # Common kwargs reused for every content_result row
+            common_kwargs = dict(
                 job_id=job_id,
-                content_type="twitter_thread",
-                content=moment.content_pieces.twitter_thread,
                 clip_url=clip_url,
                 start_time=moment.start_time,
                 end_time=moment.end_time,
@@ -675,78 +646,34 @@ def process_job(job_data: dict) -> None:
                 raw_clip_url=raw_clip_url_cache,
                 whisper_words=whisper_words_cache,
             )
-            
-            # Route platform-specific content based on category
-            if category in ['business', 'tech']:
-                # B2B Strategy: LinkedIn + Twitter
-                print(f"   → Routing to LinkedIn (B2B)")
-                if moment.content_pieces.linkedin_post:
-                    save_content_result(
-                        job_id=job_id,
-                        content_type="linkedin_post",
-                        content=moment.content_pieces.linkedin_post,
-                        clip_url=clip_url,
-                        start_time=moment.start_time,
-                        end_time=moment.end_time,
-                        hook=moment.hook,
-                        moment_index=moment_index,
-                        pillar_type=pillar,
-                        score_hook=scores.hook if scores else None,
-                        score_retention=scores.retention if scores else None,
-                        score_shareability=scores.shareability if scores else None,
-                        sentiment_detected=sentiment,
-                        roi_time_saved=roi_time,
-                        score_justifications=justifications,
-                        raw_clip_url=raw_clip_url_cache,
-                        whisper_words=whisper_words_cache,
-                    )
-                    
-            elif category in ['entertainment', 'podcast', 'lifestyle']:
-                # Viral Strategy: TikTok + Twitter
-                print(f"   → Routing to TikTok (Viral)")
-                if hasattr(moment.content_pieces, 'tiktok_caption') and moment.content_pieces.tiktok_caption:
-                    save_content_result(
-                        job_id=job_id,
-                        content_type="tiktok_caption",
-                        content=moment.content_pieces.tiktok_caption,
-                        clip_url=clip_url,
-                        start_time=moment.start_time,
-                        end_time=moment.end_time,
-                        hook=moment.hook,
-                        moment_index=moment_index,
-                        pillar_type=pillar,
-                        score_hook=scores.hook if scores else None,
-                        score_retention=scores.retention if scores else None,
-                        score_shareability=scores.shareability if scores else None,
-                        sentiment_detected=sentiment,
-                        roi_time_saved=roi_time,
-                        score_justifications=justifications,
-                        raw_clip_url=raw_clip_url_cache,
-                        whisper_words=whisper_words_cache,
-                    )
 
-            
-            # Save short script ONLY if not deprecated
-            if moment.content_pieces.short_video_script:
-                if "DEPRECATED" not in moment.content_pieces.short_video_script.upper():
-                    save_content_result(
-                        job_id=job_id,
-                        content_type="short_video_script",
-                        content=moment.content_pieces.short_video_script,
-                        clip_url=clip_url,
-                        start_time=moment.start_time,
-                        end_time=moment.end_time,
-                        moment_index=moment_index,
-                        pillar_type=pillar,
-                        score_hook=scores.hook if scores else None,
-                        score_retention=scores.retention if scores else None,
-                        score_shareability=scores.shareability if scores else None,
-                        sentiment_detected=sentiment,
-                        roi_time_saved=roi_time,
-                        score_justifications=justifications,
-                        raw_clip_url=raw_clip_url_cache,
-                        whisper_words=whisper_words_cache,
-                    )
+            # Twitter thread — always saved (universal)
+            if moment.content_pieces.twitter_thread:
+                save_content_result(
+                    content_type="twitter_thread",
+                    content=moment.content_pieces.twitter_thread,
+                    **common_kwargs,
+                )
+
+            # LinkedIn post — saved for BOTH categories (podcasters publish there too)
+            if moment.content_pieces.linkedin_post:
+                save_content_result(
+                    content_type="linkedin_post",
+                    content=moment.content_pieces.linkedin_post,
+                    **common_kwargs,
+                )
+
+            # TikTok caption — saved for BOTH categories (universal short-form)
+            tiktok_caption = getattr(moment.content_pieces, 'tiktok_caption', None)
+            if not tiktok_caption and getattr(moment, 'tiktok_package', None):
+                # Fallback: pull from tiktok_package if content_pieces didn't have it
+                tiktok_caption = moment.tiktok_package.caption
+            if tiktok_caption:
+                save_content_result(
+                    content_type="tiktok_caption",
+                    content=tiktok_caption,
+                    **common_kwargs,
+                )
         
         # Update status to completed
         update_job_progress(job_id, current_step="completed", progress_percentage=100)

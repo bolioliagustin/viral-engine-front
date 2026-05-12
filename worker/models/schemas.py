@@ -59,23 +59,33 @@ class Verification(BaseModel):
 
 
 class ViralMoment(BaseModel):
-    """A viral moment identified in the video"""
-    start_time: Optional[int] = None  # seconds (deprecated for entertainment, use surgical_clipping)
-    end_time: Optional[int] = None    # seconds (deprecated for entertainment, use surgical_clipping)
-    hook: str        # The viral hook/headline (long form, para thread/post)
-    viral_overlay: Optional[str] = None  # Hook cortísimo MAX 4 palabras UPPERCASE para quemar sobre el video vertical
+    """A viral moment identified in the video.
+
+    Canonical schema (Phase 1.1 — unified Podcast + Business):
+    - start_time / end_time are the ONLY source of truth for clip timing.
+      surgical_clipping is kept Optional for backward-compat but migrated
+      to flat fields in processor.py before validation.
+    - content_pieces always contains twitter_thread, linkedin_post and
+      tiktok_caption (each prompt is responsible for filling them).
+    - tiktok_package is filled by every category (TikTok overlay is universal).
+    """
+    start_time: Optional[int] = None  # Canonical clip start (seconds)
+    end_time: Optional[int] = None    # Canonical clip end (seconds)
+    clipping_reason: Optional[str] = None  # Why this specific [start,end] range was chosen
+    hook: str        # Viral hook/headline (long form, for thread/post)
+    viral_overlay: Optional[str] = None  # MAX 4 words UPPERCASE — burnt onto vertical video
     emotional_trigger: str  # Why this moment is viral-worthy
     pillar_type: Optional[str] = None  # 'authority' | 'utility' | 'connection' | 'entertainment'
-    category: Optional[str] = None  # 'business' | 'entertainment' | 'tech' | 'lifestyle'
+    category: Optional[str] = None  # 'podcast' | 'business' (canonical) — anything else falls back to business
     scores: Optional[ViralScores] = None
-    score_justifications: Optional[List[ScoreJustification]] = None  # Phase B: Explainable scores
-    roi_time_saved: Optional[int] = None  # Phase B: Minutes saved vs manual creation
-    sentiment_detected: Optional[str] = None  # Phase B: "sarcastic", "serious", "motivational", "casual"
-    time_saved_estimate: Optional[int] = None  # Deprecated: use roi_time_saved
-    # Surgical Precision & Platform Relevance (Entertainment)
-    surgical_clipping: Optional[SurgicalClipping] = None  # Flexible duration clipping
-    tiktok_package: Optional[TikTokPackage] = None  # TikTok/Reels strategy
-    editing_cues: Optional[List[EditingCue]] = None  # Specific editing instructions
+    score_justifications: Optional[List[ScoreJustification]] = None  # Explainable scores
+    roi_time_saved: Optional[int] = None  # Minutes saved vs manual creation
+    sentiment_detected: Optional[str] = None  # "sarcastic" | "serious" | "motivational" | "casual"
+    time_saved_estimate: Optional[int] = None  # DEPRECATED — use roi_time_saved
+    # Back-compat fields (still accepted, migrated to canonical fields pre-validation)
+    surgical_clipping: Optional[SurgicalClipping] = None
+    tiktok_package: Optional[TikTokPackage] = None  # Universal TikTok strategy
+    editing_cues: Optional[List[EditingCue]] = None  # Informational only
     content_pieces: ContentPieces
     # Sprint 2: Fidelity & Verification
     verification: Optional[Verification] = None  # Validates AI didn't hallucinate
