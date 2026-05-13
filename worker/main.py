@@ -215,6 +215,10 @@ def process_job(job_data: dict) -> None:
         stream_urls = None
         video_path = None
         muxed_video_path = None
+        # Flag: if the first partial-download attempt fails (timeout / network),
+        # don't retry it for every subsequent clip in this job. Otherwise we
+        # eat one 8-min watchdog per clip = 40+ min wasted on a single job.
+        partial_download_failed = False
         video_duration = video_info.get("duration", 0) or 1
 
         # Intentar obtener stream URLs para fallback (partial download)
@@ -277,7 +281,10 @@ def process_job(job_data: dict) -> None:
                         seg_path = None
 
                         # ── Intento 2: partial download desde byte 0 ──────────
-                        if stream_urls and not muxed_video_path:
+                        # Solo intentamos UNA vez por job — si falla, el flag
+                        # partial_download_failed evita reintentar (cada intento
+                        # cuesta hasta 8 min de timeout del watchdog).
+                        if stream_urls and not muxed_video_path and not partial_download_failed:
                             try:
                                 import subprocess as _sp, shutil as _sh
                                 _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
@@ -307,7 +314,9 @@ def process_job(job_data: dict) -> None:
                                 print(f"   ✅ Partial download: {Path(muxed_video_path).stat().st_size // (1<<20)}MB")
                             except Exception as e_partial:
                                 print(f"   ⚠️ Partial download falló: {e_partial}")
+                                print(f"   🚫 No reintentaremos partial download para los clips restantes de este job")
                                 muxed_video_path = None
+                                partial_download_failed = True
 
                         if muxed_video_path and Path(muxed_video_path).exists():
                             src_path = muxed_video_path

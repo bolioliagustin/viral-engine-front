@@ -313,6 +313,10 @@ def claim_next_clip_edit() -> Optional[dict]:
         return upd.data[0]
     except Exception as e:
         print(f"⚠️ claim_next_clip_edit failed: {e}")
+        # HTTP/2 GOAWAY / "Server disconnected" — fuerza reconexión en la
+        # próxima llamada en vez de seguir usando el cliente roto.
+        if _is_connection_error(e):
+            reset_supabase()
         return None
 
 
