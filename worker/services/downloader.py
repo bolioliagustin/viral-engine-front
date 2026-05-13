@@ -287,6 +287,130 @@ def _stream_download(url: str, out_path: Path, label: str = "") -> None:
     _parallel_download(url, out_path, label=label)
 
 
+def _download_with_progress(
+    url: str,
+    out_path: Path,
+    label: str = "audio",
+    *,
+    try_direct_first: bool = True,
+    overall_timeout_sec: int = 360,
+    stall_timeout_sec: int = 60,
+    log_interval_sec: float = 5.0,
+) -> None:
+    """
+    Single-connection sequential downloader con diagnóstico detallado.
+
+    Logs progreso (bytes recibidos, throughput, %) cada `log_interval_sec`
+    para entender exactamente qué pasa con descargas lentas.
+
+    Estrategia (cuando hay proxy configurado y try_direct_first=True):
+      1. Intento DIRECT (sin proxy) — googlevideo CDN normalmente no IP-banea
+         para descarga de bytes, solo el watch page. Suele ser MUCHO más rápido.
+      2. Si direct falla (403, etc), cae a proxy residencial.
+
+    Si no hay proxy configurado, baja directo siempre.
+
+    Raises:
+        RuntimeError si todos los intentos fallan o se estancó.
+    """
+    proxy = _get_proxy_url()
+    strategies: list[tuple[str, str | None]] = []
+    if try_direct_first or not proxy:
+        strategies.append(("direct", None))
+    if proxy:
+        strategies.append(("proxy", proxy))
+    if not strategies:
+        strategies.append(("direct", None))
+
+    headers = {
+        "User-Agent": _DEFAULT_UA,
+        # Pedimos identity para que el Content-Length sea fiable (gzip estaría
+        # raro en audio binario pero más vale prevenir)
+        "Accept-Encoding": "identity",
+    }
+
+    last_err: Exception | None = None
+    for strategy_name, proxy_url in strategies:
+        print(f"   🎯 {label}: intentando vía '{strategy_name}'...")
+        try:
+            if proxy_url:
+                opener = build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
+                _open = lambda r, t=60: opener.open(r, timeout=t)
+            else:
+                _open = lambda r, t=60: urlopen(r, timeout=t)
+
+            # HEAD para conocer tamaño esperado (se reporta en logs)
+            head_req = Request(url, method="HEAD", headers=headers)
+            with _open(head_req, 30) as r:
+                total = int(r.headers.get("Content-Length", 0))
+            if total <= 0:
+                raise RuntimeError("Content-Length inválido o no informado")
+            print(f"   📦 {label} [{strategy_name}]: {total // (1<<20)}MB esperados")
+
+            # Descarga secuencial — pedimos el archivo entero con un solo GET
+            get_req = Request(url, headers=headers)
+            t0 = time.time()
+            last_log = t0
+            last_byte_time = t0
+            received = 0
+
+            with _open(get_req, 60) as r, open(out_path, "wb") as f:
+                while True:
+                    # Chequeo de deadline global
+                    elapsed = time.time() - t0
+                    if elapsed > overall_timeout_sec:
+                        raise TimeoutError(
+                            f"deadline global {overall_timeout_sec}s "
+                            f"({received // (1<<20)}MB recibidos)"
+                        )
+
+                    chunk = r.read(1 << 16)  # 64KB
+                    now = time.time()
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    received += len(chunk)
+                    last_byte_time = now
+
+                    if now - last_log >= log_interval_sec:
+                        pct = (received / total * 100) if total else 0
+                        speed = received / max(elapsed, 0.01) / (1 << 20)
+                        print(
+                            f"   📊 {label} [{strategy_name}]: "
+                            f"{received // (1<<20)}MB / {total // (1<<20)}MB "
+                            f"({pct:.0f}%) — {speed:.2f}MB/s "
+                            f"en {elapsed:.0f}s"
+                        )
+                        last_log = now
+
+            elapsed = time.time() - t0
+            mb = received / (1 << 20)
+            speed = mb / max(elapsed, 0.01)
+            print(
+                f"   ✅ {label} [{strategy_name}]: {mb:.1f}MB en {elapsed:.1f}s ({speed:.2f}MB/s)"
+            )
+            if received < total * 0.99:
+                # Recibimos significativamente menos de lo esperado — el servidor
+                # cortó la conexión.
+                raise RuntimeError(
+                    f"truncado: {received}/{total} bytes ({received/total*100:.0f}%)"
+                )
+            return  # éxito — no probamos las siguientes estrategias
+
+        except Exception as e:
+            last_err = e
+            err_msg = str(e)[:150]
+            print(f"   ❌ {label} [{strategy_name}] falló: {err_msg}")
+            # Limpio out_path para no dejar bytes parciales basura
+            try:
+                if out_path.exists():
+                    out_path.unlink()
+            except Exception:
+                pass
+
+    raise RuntimeError(f"todas las estrategias fallaron para {label}: {last_err}")
+
+
 def download_video_rapidapi(video_url: str, video_id: str = None, max_height: int = 720) -> str:
     """
     Fallback: descarga vía RapidAPI YT-API (yt-api.p.rapidapi.com).
@@ -595,15 +719,21 @@ def download_video_for_clips(
     aud_path = DOWNLOADS_DIR / f"{video_id}_paud.m4a"
 
     t0 = time.time()
-    # Audio: SINGLE-THREADED a propósito. Empíricamente googlevideo throttea
-    # (o desconecta silenciosamente) conexiones audio paralelas sobre proxy
-    # residencial — el watchdog tuvo que cortar 4/5 chunks a los 8 min.
-    # Con 1 sola conexión secuencial el audio baja sin problemas. Sólo es ~80MB
-    # típicos, se tolera el tiempo extra a cambio de fiabilidad.
-    # Video sigue con 8 chunks paralelos (no presenta este problema y baja a 80+ MB/s).
+    # Estrategia híbrida (Fase 1.6 v2):
+    #   - VIDEO: 8 chunks paralelos vía proxy. Probado: ~40-80 MB/s, no se cuelga.
+    #     YouTube exige proxy para evitar IP-ban del watch page, pero una vez que
+    #     tenemos URL firmada el video baja rápido.
+    #   - AUDIO: descarga secuencial con _download_with_progress, intentando
+    #     PRIMERO sin proxy (googlevideo CDN de audio raramente IP-banea).
+    #     Fallback a proxy si direct falla.
+    #     Esto debería resolver el caso donde el audio se cuelga vía proxy.
     with ThreadPoolExecutor(max_workers=2) as ex:
         fv = ex.submit(_parallel_download, video_url, vid_path, 8, "video", vid_end_byte)
-        fa = ex.submit(_parallel_download, audio_url, aud_path, 1, "audio", aud_end_byte)
+        fa = ex.submit(
+            _download_with_progress, audio_url, aud_path, "audio",
+            try_direct_first=True,
+            overall_timeout_sec=360,
+        )
         fv.result()
         fa.result()
 
