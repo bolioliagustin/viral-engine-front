@@ -314,23 +314,44 @@ def _download_with_progress(
         RuntimeError si todos los intentos fallan o se estancó.
     """
     proxy = _get_proxy_url()
-    strategies: list[tuple[str, str | None]] = []
+    # Estrategias en orden:
+    # 1. direct-yt   = direct + headers de YouTube (Referer/Origin/Sec-Fetch).
+    #                  googlevideo a veces 403ea sin estos headers; con ellos
+    #                  el request se ve como un browser cargando media desde
+    #                  una página de YouTube → más probable que pase.
+    # 2. direct      = direct con UA simple (fallback por si los yt-headers
+    #                  confunden al CDN, lo cual sería raro pero defensivo).
+    # 3. proxy       = vía proxy residencial (último recurso).
+    strategies: list[tuple[str, str | None, bool]] = []
     if try_direct_first or not proxy:
-        strategies.append(("direct", None))
+        strategies.append(("direct-yt", None, True))
+        strategies.append(("direct", None, False))
     if proxy:
-        strategies.append(("proxy", proxy))
+        strategies.append(("proxy", proxy, False))
     if not strategies:
-        strategies.append(("direct", None))
+        strategies.append(("direct-yt", None, True))
 
-    headers = {
+    plain_headers = {
         "User-Agent": _DEFAULT_UA,
-        # Pedimos identity para que el Content-Length sea fiable (gzip estaría
-        # raro en audio binario pero más vale prevenir)
         "Accept-Encoding": "identity",
+    }
+    yt_headers = {
+        **plain_headers,
+        # Pretendemos ser un browser cargando media desde youtube.com
+        "Origin": "https://www.youtube.com",
+        "Referer": "https://www.youtube.com/",
+        "Sec-Fetch-Mode": "no-cors",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-Dest": "audio",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        # Range header le ayuda a googlevideo a entender que queremos descarga
+        # de media (algunas rutas del CDN responden mejor con esto)
+        "Range": "bytes=0-",
     }
 
     last_err: Exception | None = None
-    for strategy_name, proxy_url in strategies:
+    for strategy_name, proxy_url, use_yt_headers in strategies:
         print(f"   🎯 {label}: intentando vía '{strategy_name}'...")
         try:
             if proxy_url:
@@ -339,8 +360,11 @@ def _download_with_progress(
             else:
                 _open = lambda r, t=60: urlopen(r, timeout=t)
 
-            # HEAD para conocer tamaño esperado (se reporta en logs)
-            head_req = Request(url, method="HEAD", headers=headers)
+            headers = yt_headers if use_yt_headers else plain_headers
+
+            # HEAD: NO mandamos Range en HEAD (algunos servidores lo rechazan).
+            head_hdrs = {k: v for k, v in headers.items() if k.lower() != "range"}
+            head_req = Request(url, method="HEAD", headers=head_hdrs)
             with _open(head_req, 30) as r:
                 total = int(r.headers.get("Content-Length", 0))
             if total <= 0:
