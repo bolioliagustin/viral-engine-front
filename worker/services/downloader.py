@@ -672,15 +672,47 @@ def download_video(video_url: str, video_id: str = None) -> str:
 
 
 def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
-    """Download via yt-dlp (original implementation)."""
+    """Download via yt-dlp con cascada de formatos muy permisiva.
+
+    En 2025 con cookies + player_client cascada, los formatos disponibles
+    varían mucho entre tv/ios/web. El selector empieza muy específico
+    (720p adaptive avc1) y va relajando hasta llegar a 'worst' como
+    último recurso. Cualquier MP4 utilizable sirve.
+    """
+    # Cascada de formatos: del ideal al "lo que sea"
+    fmt_cascade = (
+        # Adaptive 720p AVC + AAC (mejor calidad+compatibilidad)
+        'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
+        # Adaptive 720p cualquier codec
+        'bestvideo[height<=720]+bestaudio/'
+        # Adaptive 480p / 360p
+        'bestvideo[height<=480]+bestaudio/'
+        'bestvideo[height<=360]+bestaudio/'
+        # Progressive (single file con audio embebido) 720p
+        'best[height<=720][ext=mp4]/'
+        'best[height<=720]/'
+        # Progressive lower res
+        'best[height<=480]/'
+        'best[height<=360]/'
+        # Cualquier adaptive
+        'bestvideo+bestaudio/'
+        # Cualquier progressive
+        'best/'
+        # Lo que sea (incluso 144p)
+        'worst'
+    )
+
     ydl_opts = _build_ydl_opts({
-        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+        'format': fmt_cascade,
         'outtmpl': str(DOWNLOADS_DIR / '%(id)s_video.%(ext)s'),
         'ffmpeg_location': FFMPEG_LOCATION,
         'merge_output_format': 'mp4',
         'quiet': False,
         'no_warnings': False,
         'nocheckcertificate': True,
+        # Verbose para ver QUÉ formatos están disponibles cuando algo va mal.
+        # En producción esto agrega log noise pero es invaluable para diagnostico.
+        'verbose': False,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -688,23 +720,53 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
         }
     })
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=True)
-        if not video_id:
-            video_id = info['id']
+    # Si yt-dlp falla, intentamos extraer info SIN download para ver qué tiene
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=True)
+            if not video_id:
+                video_id = info['id']
+    except yt_dlp.utils.DownloadError as e:
+        # Si fue "Requested format is not available", listamos los formatos
+        # disponibles para diagnosticar (info_dict mode, sin descargar)
+        err_str = str(e)
+        if "format is not available" in err_str.lower() or "no video format" in err_str.lower():
+            try:
+                probe_opts = _build_ydl_opts({
+                    'listformats': False,
+                    'quiet': True,
+                    'no_warnings': True,
+                })
+                with yt_dlp.YoutubeDL(probe_opts) as probe:
+                    info = probe.extract_info(video_url, download=False)
+                    formats = info.get('formats', [])
+                    print(f"📋 yt-dlp probe: {len(formats)} formatos disponibles")
+                    # Mostrar los primeros 5 para diagnóstico
+                    for f in formats[:10]:
+                        print(f"   • id={f.get('format_id')} "
+                              f"ext={f.get('ext')} "
+                              f"res={f.get('resolution', f.get('format_note', '?'))} "
+                              f"vcodec={f.get('vcodec', 'none')[:10]} "
+                              f"acodec={f.get('acodec', 'none')[:10]} "
+                              f"filesize={f.get('filesize') or '?'}")
+                    if len(formats) > 10:
+                        print(f"   ... +{len(formats) - 10} más")
+            except Exception as probe_err:
+                print(f"⚠️ También falló el probe: {str(probe_err)[:120]}")
+        raise
 
-        video_path = DOWNLOADS_DIR / f"{video_id}_video.mp4"
-        if not video_path.exists():
-            for ext in ['webm', 'mkv']:
-                alt = DOWNLOADS_DIR / f"{video_id}_video.{ext}"
-                if alt.exists():
-                    video_path = alt
-                    break
+    video_path = DOWNLOADS_DIR / f"{video_id}_video.mp4"
+    if not video_path.exists():
+        for ext in ['webm', 'mkv']:
+            alt = DOWNLOADS_DIR / f"{video_id}_video.{ext}"
+            if alt.exists():
+                video_path = alt
+                break
 
-        if not video_path.exists():
-            raise FileNotFoundError(f"Downloaded video file not found for {video_id}")
+    if not video_path.exists():
+        raise FileNotFoundError(f"Downloaded video file not found for {video_id}")
 
-        return str(video_path)
+    return str(video_path)
 
 
 def download_clip_ytdlp(
