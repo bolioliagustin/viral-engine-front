@@ -22,17 +22,65 @@ DOWNLOADS_DIR = Path(__file__).parent.parent / "downloads"
 COOKIES_FILE = Path(__file__).parent.parent / "cookies.txt"
 
 
+def _get_proxy_list() -> list[str]:
+    """
+    Devuelve TODOS los proxies configurados, en orden.
+
+    Soporta varios formatos para que el usuario pueda configurar 1 o N proxies:
+
+    1. WEBSHARE_PROXY_FILE=/path/a/proxies.txt
+       - Archivo con UN proxy por línea (formato: http://user:pass@host:port)
+       - Líneas vacías o con # se ignoran
+       - Ideal para 20+ proxies de Webshare
+
+    2. WEBSHARE_PROXY_LIST="http://...,http://...,http://..."
+       - Lista separada por comas o newlines en una sola env var
+       - Práctico para 2-5 proxies
+
+    3. WEBSHARE_PROXY_URL=http://user:pass@host:port  (legacy)
+       - Un solo proxy. Backward-compat.
+    """
+    import re as _re
+
+    # 1. Archivo
+    path = os.getenv("WEBSHARE_PROXY_FILE")
+    if path:
+        try:
+            from pathlib import Path as _P
+            lines = _P(path).read_text(encoding="utf-8").splitlines()
+            urls = [
+                ln.strip() for ln in lines
+                if ln.strip() and not ln.strip().startswith("#")
+            ]
+            if urls:
+                return urls
+        except Exception as e:
+            print(f"⚠️ No se pudo leer WEBSHARE_PROXY_FILE={path}: {e}")
+
+    # 2. Lista inline
+    multi = os.getenv("WEBSHARE_PROXY_LIST", "")
+    if multi:
+        urls = [u.strip() for u in _re.split(r"[,\n]", multi) if u.strip()]
+        if urls:
+            return urls
+
+    # 3. Single (legacy)
+    single = os.getenv("WEBSHARE_PROXY_URL") or os.getenv("HTTP_PROXY_URL")
+    if single:
+        return [single.strip()]
+
+    return []
+
+
 def _get_proxy_url() -> str | None:
     """
-    Proxy residencial para bypassear IP bans de YouTube/googlevideo desde datacenters.
-    Formato esperado: http://user:pass@host:port (ej: Webshare rotating residential).
+    Backward-compat: devuelve el primer proxy de la lista, o None.
 
-    Aplica a:
-      - Chunks de googlevideo en _parallel_download()
-      - yt-dlp (fallback de transcript y descarga)
+    Para descargas que se beneficien de paralelizar entre proxies, usar
+    _get_proxy_list() directamente.
     """
-    url = os.getenv("WEBSHARE_PROXY_URL") or os.getenv("HTTP_PROXY_URL")
-    return url.strip() if url else None
+    lst = _get_proxy_list()
+    return lst[0] if lst else None
 
 
 def _urlopen_maybe_proxied(req, timeout: int = 30):
@@ -182,22 +230,40 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
     """
     Descarga un archivo usando HTTP Range requests en paralelo.
 
+    PROXY ROTATION (Fase 1.6 v4):
+    Si hay múltiples proxies configurados (WEBSHARE_PROXY_FILE / WEBSHARE_PROXY_LIST),
+    cada chunk se enruta por un proxy distinto vía round-robin. Esto:
+      - Multiplica el throughput total (cada proxy contribuye su bandwidth)
+      - Da fault tolerance: si un proxy IP está rate-limiteado por googlevideo
+        para una URL específica, los otros chunks pueden completar
+      - En el retry, cada chunk prueba con el SIGUIENTE proxy de la lista
+        (no insiste con el mismo que falló)
+
     end_byte: si se pasa, descarga solo hasta ese byte (descarga parcial).
               Si None, descarga el archivo completo.
-
-    googlevideo throttlea conexiones individuales a ~4MB/min. Con N conexiones
-    paralelas lográs ~N * 4MB/min. Con 8 chunks ≈ 32MB/min = 40MB en 75s.
     """
-    proxy = _get_proxy_url()
-    if proxy:
-        opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
-        _open = lambda r, t=30: opener.open(r, timeout=t)
-        print(f"   🌐 {label}: vía proxy residencial")
-    else:
-        _open = lambda r, t=30: urlopen(r, timeout=t)
+    proxies = _get_proxy_list()
+    n_proxies = len(proxies) if proxies else 0
 
+    def _make_opener(proxy_url: str | None):
+        if proxy_url:
+            return build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
+        return None
+
+    # Pre-build openers (una vez para reusar)
+    openers = [_make_opener(p) for p in proxies] if proxies else [None]
+
+    def _open_with(opener, req, timeout=30):
+        if opener:
+            return opener.open(req, timeout=timeout)
+        return urlopen(req, timeout=timeout)
+
+    # HEAD vía primer proxy (o directo) para conocer tamaño
+    if n_proxies > 0:
+        print(f"   🌐 {label}: pool de {n_proxies} proxies disponibles")
+    head_opener = openers[0]
     req = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
-    with _open(req, 30) as r:
+    with _open_with(head_opener, req, 30) as r:
         total = int(r.headers.get("Content-Length", 0))
     if total <= 0:
         raise RuntimeError(f"{label}: no se pudo determinar Content-Length")
@@ -222,25 +288,37 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
     tmp_dir.mkdir()
 
     size_label = f"{effective_total // (1<<20)}MB" + (f" de {total // (1<<20)}MB" if end_byte else "")
-    print(f"   ⬇️ {label}: {size_label} en {len(ranges)} chunks paralelos")
+    proxy_label = (
+        f" cada uno via proxy distinto (round-robin sobre {n_proxies})"
+        if n_proxies > 1 else ""
+    )
+    print(f"   ⬇️ {label}: {size_label} en {len(ranges)} chunks paralelos{proxy_label}")
     t0 = time.time()
 
     def fetch(i: int, s: int, e: int) -> Path:
         tmp = tmp_dir / f"chunk_{i:04d}"
         last_err = None
         for attempt in range(3):
+            # Round-robin: chunk i en el intento N usa el proxy (i + N) mod n_openers.
+            # Así si chunk 0 falla con proxy 0, reintenta con proxy 1, después 2.
+            # Y dos chunks distintos arrancan por proxies distintos en el primer intento.
+            opener_idx = (i + attempt) % len(openers)
+            opener = openers[opener_idx]
             try:
                 rq = Request(url, headers={
                     "User-Agent": _DEFAULT_UA,
                     "Range": f"bytes={s}-{e}",
                 })
-                with _open(rq, 180) as r, open(tmp, "wb") as f:
+                with _open_with(opener, rq, 180) as r, open(tmp, "wb") as f:
                     shutil.copyfileobj(r, f, 1 << 20)
                 if tmp.stat().st_size != (e - s + 1):
                     raise IOError(f"chunk {i} size mismatch: got {tmp.stat().st_size}, expected {e-s+1}")
                 return tmp
             except Exception as ex:
                 last_err = ex
+                # Solo logueamos en retries (no spam en éxito al primer intento)
+                if attempt > 0:
+                    print(f"   ↻ {label} chunk {i}: retry {attempt+1}/3 (proxy idx {opener_idx}): {str(ex)[:80]}")
                 time.sleep(1 + attempt)
         raise RuntimeError(f"chunk {i} failed after 3 attempts: {last_err}")
 
@@ -313,21 +391,23 @@ def _download_with_progress(
     Raises:
         RuntimeError si todos los intentos fallan o se estancó.
     """
-    proxy = _get_proxy_url()
+    proxies = _get_proxy_list()
     # Estrategias en orden:
-    # 1. direct-yt   = direct + headers de YouTube (Referer/Origin/Sec-Fetch).
-    #                  googlevideo a veces 403ea sin estos headers; con ellos
-    #                  el request se ve como un browser cargando media desde
-    #                  una página de YouTube → más probable que pase.
-    # 2. direct      = direct con UA simple (fallback por si los yt-headers
-    #                  confunden al CDN, lo cual sería raro pero defensivo).
-    # 3. proxy       = vía proxy residencial (último recurso).
+    # 1. direct-yt    = direct + headers de YouTube (Referer/Origin/Sec-Fetch).
+    #                   googlevideo a veces 403ea sin estos headers.
+    # 2. direct       = direct con UA simple (fallback).
+    # 3. proxy[0..N]  = cada proxy de la lista, uno a uno.
+    #                   Si un proxy está rate-limiteado por googlevideo para
+    #                   esa URL específica, el siguiente puede tener throughput
+    #                   normal (distinta IP = distinta tupla de rate-limit).
     strategies: list[tuple[str, str | None, bool]] = []
-    if try_direct_first or not proxy:
+    if try_direct_first or not proxies:
         strategies.append(("direct-yt", None, True))
         strategies.append(("direct", None, False))
-    if proxy:
-        strategies.append(("proxy", proxy, False))
+    for i, p in enumerate(proxies):
+        # Label "proxy[1/20]", "proxy[2/20]", etc. para que se vea en logs
+        name = f"proxy[{i+1}/{len(proxies)}]" if len(proxies) > 1 else "proxy"
+        strategies.append((name, p, False))
     if not strategies:
         strategies.append(("direct-yt", None, True))
 
@@ -378,14 +458,29 @@ def _download_with_progress(
             last_byte_time = t0
             received = 0
 
+            # Fail-fast checkpoints: si a los 30s tenemos <5MB, este proxy
+            # va a tardar demasiado — abandonar y probar el siguiente.
+            # 5MB en 30s = 167 KB/s mínimo. Por debajo de eso (caso actual:
+            # 30 KB/s), 82MB tardarían 45 min → mejor abandonar acá.
+            EARLY_CHECKPOINT_SEC = 30
+            EARLY_MIN_BYTES = 5 * (1 << 20)
+
             with _open(get_req, 60) as r, open(out_path, "wb") as f:
                 while True:
-                    # Chequeo de deadline global
                     elapsed = time.time() - t0
+
+                    # Deadline global
                     if elapsed > overall_timeout_sec:
                         raise TimeoutError(
                             f"deadline global {overall_timeout_sec}s "
                             f"({received // (1<<20)}MB recibidos)"
+                        )
+
+                    # Fail-fast: muy poca data tras 30s = proxy throttled
+                    if elapsed > EARLY_CHECKPOINT_SEC and received < EARLY_MIN_BYTES:
+                        raise TimeoutError(
+                            f"fail-fast: solo {received // (1<<20)}MB en "
+                            f"{elapsed:.0f}s — proxy throttled, probando siguiente"
                         )
 
                     chunk = r.read(1 << 16)  # 64KB
