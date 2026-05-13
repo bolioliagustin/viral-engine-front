@@ -32,7 +32,19 @@ validate_env()
 
 # Add parent to path for imports
 
-from services.downloader import download_audio, download_video, get_stream_urls, download_clip_ytdlp, download_video_for_clips, cleanup_all
+from services.downloader import (
+    download_audio,
+    download_video,
+    get_stream_urls,
+    download_clip_ytdlp,
+    download_video_for_clips,
+    cleanup_all,
+)
+# _download_video_ytdlp es interno pero lo usamos como primer intento del
+# pipeline de descarga: si yt-dlp logra bajar el video completo (audio+video
+# mergeados) en un solo MP4, evitamos por completo el problema del proxy
+# residencial throttleando audio (30 KB/s) en la descarga parcial split.
+from services.downloader import _download_video_ytdlp
 from services.processor import analyze_with_gemini, cleanup_uploaded_file
 from services.clipper import extract_clip, cleanup_clips
 from services.clip_generator import generate_clip, ClipGenerationError
@@ -206,15 +218,16 @@ def process_job(job_data: dict) -> None:
         #     validate_against_transcript(moment, transcript)
         
         # Step 4: Preparar para clipping.
-        # Estrategia (Fase 1.6, revisada):
-        #   1. PRIMARY: una sola partial download upfront del video (0 → max_end).
-        #      Usa stream URLs (yt-dlp con player_client=[tv,ios,web] o fallback
-        #      RapidAPI), que vienen firmadas y son estables. Descarga ~150-300MB
-        #      una sola vez por job, todos los clips re-usan el archivo.
-        #   2. BACKUP: yt-dlp per-clip si la partial download falla. En 2025 esto
-        #      suele tirar "Requested format is not available" en datacenters,
-        #      pero con el nuevo player_client puede recuperarse.
-        #   3. FALLBACK final: deep-link de YouTube con &t=startSec (sin MP4).
+        # Estrategia (Fase 1.6 v3):
+        #   1. PRIMARY: yt-dlp full download (audio+video mergeados en 1 MP4).
+        #      yt-dlp tiene su propio downloader interno, no usa nuestro
+        #      _parallel_download. Suele evadir el throttle de audio del proxy
+        #      residencial. Con player_client=[tv,ios,web] funciona en 2025.
+        #   2. SECONDARY: partial download (stream URLs split video+audio).
+        #      Más rápido EN TEORÍA pero el audio se cuelga 30 KB/s vía proxy.
+        #      Lo dejamos como fallback por si yt-dlp se rompe en el futuro.
+        #   3. BACKUP per-clip: yt-dlp download_ranges (rápido cuando funciona).
+        #   4. FALLBACK final: deep-link de YouTube (sin MP4, mantiene el job vivo).
         supabase = get_supabase()
         print("\n📹 Step 4: Preparando descarga del video...")
         update_job_progress(job_id, current_step="clipping", progress_percentage=70)
@@ -226,16 +239,34 @@ def process_job(job_data: dict) -> None:
         partial_download_failed = False
         video_duration = video_info.get("duration", 0) or 1
 
-        # Stream URLs (yt-dlp → RapidAPI fallback)
+        # ── PRIMARY: yt-dlp full download (audio+video merged) ─────────────
+        # yt-dlp tiene su propio downloader con chunking interno robusto.
+        # Si funciona acá, evitamos por completo el proxy throttling de audio.
         try:
-            stream_urls = get_stream_urls(video_url, video_id)
-        except Exception as e:
-            print(f"ℹ️ Stream URLs no disponibles ({e}), se usará yt-dlp directo")
+            print("🎬 Intentando descarga full vía yt-dlp (audio+video merged)...")
+            t_ytdlp = time.time()
+            muxed_video_path = _download_video_ytdlp(video_url, video_id)
+            size_mb = Path(muxed_video_path).stat().st_size / (1 << 20)
+            elapsed = time.time() - t_ytdlp
+            print(f"✅ yt-dlp full download: {size_mb:.0f}MB en {elapsed:.0f}s ({size_mb/max(elapsed,0.01):.1f}MB/s)")
+        except Exception as e_ytdlp_full:
+            print(f"⚠️ yt-dlp full download falló: {str(e_ytdlp_full)[:200]}")
+            print(f"🔄 Cayendo a Plan B: partial download con stream URLs split")
+            muxed_video_path = None
+
+        # ── SECONDARY: Stream URLs + partial download ──────────────────────
+        # Solo si yt-dlp full falló. Esto es lo que tenemos hoy funcionando
+        # parcialmente (video rápido, audio lentísimo vía proxy).
+        if not muxed_video_path:
+            try:
+                stream_urls = get_stream_urls(video_url, video_id)
+            except Exception as e:
+                print(f"ℹ️ Stream URLs no disponibles ({e}), se usará yt-dlp directo")
 
         # PARTIAL DOWNLOAD UPFRONT (Fase 1.6):
         # Descargamos una sola vez ahora para todos los clips, en lugar de
         # reintentar el yt-dlp roto y caer al partial download per-clip.
-        if stream_urls:
+        if stream_urls and not muxed_video_path:
             try:
                 import subprocess as _sp, shutil as _sh
                 _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
