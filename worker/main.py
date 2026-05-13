@@ -206,26 +206,72 @@ def process_job(job_data: dict) -> None:
         #     validate_against_transcript(moment, transcript)
         
         # Step 4: Preparar para clipping.
-        # Estrategia: yt-dlp con proxy + download_ranges descarga ~50MB por clip
-        # (solo los segmentos DASH del rango pedido). Si yt-dlp falla, fallback
-        # a descarga parcial desde byte 0 (más grande pero válida).
+        # Estrategia (Fase 1.6, revisada):
+        #   1. PRIMARY: una sola partial download upfront del video (0 → max_end).
+        #      Usa stream URLs (yt-dlp con player_client=[tv,ios,web] o fallback
+        #      RapidAPI), que vienen firmadas y son estables. Descarga ~150-300MB
+        #      una sola vez por job, todos los clips re-usan el archivo.
+        #   2. BACKUP: yt-dlp per-clip si la partial download falla. En 2025 esto
+        #      suele tirar "Requested format is not available" en datacenters,
+        #      pero con el nuevo player_client puede recuperarse.
+        #   3. FALLBACK final: deep-link de YouTube con &t=startSec (sin MP4).
         supabase = get_supabase()
-        print("\n📹 Step 4: Preparando descarga selectiva por clip...")
+        print("\n📹 Step 4: Preparando descarga del video...")
         update_job_progress(job_id, current_step="clipping", progress_percentage=70)
         stream_urls = None
         video_path = None
         muxed_video_path = None
-        # Flag: if the first partial-download attempt fails (timeout / network),
-        # don't retry it for every subsequent clip in this job. Otherwise we
-        # eat one 8-min watchdog per clip = 40+ min wasted on a single job.
+        # Flag para que si la partial falla en el upfront, no la reintentamos
+        # per-clip (cada intento puede comer hasta 8 min del watchdog).
         partial_download_failed = False
         video_duration = video_info.get("duration", 0) or 1
 
-        # Intentar obtener stream URLs para fallback (partial download)
+        # Stream URLs (yt-dlp → RapidAPI fallback)
         try:
             stream_urls = get_stream_urls(video_url, video_id)
         except Exception as e:
             print(f"ℹ️ Stream URLs no disponibles ({e}), se usará yt-dlp directo")
+
+        # PARTIAL DOWNLOAD UPFRONT (Fase 1.6):
+        # Descargamos una sola vez ahora para todos los clips, en lugar de
+        # reintentar el yt-dlp roto y caer al partial download per-clip.
+        if stream_urls:
+            try:
+                import subprocess as _sp, shutil as _sh
+                _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
+                max_end = max(
+                    float(m.end_time) for m in result.viral_moments
+                    if m.end_time is not None
+                )
+                print(f"\n📥 Partial download del video (1 sola vez, max_end={max_end:.0f}s)...")
+                pvid, paud = download_video_for_clips(
+                    video_url=stream_urls["video_url"],
+                    audio_url=stream_urls["audio_url"],
+                    max_end_sec=max_end,
+                    video_duration=video_duration,
+                    video_id=video_id,
+                )
+                muxed_video_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
+                mux_r = _sp.run(
+                    [_ffmpeg, "-y", "-loglevel", "warning",
+                     "-i", pvid, "-i", paud, "-c", "copy",
+                     "-movflags", "+faststart", muxed_video_path],
+                    capture_output=True, text=True, timeout=300
+                )
+                for pp in [pvid, paud]:
+                    try: Path(pp).unlink(missing_ok=True)
+                    except Exception: pass
+                if mux_r.returncode != 0:
+                    raise RuntimeError(mux_r.stderr[-300:])
+                size_mb = Path(muxed_video_path).stat().st_size // (1 << 20)
+                print(f"✅ Video listo para todos los clips: {size_mb}MB")
+            except Exception as e_partial:
+                print(f"⚠️ Partial download upfront falló: {e_partial}")
+                print(f"🔄 Caeremos a yt-dlp per-clip o YouTube deep-link por moment")
+                muxed_video_path = None
+                partial_download_failed = True
+        else:
+            print(f"⚠️ Sin stream_urls — se intentará yt-dlp per-clip o deep-links")
         
         # Step 5: Save results
         print("\n💾 Step 5: Saving results...")
@@ -245,10 +291,11 @@ def process_job(job_data: dict) -> None:
             raw_clip_url_cache = None
             whisper_words_cache = None
 
-            # Generate clip:
-            # Intento 1: yt-dlp + proxy + download_ranges → ~50MB por clip ✨
-            # Intento 2: partial download desde byte 0 → más grande pero válido
-            # Fallback: YouTube timestamp link
+            # Generate clip (Fase 1.6 — orden invertido):
+            #   1. PRIMARY: usar muxed_video_path (partial download ya hecha upfront)
+            #   2. BACKUP: yt-dlp download_ranges por clip (puede recuperarse con
+            #      player_client=[tv,ios,web])
+            #   3. FALLBACK final: YouTube deep-link (sin MP4)
             if moment.start_time is not None and moment.end_time is not None:
                 try:
                     start_s = float(moment.start_time)
@@ -262,69 +309,38 @@ def process_job(job_data: dict) -> None:
                         tp = getattr(moment, 'tiktok_package', None)
                         overlay_text = getattr(tp, 'overlay_text', None) if tp else None
 
-                    # ── Intento 1: yt-dlp download_ranges (~50MB) ─────────────
                     seg_path = None
-                    try:
-                        seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}")
-                        seg_path = download_clip_ytdlp(
-                            youtube_url=video_url,
-                            start_sec=start_s,
-                            end_sec=end_s,
-                            output_path=seg_out,
-                        )
-                        src_path = seg_path
-                        src_start = 0.0
-                        src_end = end_s - start_s
-                        src_offset = start_s  # para alinear subtítulos
-                    except Exception as e_ytdlp:
-                        print(f"   ⚠️ yt-dlp falló ({e_ytdlp}) — fallback a partial download")
-                        seg_path = None
+                    src_path = None
 
-                        # ── Intento 2: partial download desde byte 0 ──────────
-                        # Solo intentamos UNA vez por job — si falla, el flag
-                        # partial_download_failed evita reintentar (cada intento
-                        # cuesta hasta 8 min de timeout del watchdog).
-                        if stream_urls and not muxed_video_path and not partial_download_failed:
-                            try:
-                                import subprocess as _sp, shutil as _sh
-                                _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
-                                max_end = max(
-                                    float(m.end_time) for m in result.viral_moments
-                                    if m.end_time is not None
-                                )
-                                pvid, paud = download_video_for_clips(
-                                    video_url=stream_urls["video_url"],
-                                    audio_url=stream_urls["audio_url"],
-                                    max_end_sec=max_end,
-                                    video_duration=video_duration,
-                                    video_id=video_id,
-                                )
-                                muxed_video_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
-                                mux_r = _sp.run(
-                                    [_ffmpeg, "-y", "-loglevel", "warning",
-                                     "-i", pvid, "-i", paud, "-c", "copy",
-                                     "-movflags", "+faststart", muxed_video_path],
-                                    capture_output=True, text=True, timeout=300
-                                )
-                                for pp in [pvid, paud]:
-                                    try: Path(pp).unlink(missing_ok=True)
-                                    except Exception: pass
-                                if mux_r.returncode != 0:
-                                    raise RuntimeError(mux_r.stderr[-300:])
-                                print(f"   ✅ Partial download: {Path(muxed_video_path).stat().st_size // (1<<20)}MB")
-                            except Exception as e_partial:
-                                print(f"   ⚠️ Partial download falló: {e_partial}")
-                                print(f"   🚫 No reintentaremos partial download para los clips restantes de este job")
-                                muxed_video_path = None
-                                partial_download_failed = True
-
-                        if muxed_video_path and Path(muxed_video_path).exists():
-                            src_path = muxed_video_path
-                            src_start = start_s
-                            src_end = end_s
+                    # ── PRIMARY: partial download ya disponible ──────────────────
+                    if muxed_video_path and Path(muxed_video_path).exists():
+                        src_path = muxed_video_path
+                        src_start = start_s
+                        src_end = end_s
+                        src_offset = start_s
+                        print(f"   ✓ Usando partial download cacheado")
+                    else:
+                        # ── BACKUP: yt-dlp download_ranges per clip ──────────
+                        try:
+                            seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}")
+                            seg_path = download_clip_ytdlp(
+                                youtube_url=video_url,
+                                start_sec=start_s,
+                                end_sec=end_s,
+                                output_path=seg_out,
+                            )
+                            src_path = seg_path
+                            src_start = 0.0
+                            src_end = end_s - start_s
                             src_offset = start_s
-                        else:
-                            raise RuntimeError("Sin video disponible para clip")
+                            print(f"   ✓ yt-dlp per-clip OK (backup)")
+                        except Exception as e_ytdlp:
+                            print(f"   ⚠️ yt-dlp per-clip falló: {e_ytdlp}")
+                            raise RuntimeError(
+                                f"Sin video disponible para clip {moment_index} "
+                                f"(partial download {'también falló' if partial_download_failed else 'no se intentó'} "
+                                f"y yt-dlp falló)"
+                            )
 
                     # ── Whisper per-clip: sync perfecto palabra por palabra ────
                     # Extraemos audio del rango del clip y lo transcribimos con

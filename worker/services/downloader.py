@@ -79,9 +79,13 @@ def _build_ydl_opts(base_opts: dict) -> dict:
     if cookies_path:
         base_opts['cookiefile'] = cookies_path
     
-    # Usar cliente web — soporta formatos adaptativos (720p) sin PO Token.
-    # android requiere GVS PO Token para HTTPS adaptive → cae a format 18 (360p).
-    base_opts['extractor_args'] = {'youtube': {'player_client': ['web']}}
+    # Cascada de clients para 2025-2026:
+    #   - tv: cliente Smart TV, no requiere PO Token, devuelve adaptive formats hasta 1080p
+    #   - ios: cliente iOS oficial, también bypass de PO Token
+    #   - web: legacy fallback (en 2025 muchas veces filtra todos los formats sin PO Token,
+    #          que es exactamente el bug "Requested format is not available" que veíamos)
+    # Probamos tv primero porque tiene mejores formats h264 para nuestro ffmpeg pipeline.
+    base_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'ios', 'web']}}
 
     # Proxy residencial si está configurado (bypassea IP bans de YouTube)
     proxy = _get_proxy_url()
@@ -591,9 +595,15 @@ def download_video_for_clips(
     aud_path = DOWNLOADS_DIR / f"{video_id}_paud.m4a"
 
     t0 = time.time()
+    # Audio: SINGLE-THREADED a propósito. Empíricamente googlevideo throttea
+    # (o desconecta silenciosamente) conexiones audio paralelas sobre proxy
+    # residencial — el watchdog tuvo que cortar 4/5 chunks a los 8 min.
+    # Con 1 sola conexión secuencial el audio baja sin problemas. Sólo es ~80MB
+    # típicos, se tolera el tiempo extra a cambio de fiabilidad.
+    # Video sigue con 8 chunks paralelos (no presenta este problema y baja a 80+ MB/s).
     with ThreadPoolExecutor(max_workers=2) as ex:
         fv = ex.submit(_parallel_download, video_url, vid_path, 8, "video", vid_end_byte)
-        fa = ex.submit(_parallel_download, audio_url, aud_path, 4, "audio", aud_end_byte)
+        fa = ex.submit(_parallel_download, audio_url, aud_path, 1, "audio", aud_end_byte)
         fv.result()
         fa.result()
 
