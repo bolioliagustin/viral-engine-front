@@ -47,6 +47,8 @@ docker compose up -d --build
 | Backend API | `backend/` | 3000 |
 | Worker | `worker/` | — (polling Supabase) |
 
+Documentación del worker: [worker/WORKER.md](worker/WORKER.md)
+
 ## Desarrollo local
 
 ### Prerrequisitos
