@@ -1,5 +1,8 @@
 # Worker-only — use when the API runs elsewhere (e.g. Render).
 # Usage: docker compose -f docker-compose.worker.yml up -d --build
+#
+# Proxies: create proxies.txt in repo root (gitignored), one per line:
+#   http://user:pass@host:port
 
 services:
   worker:
@@ -9,9 +12,12 @@ services:
     environment:
       - ENVIRONMENT=production
       - MAX_WORKERS=${MAX_WORKERS:-3}
+      # Path inside container (proxies.txt is mounted below)
+      - WEBSHARE_PROXY_FILE=/app/proxies.txt
     volumes:
       - worker_downloads:/app/downloads
       - worker_clips:/app/clips
+      - ./proxies.txt:/app/proxies.txt:ro
     restart: unless-stopped
     logging:
       driver: json-file
