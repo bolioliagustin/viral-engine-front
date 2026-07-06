@@ -210,6 +210,34 @@ class TestStreamUrlStrategy:
         assert result["video_url"] == "v"
 
 
+class TestSubtitleSync:
+    """Tests for word-level subtitle timing."""
+
+    def test_filter_whisper_keeps_words_in_range(self):
+        from services.clip_generator import filter_whisper_words
+        raw = [
+            {"word": "hola", "start": 0.1, "end": 0.4},
+            {"word": "mundo", "start": 0.5, "end": 0.9},
+            {"word": "amara.org", "start": 1.0, "end": 1.2},
+        ]
+        kept = filter_whisper_words(raw, clip_duration=10.0)
+        assert len(kept) == 2
+        assert kept[0]["word"] == "hola"
+
+    def test_words_to_srt_uses_word_boundaries(self):
+        from services.clip_generator import _words_to_srt_entries
+        words = [
+            {"word": "uno", "start": 1.0, "end": 1.3},
+            {"word": "dos", "start": 1.35, "end": 1.6},
+            {"word": "tres", "start": 2.0, "end": 2.4},
+        ]
+        entries = _words_to_srt_entries(words, 0.0, 5.0, max_words_per_line=2)
+        assert len(entries) == 2
+        assert "00:00:01,000 --> 00:00:01,700" in entries[0]
+        assert "uno dos" in entries[0]
+        assert "tres" in entries[1]
+
+
 class TestRapidApiPreference:
     """Tests for production RapidAPI-first download policy."""
 

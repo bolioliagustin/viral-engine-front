@@ -39,7 +39,6 @@ from services.downloader import (
     download_clip_ytdlp,
     download_clip_via_stream_urls,
     download_video_for_clips,
-    extract_segment_copy,
     is_ytdlp_drm_error,
     cleanup_all,
 )
@@ -50,7 +49,13 @@ from services.downloader import (
 from services.downloader import _download_video_ytdlp
 from services.processor import analyze_with_gemini, cleanup_uploaded_file
 from services.clipper import extract_clip, cleanup_clips
-from services.clip_generator import generate_clip, ClipGenerationError
+from services.clip_generator import (
+    generate_clip,
+    ClipGenerationError,
+    cut_clip,
+    extract_whisper_audio,
+    filter_whisper_words,
+)
 from services.supabase_client import (
     update_job_status,
     update_job_error,
@@ -511,62 +516,34 @@ def process_job(job_data: dict) -> None:
                                 f"partial upfront={'falló' if partial_download_failed else 'no'})"
                             )
 
-                    # ── Whisper per-clip: sync perfecto palabra por palabra ────
-                    # Extraemos audio del rango del clip y lo transcribimos con
-                    # Whisper (word-level timestamps). Cuesta ~$0.006/min de clip.
-                    # Fallback a YT Transcript API si Whisper falla.
+                    # ── Pre-corte frame-accurate (seek DESPUÉS de -i) ─────────────
+                    # Whisper y el encode final usan el MISMO archivo → subs en sync.
+                    clip_duration = src_end - src_start
+                    precut_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_precut.mp4"
+                    print(f"   ✂️ Pre-corte preciso ({clip_duration:.1f}s)...")
+                    cut_clip(
+                        video_path=src_path,
+                        start_sec=src_start,
+                        end_sec=src_end,
+                        output_path=str(precut_path),
+                    )
+                    if not seg_path:
+                        seg_path = str(precut_path)
+
+                    # ── Whisper sobre el clip ya cortado (timestamps 0..duration) ─
                     clip_words = None
                     clip_segments_whisper = None
                     clip_audio_path = None
                     try:
-                        import subprocess as _sp2, shutil as _sh2
                         from services.transcriber import transcribe_with_whisper_openrouter
-                        _ffmpeg2 = _sh2.which("ffmpeg") or "ffmpeg"
                         clip_audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
+                        extract_whisper_audio(str(precut_path), str(clip_audio_path))
 
-                        # Padding: 0.5s antes y 1.0s después para dar contexto a
-                        # Whisper en los bordes (mejora mucho la transcripción
-                        # de la primera y última palabra del clip).
-                        PRE_PAD = 0.5
-                        POST_PAD = 1.0
-                        pad_start = max(0.0, src_start - PRE_PAD)
-                        actual_pre_pad = src_start - pad_start  # cuánto prepad efectivo
-                        pad_end = src_end + POST_PAD  # ffmpeg clampa solo si sobrepasa
-
-                        # ── Audio para Whisper: extraer + normalizar volumen ──
-                        # loudnorm: equaliza volumen + comprime dinámica → audio
-                        # más consistente para Whisper, mejor accuracy con voz
-                        # sobre música/silencios. Single-pass es suficiente.
-                        # Bitrate 128k para máxima calidad (Whisper se beneficia).
-                        ext_cmd = [
-                            _ffmpeg2, "-y", "-loglevel", "error",
-                            "-ss", str(pad_start), "-to", str(pad_end),
-                            "-i", src_path,
-                            "-vn",
-                            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-                            "-acodec", "libmp3lame",
-                            "-ar", "16000", "-ac", "1", "-b:a", "128k",
-                            str(clip_audio_path),
-                        ]
-
-                        _sp2.run(ext_cmd, check=True, timeout=120,
-                                 capture_output=True, text=True)
-
-                        # ── Prompt de contexto para Whisper ──────────────
-                        # Whisper usa el prompt como hint para nombres, jerga,
-                        # estilo. Construimos:
-                        #   1. Título del video (proper nouns, tema general)
-                        #   2. Texto del YT transcript en el rango del clip
-                        # Cap a ~800 chars (224 tokens). Tomamos el inicio (no
-                        # el final) porque el inicio tiende a tener el contexto
-                        # más relevante para el clip.
                         whisper_prompt = None
                         prompt_parts = []
-
                         video_title = (video_info.get("title") or "").strip()
                         if video_title:
                             prompt_parts.append(video_title)
-
                         yt_segments = transcript.get("segments") or []
                         ctx_texts = []
                         for sg in yt_segments:
@@ -576,16 +553,13 @@ def process_job(job_data: dict) -> None:
                                 ctx_texts.append(sg.get("text", "").strip())
                         if ctx_texts:
                             prompt_parts.append(" ".join(ctx_texts).strip())
-
                         if prompt_parts:
                             whisper_prompt = ". ".join(prompt_parts)
-                            # Tomar el INICIO (más relevante que el final)
                             if len(whisper_prompt) > 800:
                                 whisper_prompt = whisper_prompt[:800]
 
-                        whisper_lang = transcript.get("language")  # "es", "en", etc.
+                        whisper_lang = transcript.get("language")
                         if whisper_lang and len(whisper_lang) > 2:
-                            # YT da codigos tipo "es-419" — Whisper quiere "es"
                             whisper_lang = whisper_lang.split("-")[0].lower()
 
                         print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper "
@@ -597,109 +571,29 @@ def process_job(job_data: dict) -> None:
                         )
                         raw_words = clip_tr.get("words") or []
                         raw_segments = clip_tr.get("segments") or []
-
-                        # ── Filtrar hallucinations conocidas de Whisper ────
-                        # Whisper aprendió del dataset de YouTube y suele
-                        # alucinar estos textos cuando hay silencio/música:
-                        WHISPER_HALLUCINATIONS = {
-                            "amara", "amara.org", "subtítulos por la comunidad",
-                            "subtitles by the amara.org community",
-                            "subtítulos realizados por la comunidad",
-                            "thanks for watching", "thank you for watching",
-                            "gracias por ver", "like and subscribe",
-                            "suscríbete al canal",
-                        }
-
-                        def _is_hallucination(w_obj):
-                            txt = (w_obj.get("word") or "").strip().lower()
-                            return any(h in txt for h in WHISPER_HALLUCINATIONS)
-
-                        # También dropeamos palabras con duración anómala
-                        # (>5s una sola palabra es Whisper rindiéndose y
-                        # marcando un período de silencio como una palabra).
-                        MAX_WORD_DURATION = 5.0
-
-                        # Shift por el prepad: los timestamps de Whisper están
-                        # relativos al audio extraído; restamos actual_pre_pad
-                        # para que queden relativos al inicio del clip real.
-                        # Damos un poco de tolerancia (0.5s) al final para que
-                        # palabras dichas justo en el corte no se pierdan.
-                        clip_duration = src_end - src_start
-                        END_TOLERANCE = 0.5  # palabras al final del clip
-                        clip_words = []
-                        dropped_for_diag = []
-                        n_hallucinations = 0
-                        n_long_word = 0
-                        for w in raw_words:
-                            if _is_hallucination(w):
-                                n_hallucinations += 1
-                                continue
-                            raw_dur = float(w.get("end", 0)) - float(w.get("start", 0))
-                            if raw_dur > MAX_WORD_DURATION:
-                                n_long_word += 1
-                                continue
-                            raw_ws = float(w.get("start", 0))
-                            raw_we = float(w.get("end", raw_ws + 0.1))
-                            ws = raw_ws - actual_pre_pad
-                            we = raw_we - actual_pre_pad
-                            # Skip SOLO si la palabra está totalmente fuera
-                            # del clip (incluyendo tolerancia al final).
-                            if we <= 0:
-                                dropped_for_diag.append((w.get("word"), raw_ws, raw_we, "before"))
-                                continue
-                            if ws >= clip_duration + END_TOLERANCE:
-                                dropped_for_diag.append((w.get("word"), raw_ws, raw_we, "after"))
-                                continue
-                            w2 = dict(w)
-                            w2["start"] = max(0.0, ws)
-                            w2["end"] = min(clip_duration, we)
-                            # Skip words with inverted timestamps after clamping
-                            # (Whisper bug: occasionally returns start > end).
-                            if w2["start"] >= w2["end"]:
-                                dropped_for_diag.append((w.get("word"), raw_ws, raw_we, "inverted"))
-                                continue
-                            # Garantizar duración mínima de 30ms (algunas
-                            # palabras tras el clamp pueden quedar en 0).
-                            if w2["end"] - w2["start"] < 0.03:
-                                w2["end"] = min(clip_duration, w2["start"] + 0.05)
-                            clip_words.append(w2)
+                        clip_words = filter_whisper_words(raw_words, clip_duration)
 
                         clip_segments_whisper = []
                         for sg in raw_segments:
-                            ss = float(sg.get("start", 0)) - actual_pre_pad
-                            se = float(sg.get("end", ss + 0.1)) - actual_pre_pad
-                            if se <= 0 or ss >= clip_duration + END_TOLERANCE:
+                            ss = float(sg.get("start", 0))
+                            se = float(sg.get("end", ss + 0.1))
+                            if se <= 0 or ss >= clip_duration + 0.25:
                                 continue
                             sg2 = dict(sg)
                             sg2["start"] = max(0.0, ss)
-                            sg2["end"] = min(clip_duration, se)
+                            sg2["end"] = min(clip_duration + 0.10, se)
                             clip_segments_whisper.append(sg2)
 
                         n_raw = len(raw_words)
                         n_kept = len(clip_words)
                         retention = (n_kept / n_raw * 100) if n_raw else 0
-
                         words_per_sec = (n_kept / clip_duration) if clip_duration > 0 else 0
-
                         print(f"   ✅ Whisper: {n_kept}/{n_raw} words ({retention:.0f}%), "
                               f"{len(clip_segments_whisper)}/{len(raw_segments)} segments "
-                              f"(pre_pad={actual_pre_pad:.2f}s, "
-                              f"clip_duration={clip_duration:.1f}s, "
-                              f"density={words_per_sec:.2f} w/s)")
-                        if n_hallucinations or n_long_word:
-                            print(f"   🧹 Filtered: {n_hallucinations} hallucinations, "
-                                  f"{n_long_word} long words (>5s)")
+                              f"(clip_duration={clip_duration:.1f}s, density={words_per_sec:.2f} w/s)")
 
-                        # ⚠️ Filosofía: confiar en Whisper. Si dice "8 palabras
-                        # en 30s", el audio realmente tiene 8 palabras (el resto
-                        # es música/silencio/transición). Mostrar esas 8 con
-                        # su timing exacto > fabricar subs falsos del YT transcript.
-                        #
-                        # Solo si Whisper devuelve CERO palabras útiles (n_kept=0)
-                        # caemos al YT transcript como último recurso.
                         if n_kept == 0:
-                            print(f"   🔄 Whisper devolvió 0 words útiles — "
-                                  f"fallback a YT transcript")
+                            print(f"   🔄 Whisper devolvió 0 words — fallback a YT transcript")
                             clip_words = None
                             clip_segments_whisper = None
                     except Exception as e_whisper:
@@ -709,12 +603,11 @@ def process_job(job_data: dict) -> None:
                         clip_segments_whisper = None
                     finally:
                         if clip_audio_path:
-                            try: Path(clip_audio_path).unlink(missing_ok=True)
-                            except Exception: pass
+                            try:
+                                Path(clip_audio_path).unlink(missing_ok=True)
+                            except Exception:
+                                pass
 
-                    # Si Whisper OK: usamos sus words/segments con offset=0
-                    # (ya son relativos al inicio del clip).
-                    # Si falló: caemos al transcript global de YouTube (offset=src_offset).
                     if clip_words or clip_segments_whisper:
                         subs_segments = clip_segments_whisper
                         subs_words = clip_words
@@ -722,17 +615,7 @@ def process_job(job_data: dict) -> None:
                     else:
                         subs_segments = transcript.get("segments")
                         subs_words = None
-                        subs_offset = src_offset
-
-                    # ── Plan C: cachear segmento crudo para re-renders del editor ─
-                    if not seg_path and src_path and Path(src_path).exists():
-                        try:
-                            seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}.mp4")
-                            seg_path = extract_segment_copy(src_path, src_start, src_end, seg_out)
-                            print(f"   💾 Segmento crudo extraído para cache R2")
-                        except Exception as e_seg:
-                            print(f"   ⚠️ Extracción segmento cache falló (no fatal): {e_seg}")
-                            seg_path = None
+                        subs_offset = start_s
 
                     if seg_path:
                         try:
@@ -750,13 +633,13 @@ def process_job(job_data: dict) -> None:
                         }
 
                     gen_result = generate_clip(
-                        video_path=src_path,
-                        start_sec=src_start,
-                        end_sec=src_end,
+                        video_path=str(precut_path),
+                        start_sec=0.0,
+                        end_sec=clip_duration,
                         output_path=str(clip_output),
                         segments=subs_segments,
                         segments_start_offset_sec=subs_offset,
-                        words=subs_words,  # word-level sync (Whisper per-clip)
+                        words=subs_words,
                         subtitle_style="tiktok_viral",
                         overlay_text=overlay_text,
                         overlay_style="tiktok_viral",
@@ -776,10 +659,12 @@ def process_job(job_data: dict) -> None:
                         clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                         print(f"🔗 Fallback a link de YouTube: {clip_url}")
                 finally:
-                    # Limpiar segmento yt-dlp (pequeño, por clip)
-                    if seg_path:
-                        try: Path(seg_path).unlink(missing_ok=True)
-                        except Exception: pass
+                    for tmp in (seg_path, locals().get("precut_path")):
+                        if tmp:
+                            try:
+                                Path(tmp).unlink(missing_ok=True)
+                            except Exception:
+                                pass
                     # Limpiar clip final
                     try:
                         if clip_output.exists():

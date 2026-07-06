@@ -220,6 +220,50 @@ def cut_clip(
     return clip_meta
 
 
+WHISPER_HALLUCINATIONS = (
+    "amara", "amara.org", "subtítulos por la comunidad",
+    "subtitles by the amara.org community",
+    "subtítulos realizados por la comunidad",
+    "thanks for watching", "thank you for watching",
+    "gracias por ver", "like and subscribe", "suscríbete al canal",
+)
+
+
+def extract_whisper_audio(video_path: str, output_mp3: str) -> None:
+    """Extrae audio mono 16kHz de un clip ya cortado (sin seeking — sync exacto)."""
+    cmd = [
+        FFMPEG_PATH, "-y", "-loglevel", "error",
+        "-i", video_path,
+        "-vn",
+        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+        "-acodec", "libmp3lame",
+        "-ar", "16000", "-ac", "1", "-b:a", "128k",
+        output_mp3,
+    ]
+    subprocess.run(cmd, check=True, timeout=120, capture_output=True, text=True)
+
+
+def filter_whisper_words(raw_words: list, clip_duration: float) -> list[dict]:
+    """Filtra alucinaciones de Whisper; conserva el máximo de palabras del clip."""
+    clip_words = []
+    for w in raw_words or []:
+        txt = (w.get("word") or "").strip()
+        if not txt:
+            continue
+        low = txt.lower()
+        if any(h in low for h in WHISPER_HALLUCINATIONS):
+            continue
+        ws = float(w.get("start", 0))
+        we = float(w.get("end", ws + 0.08))
+        if we <= 0 or ws >= clip_duration + 0.35:
+            continue
+        w2 = dict(w)
+        w2["start"] = max(0.0, ws)
+        w2["end"] = min(clip_duration + 0.10, max(we, ws + 0.04))
+        clip_words.append(w2)
+    return clip_words
+
+
 def _format_srt_timestamp(seconds: float) -> str:
     """Convierte segundos a formato SRT: HH:MM:SS,mmm"""
     if seconds < 0:
@@ -245,20 +289,19 @@ def _words_to_srt_entries(
     start_offset_sec: float,
     clip_duration_sec: Optional[float],
     max_words_per_line: int,
-    gap_sec: float = 0.050,
+    gap_sec: float = 0.030,
 ) -> list[str]:
     """
     Genera entradas SRT a partir de timestamps por palabra (Whisper word-level).
 
-    Cada palabra tiene su tiempo EXACTO de inicio y fin (no interpolado).
-    Agrupamos de a N palabras y cada chunk aparece EXACTAMENTE cuando se pronuncia.
-    Con gap de 50ms entre chunks se elimina cualquier overlap visual.
+    Timings anclados al inicio/fin real de cada palabra del grupo — sin recortar
+    el final del chunk (causa principal de subs desfasados o que desaparecen antes).
     """
     entries = []
     idx = 1
 
-    # Filtrar palabras dentro del clip + shift de tiempo
     clip_words = []
+    end_limit = (clip_duration_sec + 0.25) if clip_duration_sec is not None else None
     for w in words:
         w_start = float(w.get("start", 0)) - start_offset_sec
         w_end = float(w.get("end", w_start + 0.1)) - start_offset_sec
@@ -267,23 +310,18 @@ def _words_to_srt_entries(
             continue
         if w_end <= 0:
             continue
-        if clip_duration_sec is not None and w_start >= clip_duration_sec:
-            break  # palabras ordenadas por tiempo — si esta está fuera, las siguientes también
-        # Recortar al clip
+        if end_limit is not None and w_start > end_limit:
+            break
         w_start = max(0.0, w_start)
         if clip_duration_sec is not None:
-            w_end = min(clip_duration_sec, w_end)
-        if w_end - w_start < 0.03:
-            continue
+            w_end = min(clip_duration_sec + 0.15, w_end)
+        if w_end <= w_start:
+            w_end = w_start + 0.06
         clip_words.append({"text": word_text, "start": w_start, "end": w_end})
 
     if not clip_words:
         return entries
 
-    # Agrupar de a max_words_per_line
-    # NUNCA descartamos un grupo: preferimos mostrarlo aunque sea micro-lag
-    # antes que perder palabras del clip.
-    MIN_CHUNK_DURATION = 0.40  # duración mínima legible (400ms)
     last_entry_end = -1.0
     n_groups = (len(clip_words) + max_words_per_line - 1) // max_words_per_line
 
@@ -292,32 +330,21 @@ def _words_to_srt_entries(
         group = clip_words[i:i + max_words_per_line]
         is_last_group = (gi == n_groups - 1)
         chunk_text = " ".join(g["text"] for g in group)
+
+        # Anclar al timing real de Whisper (inicio 1ª palabra, fin última palabra)
         chunk_start = group[0]["start"]
         chunk_end = group[-1]["end"]
 
-        # Garantizar gap con el chunk anterior (cross-grupo)
         if chunk_start < last_entry_end + gap_sec:
             chunk_start = last_entry_end + gap_sec
 
-        # Si el próximo grupo existe, no pasarse de su start (respetar gap)
         if not is_last_group:
             next_start = clip_words[i + max_words_per_line]["start"]
-            chunk_end_max = next_start - gap_sec
-        else:
-            # Último grupo: puede extenderse hasta el final del clip
-            chunk_end_max = (clip_duration_sec if clip_duration_sec is not None
-                             else chunk_end + 2.0)
+            chunk_end = min(chunk_end + 0.10, next_start - gap_sec)
+        elif clip_duration_sec is not None:
+            chunk_end = min(chunk_end + 0.15, clip_duration_sec + 0.10)
 
-        # Quitar un chiquito del final para que nunca toque al siguiente
-        chunk_end_trimmed = chunk_end - gap_sec / 2
-
-        # Si el chunk quedaría demasiado corto por el gap cross-grupo,
-        # extendemos chunk_end hasta MIN_CHUNK_DURATION (sin pisar al próximo).
-        if chunk_end_trimmed - chunk_start < MIN_CHUNK_DURATION:
-            chunk_end_trimmed = min(chunk_start + MIN_CHUNK_DURATION, chunk_end_max)
-
-        # Garantizar end > start (sanity)
-        chunk_end = max(chunk_start + 0.10, chunk_end_trimmed)
+        chunk_end = max(chunk_start + 0.08, chunk_end)
 
         entries.append(
             f"{idx}\n"
@@ -1166,7 +1193,7 @@ def generate_clip(
                     output_path=srt_path,
                     start_offset_sec=offset,
                     clip_duration_sec=duration_sec,
-                    max_words_per_line=3,
+                    max_words_per_line=4,
                     words=words,  # ← sync perfecto cuando hay word timestamps
                 )
                 intermediates.append(srt_path)
@@ -1268,8 +1295,8 @@ def generate_clip(
         else:
             cmd = [
                 FFMPEG_PATH, '-y', '-loglevel', 'error',
+                '-i', video_path,
                 '-ss', f'{start_sec:.3f}',
-                '-i', video_path,         # input 0: archivo local
                 '-t', f'{duration_sec:.3f}',
                 '-filter_complex', filter_parts,
                 '-map', '[vout]',
