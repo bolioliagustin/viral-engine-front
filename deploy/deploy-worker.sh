@@ -14,9 +14,12 @@ APP_DIR="${APP_DIR:-$HOME/viralengine}"
 COMPOSE_FILE="docker-compose.worker.yml"
 BRANCH="${DEPLOY_BRANCH:-main}"
 LOG_FILE="${HOME}/viralengine-deploy.log"
+touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/viralengine-deploy.log"
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE" 2>/dev/null || true
 }
 
 dc() {
@@ -46,7 +49,7 @@ dc -f "$COMPOSE_FILE" build --pull
 dc -f "$COMPOSE_FILE" up -d --remove-orphans
 
 log "Worker status:"
-dc -f "$COMPOSE_FILE" ps | tee -a "$LOG_FILE"
+dc -f "$COMPOSE_FILE" ps
 
 (docker image prune -f > /dev/null 2>&1 || sudo docker image prune -f > /dev/null 2>&1) || true
 
