@@ -17,3 +17,5 @@ logs/
 .DS_Store
 Thumbs.db
 worker/cookies.txt
+proxies.txt
+proxies-raw.txt
