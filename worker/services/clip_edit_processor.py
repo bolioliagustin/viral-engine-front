@@ -19,8 +19,7 @@ from typing import Optional
 
 from services.downloader import (
     download_clip_ytdlp,
-    get_stream_urls,
-    download_video_for_clips,
+    download_clip_via_stream_urls,
 )
 from services.clip_generator import generate_clip, ClipGenerationError
 from services.supabase_client import (
@@ -91,60 +90,20 @@ def _download_segment_with_fallback(
         print(f"   ⚠️ yt-dlp falló ({e_ytdlp}) — fallback a partial download")
 
     # ── Intento 2: stream URLs + partial download + ffmpeg cut ────────
-    import subprocess as _sp
-    import shutil as _sh
-    ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
-
     try:
-        stream_urls = get_stream_urls(video_url)
+        return download_clip_via_stream_urls(
+            youtube_url=video_url,
+            start_sec=start_s,
+            end_sec=end_s,
+            video_duration=end_s + 30,
+            video_id=edit_id,
+            temp_id=f"edit_{edit_id}",
+            force_rapidapi=True,
+        )
     except Exception as e_streams:
         raise RuntimeError(
             f"Sin streams disponibles (yt-dlp y RapidAPI fallaron): {e_streams}"
         ) from e_streams
-
-    video_id = stream_urls.get("video_id") or edit_id
-    pvid, paud = download_video_for_clips(
-        video_url=stream_urls["video_url"],
-        audio_url=stream_urls["audio_url"],
-        max_end_sec=end_s,
-        video_duration=end_s + 30,  # buffer
-        video_id=video_id,
-    )
-
-    muxed = str(DOWNLOADS_DIR / f"edit_{edit_id}_muxed.mp4")
-    mux_r = _sp.run(
-        [ffmpeg, "-y", "-loglevel", "warning",
-         "-i", pvid, "-i", paud, "-c", "copy",
-         "-movflags", "+faststart", muxed],
-        capture_output=True, text=True, timeout=300,
-    )
-    for pp in (pvid, paud):
-        try:
-            Path(pp).unlink(missing_ok=True)
-        except Exception:
-            pass
-    if mux_r.returncode != 0:
-        raise RuntimeError(f"mux falló: {mux_r.stderr[-300:]}")
-
-    # Cut al rango exacto del clip (start=0, end=end_s-start_s)
-    seg = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg.mp4")
-    cut_r = _sp.run(
-        [ffmpeg, "-y", "-loglevel", "warning",
-         "-ss", str(start_s), "-to", str(end_s),
-         "-i", muxed, "-c", "copy",
-         "-avoid_negative_ts", "make_zero",
-         "-movflags", "+faststart", seg],
-        capture_output=True, text=True, timeout=180,
-    )
-    try:
-        Path(muxed).unlink(missing_ok=True)
-    except Exception:
-        pass
-    if cut_r.returncode != 0:
-        raise RuntimeError(f"cut falló: {cut_r.stderr[-300:]}")
-
-    print(f"   ✅ Partial download segment OK ({Path(seg).stat().st_size // (1<<20)}MB)")
-    return seg
 
 
 def _whisper_per_clip(src_path: str, clip_duration: float, edit_id: str):

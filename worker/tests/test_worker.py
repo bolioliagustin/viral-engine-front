@@ -181,6 +181,35 @@ class TestDownloadStrategy:
         assert _should_try_full_ytdlp_download(1800) is True
 
 
+class TestDrmDetection:
+    """Tests for yt-dlp DRM / PO Token error detection."""
+
+    def test_detects_drm_error(self):
+        from services.downloader import is_ytdlp_drm_error
+        assert is_ytdlp_drm_error(Exception("This video is DRM protected"))
+        assert is_ytdlp_drm_error(Exception("ios client requires a GVS PO Token"))
+
+    def test_ignores_generic_errors(self):
+        from services.downloader import is_ytdlp_drm_error
+        assert not is_ytdlp_drm_error(Exception("Connection timeout"))
+
+
+class TestStreamUrlStrategy:
+    """Tests for RapidAPI-first stream URL resolution."""
+
+    @patch.dict(os.environ, {
+        "ENVIRONMENT": "production",
+        "RAPIDAPI_KEY": "test-key",
+    }, clear=False)
+    @patch("services.downloader.get_stream_urls_rapidapi")
+    def test_production_uses_rapidapi_first(self, mock_rapid):
+        from services.downloader import get_stream_urls
+        mock_rapid.return_value = {"video_url": "v", "audio_url": "a", "video_id": "x"}
+        result = get_stream_urls("https://youtube.com/watch?v=abc12345678")
+        mock_rapid.assert_called_once()
+        assert result["video_url"] == "v"
+
+
 class TestStructuredLogging:
     """Tests for S6 logging configuration."""
 

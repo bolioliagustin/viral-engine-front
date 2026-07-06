@@ -37,8 +37,10 @@ from services.downloader import (
     download_video,
     get_stream_urls,
     download_clip_ytdlp,
+    download_clip_via_stream_urls,
     download_video_for_clips,
     extract_segment_copy,
+    is_ytdlp_drm_error,
     cleanup_all,
 )
 # _download_video_ytdlp es interno pero lo usamos como primer intento del
@@ -281,6 +283,7 @@ def process_job(job_data: dict) -> None:
         # Flag para que si la partial falla en el upfront, no la reintentamos
         # per-clip (cada intento puede comer hasta 8 min del watchdog).
         partial_download_failed = False
+        ytdlp_blocked = False  # DRM / PO Token — no reintentar yt-dlp
 
         # ── PRIMARY: yt-dlp full download (solo videos cortos, sin USE_RAPIDAPI) ─
         if _should_try_full_ytdlp_download(video_duration):
@@ -292,7 +295,11 @@ def process_job(job_data: dict) -> None:
                 elapsed = time.time() - t_ytdlp
                 print(f"✅ yt-dlp full download: {size_mb:.0f}MB en {elapsed:.0f}s ({size_mb/max(elapsed,0.01):.1f}MB/s)")
             except Exception as e_ytdlp_full:
-                print(f"⚠️ yt-dlp full download falló: {str(e_ytdlp_full)[:200]}")
+                if is_ytdlp_drm_error(e_ytdlp_full):
+                    ytdlp_blocked = True
+                    print(f"⚠️ yt-dlp full bloqueado por DRM — saltando a RapidAPI")
+                else:
+                    print(f"⚠️ yt-dlp full download falló: {str(e_ytdlp_full)[:200]}")
                 print(f"🔄 Cayendo a Plan B: partial download con stream URLs split")
                 muxed_video_path = None
         else:
@@ -305,7 +312,9 @@ def process_job(job_data: dict) -> None:
             try:
                 stream_urls = get_stream_urls(video_url, video_id)
             except Exception as e:
-                print(f"ℹ️ Stream URLs no disponibles ({e}), se usará yt-dlp directo")
+                if is_ytdlp_drm_error(e):
+                    ytdlp_blocked = True
+                print(f"ℹ️ Stream URLs no disponibles ({e}), se usará fallback per-clip")
 
         # PARTIAL DOWNLOAD UPFRONT (Fase 1.6):
         # Descargamos una sola vez ahora para todos los clips, en lugar de
@@ -342,7 +351,7 @@ def process_job(job_data: dict) -> None:
                 print(f"✅ Video listo para todos los clips: {size_mb}MB")
             except Exception as e_partial:
                 print(f"⚠️ Partial download upfront falló: {e_partial}")
-                print(f"🔄 Caeremos a yt-dlp per-clip o YouTube deep-link por moment")
+                print(f"🔄 Caeremos a RapidAPI per-clip o YouTube deep-link")
                 muxed_video_path = None
                 partial_download_failed = True
         elif not muxed_video_path:
@@ -396,27 +405,50 @@ def process_job(job_data: dict) -> None:
                         src_offset = start_s
                         print(f"   ✓ Usando video muxeado cacheado")
                     else:
-                        # ── BACKUP: yt-dlp download_ranges per clip ──────────
-                        try:
-                            seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}")
-                            seg_path = download_clip_ytdlp(
-                                youtube_url=video_url,
-                                start_sec=start_s,
-                                end_sec=end_s,
-                                output_path=seg_out,
-                            )
-                            src_path = seg_path
-                            src_start = 0.0
-                            src_end = end_s - start_s
-                            src_offset = start_s
-                            print(f"   ✓ yt-dlp per-clip OK (backup)")
-                        except Exception as e_ytdlp:
-                            print(f"   ⚠️ yt-dlp per-clip falló: {e_ytdlp}")
-                            raise RuntimeError(
-                                f"Sin video disponible para clip {moment_index} "
-                                f"(partial download {'también falló' if partial_download_failed else 'no se intentó'} "
-                                f"y yt-dlp falló)"
-                            )
+                        seg_path = None
+                        # ── BACKUP 1: yt-dlp per-clip (omitir si DRM conocido) ──
+                        if not ytdlp_blocked:
+                            try:
+                                seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}")
+                                seg_path = download_clip_ytdlp(
+                                    youtube_url=video_url,
+                                    start_sec=start_s,
+                                    end_sec=end_s,
+                                    output_path=seg_out,
+                                )
+                                src_path = seg_path
+                                src_start = 0.0
+                                src_end = end_s - start_s
+                                src_offset = start_s
+                                print(f"   ✓ yt-dlp per-clip OK (backup)")
+                            except Exception as e_ytdlp:
+                                if is_ytdlp_drm_error(e_ytdlp):
+                                    ytdlp_blocked = True
+                                print(f"   ⚠️ yt-dlp per-clip falló: {e_ytdlp}")
+
+                        # ── BACKUP 2: RapidAPI / stream partial per-clip ────────
+                        if not seg_path:
+                            try:
+                                seg_path = download_clip_via_stream_urls(
+                                    youtube_url=video_url,
+                                    start_sec=start_s,
+                                    end_sec=end_s,
+                                    video_duration=video_duration,
+                                    video_id=video_id,
+                                    temp_id=f"{video_id}_m{moment_index}",
+                                    force_rapidapi=ytdlp_blocked or partial_download_failed,
+                                )
+                                src_path = seg_path
+                                src_start = 0.0
+                                src_end = end_s - start_s
+                                src_offset = start_s
+                            except Exception as e_stream:
+                                raise RuntimeError(
+                                    f"Sin video disponible para clip {moment_index} "
+                                    f"(partial upfront={'falló' if partial_download_failed else 'no'}, "
+                                    f"yt-dlp={'DRM' if ytdlp_blocked else 'falló'}, "
+                                    f"RapidAPI: {e_stream})"
+                                ) from e_stream
 
                     # ── Whisper per-clip: sync perfecto palabra por palabra ────
                     # Extraemos audio del rango del clip y lo transcribimos con

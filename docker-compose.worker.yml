@@ -11,6 +11,7 @@ services:
       - .env
     environment:
       - ENVIRONMENT=production
+      - USE_RAPIDAPI_DOWNLOAD=true
       - MAX_WORKERS=${MAX_WORKERS:-3}
       # Path inside container (proxies.txt is mounted below)
       - WEBSHARE_PROXY_FILE=/app/proxies.txt

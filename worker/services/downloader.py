@@ -225,6 +225,70 @@ def _extract_video_id(video_url: str) -> str:
 _DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 
+def is_ytdlp_drm_error(exc: BaseException) -> bool:
+    """True cuando yt-dlp no puede bajar por DRM, PO Token o experimentos tv client."""
+    msg = str(exc).lower()
+    return (
+        "drm" in msg
+        or "po token" in msg
+        or "challenge solving failed" in msg
+        or "n challenge" in msg
+    )
+
+
+def _pick_rapidapi_formats(
+    data: dict,
+    max_height: int = 720,
+) -> tuple[dict, dict]:
+    """
+    Elige mejor par video+audio de adaptiveFormats de YT-API.
+    Preferimos h264/mp4 pero aceptamos cualquier video/mp4 si no hay avc1.
+    """
+    formats = data.get("adaptiveFormats") or []
+
+    def _height(f: dict) -> int:
+        ql = f.get("qualityLabel", "")
+        m = re.match(r"(\d+)", ql)
+        return int(m.group(1)) if m else 0
+
+    vid = None
+    vid_quality = 0
+    vid_fallback = None
+    vid_fallback_q = 0
+    for f in formats:
+        mime = f.get("mimeType", "")
+        if "video/" not in mime or not f.get("url"):
+            continue
+        h = _height(f)
+        if h > max_height:
+            continue
+        if "video/mp4" in mime and "avc1" in mime and h > vid_quality:
+            vid = f
+            vid_quality = h
+        elif "video/mp4" in mime and h > vid_fallback_q:
+            vid_fallback = f
+            vid_fallback_q = h
+
+    if not vid:
+        vid = vid_fallback
+
+    aud = None
+    aud_bitrate = 0
+    for f in formats:
+        mime = f.get("mimeType", "")
+        if "audio/mp4" not in mime or not f.get("url"):
+            continue
+        br = f.get("bitrate", 0)
+        if br > aud_bitrate:
+            aud = f
+            aud_bitrate = br
+
+    if not vid or not aud:
+        raise RuntimeError(f"YT-API no devolvió formatos utilizables (vid={bool(vid)}, aud={bool(aud)})")
+
+    return vid, aud
+
+
 def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "",
                         end_byte: int = None) -> None:
     """
@@ -571,36 +635,11 @@ def download_video_rapidapi(video_url: str, video_id: str = None, max_height: in
     if data.get("status") != "OK":
         raise RuntimeError(f"YT-API devolvió status={data.get('status')}: {data.get('reason', '')}")
 
-    # Elegir mejor video MP4 (h264/avc1, no av01 por compatibilidad ffmpeg) ≤max_height
-    vid = None
-    vid_quality = 0
-    for f in data.get("adaptiveFormats", []):
-        mime = f.get("mimeType", "")
-        if "video/mp4" not in mime or "avc1" not in mime:
-            continue
-        ql = f.get("qualityLabel", "")
-        h = int(re.match(r"(\d+)", ql).group(1)) if re.match(r"(\d+)", ql) else 0
-        if h > max_height:
-            continue
-        if h > vid_quality and f.get("url"):
-            vid = f
-            vid_quality = h
+    vid, aud = _pick_rapidapi_formats(data, max_height)
+    vid_quality = int(re.match(r"(\d+)", vid.get("qualityLabel", "0") or "0").group(1) or 0)
+    aud_bitrate = aud.get("bitrate", 0)
 
-    # Elegir mejor audio MP4
-    aud = None
-    aud_bitrate = 0
-    for f in data.get("adaptiveFormats", []):
-        if "audio/mp4" not in f.get("mimeType", ""):
-            continue
-        br = f.get("bitrate", 0)
-        if br > aud_bitrate and f.get("url"):
-            aud = f
-            aud_bitrate = br
-
-    if not vid or not aud:
-        raise RuntimeError(f"YT-API no devolvió formatos utilizables (vid={bool(vid)}, aud={bool(aud)})")
-
-    print(f"   video: {vid_quality}p avc1 | audio: {aud_bitrate // 1000}kbps AAC")
+    print(f"   video: {vid_quality}p | audio: {aud_bitrate // 1000}kbps AAC")
 
     DOWNLOADS_DIR.mkdir(exist_ok=True)
     vid_tmp = DOWNLOADS_DIR / f"{video_id}_video_only.mp4"
@@ -1136,6 +1175,79 @@ def download_clip_segment(
     return str(vid_path), str(aud_path)
 
 
+def download_clip_via_stream_urls(
+    youtube_url: str,
+    start_sec: float,
+    end_sec: float,
+    video_duration: float,
+    video_id: str,
+    *,
+    temp_id: str | None = None,
+    force_rapidapi: bool = False,
+) -> str:
+    """
+    Descarga un clip [start_sec, end_sec] vía stream URLs (RapidAPI/yt-dlp),
+    partial download hasta end_sec y corte ffmpeg. Bypassa DRM de yt-dlp.
+    """
+    DOWNLOADS_DIR.mkdir(exist_ok=True)
+    tid = temp_id or f"{video_id}_pc{int(start_sec)}"
+    stream_urls = get_stream_urls(youtube_url, video_id, force_rapidapi=force_rapidapi)
+
+    effective_duration = max(float(video_duration), end_sec + 30)
+    print(f"   📥 RapidAPI/stream partial per-clip ({int(start_sec)}-{int(end_sec)}s)...")
+    pvid, paud = download_video_for_clips(
+        video_url=stream_urls["video_url"],
+        audio_url=stream_urls["audio_url"],
+        max_end_sec=end_sec,
+        video_duration=effective_duration,
+        video_id=tid,
+    )
+
+    ffmpeg_bin = "ffmpeg"
+    if FFMPEG_LOCATION:
+        p = Path(FFMPEG_LOCATION)
+        if p.is_file():
+            ffmpeg_bin = str(p)
+        elif p.is_dir():
+            candidate = p / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+            ffmpeg_bin = str(candidate if candidate.exists() else p / "ffmpeg")
+
+    muxed = DOWNLOADS_DIR / f"{tid}_muxed.mp4"
+    mux_r = subprocess.run(
+        [ffmpeg_bin, "-y", "-loglevel", "warning",
+         "-i", pvid, "-i", paud, "-c", "copy",
+         "-movflags", "+faststart", str(muxed)],
+        capture_output=True, text=True, timeout=300,
+    )
+    for pp in (pvid, paud):
+        try:
+            Path(pp).unlink(missing_ok=True)
+        except Exception:
+            pass
+    if mux_r.returncode != 0:
+        raise RuntimeError(f"mux per-clip falló: {mux_r.stderr[-300:]}")
+
+    seg = DOWNLOADS_DIR / f"{tid}_seg.mp4"
+    cut_r = subprocess.run(
+        [ffmpeg_bin, "-y", "-loglevel", "warning",
+         "-ss", str(start_sec), "-to", str(end_sec),
+         "-i", str(muxed), "-c", "copy",
+         "-avoid_negative_ts", "make_zero",
+         "-movflags", "+faststart", str(seg)],
+        capture_output=True, text=True, timeout=180,
+    )
+    try:
+        muxed.unlink(missing_ok=True)
+    except Exception:
+        pass
+    if cut_r.returncode != 0:
+        raise RuntimeError(f"cut per-clip falló: {cut_r.stderr[-300:]}")
+
+    size_mb = seg.stat().st_size / (1 << 20)
+    print(f"   ✅ Stream partial per-clip OK ({size_mb:.1f}MB)")
+    return str(seg)
+
+
 def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: int = 720) -> dict:
     """
     Obtiene URLs de stream de video+audio vía RapidAPI SIN descargar nada.
@@ -1165,34 +1277,11 @@ def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: i
     if data.get("status") != "OK":
         raise RuntimeError(f"YT-API devolvió status={data.get('status')}: {data.get('reason', '')}")
 
-    vid = None
-    vid_quality = 0
-    for f in data.get("adaptiveFormats", []):
-        mime = f.get("mimeType", "")
-        if "video/mp4" not in mime or "avc1" not in mime:
-            continue
-        ql = f.get("qualityLabel", "")
-        h = int(re.match(r"(\d+)", ql).group(1)) if re.match(r"(\d+)", ql) else 0
-        if h > max_height:
-            continue
-        if h > vid_quality and f.get("url"):
-            vid = f
-            vid_quality = h
+    vid, aud = _pick_rapidapi_formats(data, max_height)
+    vid_quality = int(re.match(r"(\d+)", vid.get("qualityLabel", "0") or "0").group(1) or 0)
+    aud_bitrate = aud.get("bitrate", 0)
 
-    aud = None
-    aud_bitrate = 0
-    for f in data.get("adaptiveFormats", []):
-        if "audio/mp4" not in f.get("mimeType", ""):
-            continue
-        br = f.get("bitrate", 0)
-        if br > aud_bitrate and f.get("url"):
-            aud = f
-            aud_bitrate = br
-
-    if not vid or not aud:
-        raise RuntimeError(f"YT-API no devolvió formatos utilizables (vid={bool(vid)}, aud={bool(aud)})")
-
-    print(f"   ✅ URLs obtenidas: video={vid_quality}p avc1 | audio={aud_bitrate // 1000}kbps")
+    print(f"   ✅ URLs obtenidas: video={vid_quality}p | audio={aud_bitrate // 1000}kbps")
     return {
         "video_url": vid["url"],
         "audio_url": aud["url"],
@@ -1240,29 +1329,43 @@ def _get_stream_urls_ytdlp(video_url: str, video_id: str = None) -> dict:
         }
 
 
-def get_stream_urls(video_url: str, video_id: str = None) -> dict:
+def get_stream_urls(video_url: str, video_id: str = None, *, force_rapidapi: bool = False) -> dict:
     """
     Obtiene URLs de stream de video+audio sin descargar el archivo completo.
-    Intenta yt-dlp primero (gratis); si falla cae a RapidAPI.
 
-    Forzar RapidAPI con USE_RAPIDAPI_DOWNLOAD=true.
+    En producción con RAPIDAPI_KEY usa RapidAPI directo (evita DRM de yt-dlp).
+    Forzar RapidAPI con USE_RAPIDAPI_DOWNLOAD=true o force_rapidapi=True.
 
     Retorna {"video_url": str, "audio_url": str, "video_id": str}.
-    Estas URLs se pasan directamente a FFmpeg para descarga selectiva:
-    FFmpeg solo descarga los bytes correspondientes al clip pedido (~50MB
-    en vez de los ~1.3GB del video completo).
     """
-    force_rapidapi = os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes")
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    rapidapi_key = os.getenv("RAPIDAPI_KEY")
+    use_rapidapi_first = (
+        force_rapidapi
+        or os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes")
+        or (env in ("production", "prod") and bool(rapidapi_key))
+    )
 
-    if not force_rapidapi:
-        try:
-            return _get_stream_urls_ytdlp(video_url, video_id)
-        except Exception as e:
+    if use_rapidapi_first:
+        if not rapidapi_key:
+            raise RuntimeError(
+                "RAPIDAPI_KEY no configurada — requerida en producción para bypass DRM"
+            )
+        print("ℹ️ Usando RapidAPI para stream URLs")
+        return get_stream_urls_rapidapi(video_url, video_id)
+
+    try:
+        return _get_stream_urls_ytdlp(video_url, video_id)
+    except Exception as e:
+        if is_ytdlp_drm_error(e):
+            print(f"⚠️ yt-dlp bloqueado (DRM/PO Token) — saltando a RapidAPI")
+        else:
             print(f"⚠️ yt-dlp stream URLs falló ({type(e).__name__}: {str(e)[:120]}) — fallback a RapidAPI")
-    else:
-        print("ℹ️ USE_RAPIDAPI_DOWNLOAD=true, usando RapidAPI para stream URLs")
-
-    return get_stream_urls_rapidapi(video_url, video_id)
+        if not rapidapi_key:
+            raise RuntimeError(
+                "RAPIDAPI_KEY no configurada — no hay fallback cuando yt-dlp falla"
+            ) from e
+        return get_stream_urls_rapidapi(video_url, video_id)
 
 
 def cleanup_audio(file_path: str) -> None:
