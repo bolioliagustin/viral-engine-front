@@ -883,16 +883,20 @@ def download_video_for_clips(
     # Obtener tamaños totales — intentar directo primero (googlevideo CDN),
     # luego proxy si falla (proxy muerto con 402 no debe bloquear todo el job).
     def _get_size(url: str) -> int:
-        r = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
         strategies: list[tuple[str, object]] = [("direct", urlopen)]
         proxy = _get_proxy_url()
         if proxy:
             opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
             strategies.append(("proxy", opener.open))
         last_err: Exception | None = None
+        head_headers = {
+            "User-Agent": _DEFAULT_UA,
+            "Referer": "https://www.youtube.com/",
+        }
         for name, open_fn in strategies:
             try:
-                with open_fn(r, 30) as resp:
+                req = Request(url, method="HEAD", headers=head_headers)
+                with open_fn(req, timeout=30) as resp:
                     size = int(resp.headers.get("Content-Length", 0))
                 if name == "proxy":
                     print(f"   📦 Stream size via proxy: {size // (1<<20)}MB")
