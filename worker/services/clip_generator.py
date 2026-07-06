@@ -284,6 +284,47 @@ def _split_text_into_chunks(text: str, max_words: int) -> list[str]:
     return chunks
 
 
+def _group_words_for_srt(
+    clip_words: list[dict],
+    max_words_per_line: int,
+    max_gap_sec: float = 0.75,
+    max_chunk_duration_sec: float = 4.0,
+) -> list[list[dict]]:
+    """
+    Agrupa palabras para SRT por proximidad temporal (no solo conteo fijo).
+
+    Evita bloques de 8–9s cuando Whisper espacia mal las primeras palabras.
+    """
+    groups: list[list[dict]] = []
+    current: list[dict] = []
+
+    for w in clip_words:
+        if not current:
+            current.append(w)
+            continue
+
+        prev = current[-1]
+        gap = w["start"] - prev["end"]
+        projected_span = w["end"] - current[0]["start"]
+        should_split = (
+            len(current) >= max_words_per_line
+            or gap > max_gap_sec
+            or (
+                projected_span > max_chunk_duration_sec
+                and len(current) >= 1
+            )
+        )
+        if should_split:
+            groups.append(current)
+            current = [w]
+        else:
+            current.append(w)
+
+    if current:
+        groups.append(current)
+    return groups
+
+
 def _words_to_srt_entries(
     words: list[dict],
     start_offset_sec: float,
@@ -322,16 +363,13 @@ def _words_to_srt_entries(
     if not clip_words:
         return entries
 
+    word_groups = _group_words_for_srt(clip_words, max_words_per_line)
     last_entry_end = -1.0
-    n_groups = (len(clip_words) + max_words_per_line - 1) // max_words_per_line
 
-    for gi in range(n_groups):
-        i = gi * max_words_per_line
-        group = clip_words[i:i + max_words_per_line]
-        is_last_group = (gi == n_groups - 1)
+    for gi, group in enumerate(word_groups):
+        is_last_group = gi == len(word_groups) - 1
         chunk_text = " ".join(g["text"] for g in group)
 
-        # Anclar al timing real de Whisper (inicio 1ª palabra, fin última palabra)
         chunk_start = group[0]["start"]
         chunk_end = group[-1]["end"]
 
@@ -339,7 +377,7 @@ def _words_to_srt_entries(
             chunk_start = last_entry_end + gap_sec
 
         if not is_last_group:
-            next_start = clip_words[i + max_words_per_line]["start"]
+            next_start = word_groups[gi + 1][0]["start"]
             chunk_end = min(chunk_end + 0.10, next_start - gap_sec)
         elif clip_duration_sec is not None:
             chunk_end = min(chunk_end + 0.15, clip_duration_sec + 0.10)

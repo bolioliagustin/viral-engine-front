@@ -237,6 +237,34 @@ class TestSubtitleSync:
         assert "uno dos" in entries[0]
         assert "tres" in entries[1]
 
+    def test_words_to_srt_splits_on_long_gaps(self):
+        from services.clip_generator import _words_to_srt_entries
+        words = [
+            {"word": "a", "start": 0.0, "end": 0.4},
+            {"word": "b", "start": 0.5, "end": 0.9},
+            {"word": "c", "start": 9.0, "end": 9.4},
+            {"word": "d", "start": 9.5, "end": 9.9},
+        ]
+        entries = _words_to_srt_entries(words, 0.0, 12.0, max_words_per_line=4)
+        assert len(entries) == 2
+        assert "a b" in entries[0]
+        assert "c d" in entries[1]
+        assert "00:00:09," in entries[1]
+
+    def test_words_to_srt_caps_chunk_duration(self):
+        from services.clip_generator import _words_to_srt_entries
+        words = [
+            {"word": "w1", "start": 0.0, "end": 0.3},
+            {"word": "w2", "start": 0.4, "end": 0.7},
+            {"word": "w3", "start": 0.8, "end": 5.0},
+            {"word": "w4", "start": 5.1, "end": 5.4},
+        ]
+        entries = _words_to_srt_entries(words, 0.0, 10.0, max_words_per_line=4)
+        assert len(entries) >= 2
+        assert entries[0].count("-->") == 1
+        first_end = entries[0].split("\n")[1].split(" --> ")[1]
+        assert first_end < "00:00:05,000"
+
 
 class TestRapidApiPreference:
     """Tests for production RapidAPI-first download policy."""

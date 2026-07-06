@@ -44,6 +44,12 @@ if [[ ! -f proxies.txt ]]; then
     log "WARNING: proxies.txt not found — YouTube downloads may fail"
 fi
 
+if [[ -f .env ]] && grep -qE '^GROQ_API_KEY=.+' .env; then
+    log "GROQ_API_KEY: configured (Whisper via Groq)"
+else
+    log "WARNING: GROQ_API_KEY missing in .env — Whisper fallback to OpenAI"
+fi
+
 log "Building and restarting worker (no cache)..."
 dc -f "$COMPOSE_FILE" build --pull --no-cache
 dc -f "$COMPOSE_FILE" up -d --remove-orphans --force-recreate
