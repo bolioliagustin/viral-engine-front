@@ -289,8 +289,17 @@ def _pick_rapidapi_formats(
     return vid, aud
 
 
+_GOOGLEVIDEO_HEADERS = {
+    "User-Agent": _DEFAULT_UA,
+    "Origin": "https://www.youtube.com",
+    "Referer": "https://www.youtube.com/",
+    "Accept": "*/*",
+    "Accept-Encoding": "identity",
+}
+
+
 def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "",
-                        end_byte: int = None) -> None:
+                        end_byte: int = None, known_total: int | None = None) -> None:
     """
     Descarga un archivo usando HTTP Range requests en paralelo.
 
@@ -314,30 +323,32 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
             return build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
         return None
 
-    # Pre-build openers: direct first, then proxies (dead proxy 402 must not block)
-    openers = [None] + [_make_opener(p) for p in proxies] if proxies else [None]
+    # Chunks: solo proxies cuando hay pool (directo da 403 en googlevideo desde VPS).
+    chunk_openers = [_make_opener(p) for p in proxies] if n_proxies > 0 else [None]
 
     def _open_with(opener, req, timeout=30):
         if opener:
             return opener.open(req, timeout=timeout)
         return urlopen(req, timeout=timeout)
 
-    # HEAD — direct first, then each proxy
-    req = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
-    total = 0
+    total = known_total or 0
     last_head_err: Exception | None = None
-    for hi, head_opener in enumerate(openers):
-        try:
-            with _open_with(head_opener, req, 30) as r:
-                total = int(r.headers.get("Content-Length", 0))
-            if hi == 0 and n_proxies > 0:
-                print(f"   ✅ {label}: HEAD OK vía directo")
-            break
-        except Exception as e:
-            last_head_err = e
-            if hi == 0 and n_proxies > 0:
-                print(f"   ⚠️ {label}: HEAD direct falló ({str(e)[:50]}), probando proxies...")
-            continue
+    if total <= 0:
+        head_headers = {**_GOOGLEVIDEO_HEADERS}
+        req = Request(url, method="HEAD", headers=head_headers)
+        head_openers = [None] + [_make_opener(p) for p in proxies] if n_proxies > 0 else [None]
+        for hi, head_opener in enumerate(head_openers):
+            try:
+                with _open_with(head_opener, req, 30) as r:
+                    total = int(r.headers.get("Content-Length", 0))
+                if hi == 0 and n_proxies > 0:
+                    print(f"   ✅ {label}: HEAD OK vía directo")
+                break
+            except Exception as e:
+                last_head_err = e
+                if hi == 0 and n_proxies > 0:
+                    print(f"   ⚠️ {label}: HEAD direct falló ({str(e)[:50]}), probando proxies...")
+                continue
     if total <= 0:
         raise RuntimeError(f"{label}: no se pudo determinar Content-Length ({last_head_err})")
 
@@ -375,16 +386,12 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
         tmp = tmp_dir / f"chunk_{i:04d}"
         last_err = None
         for attempt in range(3):
-            # Round-robin: chunk i en el intento N usa el proxy (i + N) mod n_openers.
-            # Así si chunk 0 falla con proxy 0, reintenta con proxy 1, después 2.
-            # Y dos chunks distintos arrancan por proxies distintos en el primer intento.
-            opener_idx = (i + attempt) % len(openers)
-            opener = openers[opener_idx]
+            # Round-robin sobre proxies (cada chunk = proxy distinto).
+            opener_idx = (i + attempt) % len(chunk_openers)
+            opener = chunk_openers[opener_idx]
             try:
-                rq = Request(url, headers={
-                    "User-Agent": _DEFAULT_UA,
-                    "Range": f"bytes={s}-{e}",
-                })
+                hdrs = {**_GOOGLEVIDEO_HEADERS, "Range": f"bytes={s}-{e}"}
+                rq = Request(url, headers=hdrs)
                 with _open_with(opener, rq, 180) as r, open(tmp, "wb") as f:
                     shutil.copyfileobj(r, f, 1 << 20)
                 if tmp.stat().st_size != (e - s + 1):
@@ -1005,20 +1012,18 @@ def download_video_for_clips(
     aud_path = DOWNLOADS_DIR / f"{video_id}_paud.m4a"
 
     t0 = time.time()
-    # Estrategia híbrida (Fase 1.6 v2):
-    #   - VIDEO: 8 chunks paralelos vía proxy. Probado: ~40-80 MB/s, no se cuelga.
-    #     YouTube exige proxy para evitar IP-ban del watch page, pero una vez que
-    #     tenemos URL firmada el video baja rápido.
-    #   - AUDIO: descarga secuencial con _download_with_progress, intentando
-    #     PRIMERO sin proxy (googlevideo CDN de audio raramente IP-banea).
-    #     Fallback a proxy si direct falla.
-    #     Esto debería resolver el caso donde el audio se cuelga vía proxy.
+    # Video y audio: descarga paralela por chunks vía pool de proxies.
+    # El audio secuencial (_download_with_progress) se cuelga a ~30 KB/s por proxy;
+    # en paralelo con 6-8 chunks alcanza 5-10 MB/s como el video.
+    audio_chunks = min(8, max(4, aud_total // (2 * (1 << 20)) or 4))
     with ThreadPoolExecutor(max_workers=2) as ex:
-        fv = ex.submit(_parallel_download, video_url, vid_path, 8, "video", vid_end_byte)
+        fv = ex.submit(
+            _parallel_download, video_url, vid_path, 8, "video",
+            vid_end_byte, vid_total,
+        )
         fa = ex.submit(
-            _download_with_progress, audio_url, aud_path, "audio",
-            try_direct_first=True,
-            overall_timeout_sec=360,
+            _parallel_download, audio_url, aud_path, audio_chunks, "audio",
+            aud_end_byte, aud_total,
         )
         fv.result()
         fa.result()
