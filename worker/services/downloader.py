@@ -904,6 +904,9 @@ def download_video_for_clips(
                 continue
         raise RuntimeError(f"No se pudo obtener tamaño de streams: {last_err}")
 
+    vid_total = _get_size(video_url)
+    aud_total = _get_size(audio_url)
+
     if vid_total <= 0 or aud_total <= 0:
         raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
 
