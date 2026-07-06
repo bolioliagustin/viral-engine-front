@@ -135,6 +135,52 @@ class TestJobTimeout:
         assert not timed_out.is_set(), "Cancelled timer should not set event"
 
 
+class TestResolveVideoDuration:
+    """Tests for partial-download duration estimation."""
+
+    def test_prefers_max_of_sources(self):
+        from main import _resolve_video_duration
+        from types import SimpleNamespace
+
+        video_info = {"duration": 1800}
+        transcript = {"segments": [{"end": 3600}]}
+        moments = [SimpleNamespace(end_time=90.0), SimpleNamespace(end_time=4500.0)]
+
+        assert _resolve_video_duration(video_info, transcript, moments) == 4530.0
+
+    def test_fallback_from_transcript_when_duration_zero(self):
+        from main import _resolve_video_duration
+
+        video_info = {"duration": 0}
+        transcript = {"segments": [{"start": 0, "end": 120.5}]}
+
+        assert _resolve_video_duration(video_info, transcript, []) == 125.5
+
+    def test_unknown_duration_assumes_long_video(self):
+        from main import _resolve_video_duration
+
+        assert _resolve_video_duration({}, {"segments": []}, []) == 7200.0
+
+
+class TestDownloadStrategy:
+    """Tests for yt-dlp full vs partial download gating."""
+
+    @patch.dict(os.environ, {"USE_RAPIDAPI_DOWNLOAD": "true"}, clear=False)
+    def test_skips_full_when_rapidapi_forced(self):
+        from main import _should_try_full_ytdlp_download
+        assert _should_try_full_ytdlp_download(600) is False
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_skips_full_for_long_videos(self):
+        from main import _should_try_full_ytdlp_download
+        assert _should_try_full_ytdlp_download(4000) is False
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_allows_full_for_short_videos(self):
+        from main import _should_try_full_ytdlp_download
+        assert _should_try_full_ytdlp_download(1800) is True
+
+
 class TestStructuredLogging:
     """Tests for S6 logging configuration."""
 

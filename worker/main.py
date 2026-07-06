@@ -38,6 +38,7 @@ from services.downloader import (
     get_stream_urls,
     download_clip_ytdlp,
     download_video_for_clips,
+    extract_segment_copy,
     cleanup_all,
 )
 # _download_video_ytdlp es interno pero lo usamos como primer intento del
@@ -126,6 +127,47 @@ def recover_stale_jobs(max_age_minutes: int = 20) -> None:
 
 
 JOB_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+FULL_YTDLP_MAX_DURATION_SEC = 3600  # >1h: evitar descarga completa (OOM / bandwidth)
+
+
+def _resolve_video_duration(video_info: dict, transcript: dict, viral_moments) -> float:
+    """
+    Duración fiable para el cálculo de bytes en partial download.
+    oEmbed devuelve 0; usamos transcript + momentos virales como respaldo.
+    """
+    candidates: list[float] = []
+    base = video_info.get("duration") or 0
+    if base > 0:
+        candidates.append(float(base))
+
+    segments = transcript.get("segments") or []
+    if segments:
+        candidates.append(float(segments[-1].get("end", 0)) + 5)
+
+    for moment in viral_moments:
+        end = getattr(moment, "end_time", None)
+        if end is not None:
+            candidates.append(float(end) + 30)
+
+    if candidates:
+        return max(candidates)
+
+    # Sin datos: asumir video largo para no subestimar el ratio de bytes
+    print("⚠️ Duración desconocida — asumiendo 2h para partial download")
+    return 7200.0
+
+
+def _should_try_full_ytdlp_download(video_duration: float) -> bool:
+    """En VPS con RapidAPI o videos largos, saltar yt-dlp full (OOM/bandwidth)."""
+    if os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes"):
+        return False
+    if video_duration > FULL_YTDLP_MAX_DURATION_SEC:
+        print(
+            f"ℹ️ Video >{FULL_YTDLP_MAX_DURATION_SEC // 60}min "
+            f"({video_duration:.0f}s) — omitiendo yt-dlp full, usando partial download"
+        )
+        return False
+    return True
 
 
 def process_job(job_data: dict) -> None:
@@ -209,8 +251,10 @@ def process_job(job_data: dict) -> None:
 
         if not result.viral_moments:
             raise Exception("No viral moments passed quality filter (all clips too short)")
-        
-        # Step 3.6: Whisper Validation - Verify against transcript (Sprint 3)
+
+        video_duration = _resolve_video_duration(video_info, transcript, result.viral_moments)
+        print(f"📏 Duración efectiva para descarga: {video_duration:.0f}s")
+        check_timeout()
         # TODO: Implement in Sprint 3
         # print("\n🎯 Step 3.6: Whisper validation (transcript verification)...")
         # from services.validation import validate_against_transcript
@@ -237,22 +281,22 @@ def process_job(job_data: dict) -> None:
         # Flag para que si la partial falla en el upfront, no la reintentamos
         # per-clip (cada intento puede comer hasta 8 min del watchdog).
         partial_download_failed = False
-        video_duration = video_info.get("duration", 0) or 1
 
-        # ── PRIMARY: yt-dlp full download (audio+video merged) ─────────────
-        # yt-dlp tiene su propio downloader con chunking interno robusto.
-        # Si funciona acá, evitamos por completo el proxy throttling de audio.
-        try:
-            print("🎬 Intentando descarga full vía yt-dlp (audio+video merged)...")
-            t_ytdlp = time.time()
-            muxed_video_path = _download_video_ytdlp(video_url, video_id)
-            size_mb = Path(muxed_video_path).stat().st_size / (1 << 20)
-            elapsed = time.time() - t_ytdlp
-            print(f"✅ yt-dlp full download: {size_mb:.0f}MB en {elapsed:.0f}s ({size_mb/max(elapsed,0.01):.1f}MB/s)")
-        except Exception as e_ytdlp_full:
-            print(f"⚠️ yt-dlp full download falló: {str(e_ytdlp_full)[:200]}")
-            print(f"🔄 Cayendo a Plan B: partial download con stream URLs split")
-            muxed_video_path = None
+        # ── PRIMARY: yt-dlp full download (solo videos cortos, sin USE_RAPIDAPI) ─
+        if _should_try_full_ytdlp_download(video_duration):
+            try:
+                print("🎬 Intentando descarga full vía yt-dlp (audio+video merged)...")
+                t_ytdlp = time.time()
+                muxed_video_path = _download_video_ytdlp(video_url, video_id)
+                size_mb = Path(muxed_video_path).stat().st_size / (1 << 20)
+                elapsed = time.time() - t_ytdlp
+                print(f"✅ yt-dlp full download: {size_mb:.0f}MB en {elapsed:.0f}s ({size_mb/max(elapsed,0.01):.1f}MB/s)")
+            except Exception as e_ytdlp_full:
+                print(f"⚠️ yt-dlp full download falló: {str(e_ytdlp_full)[:200]}")
+                print(f"🔄 Cayendo a Plan B: partial download con stream URLs split")
+                muxed_video_path = None
+        else:
+            print("ℹ️ Saltando yt-dlp full — usando Plan B (RapidAPI + partial download)")
 
         # ── SECONDARY: Stream URLs + partial download ──────────────────────
         # Solo si yt-dlp full falló. Esto es lo que tenemos hoy funcionando
@@ -301,10 +345,10 @@ def process_job(job_data: dict) -> None:
                 print(f"🔄 Caeremos a yt-dlp per-clip o YouTube deep-link por moment")
                 muxed_video_path = None
                 partial_download_failed = True
-        else:
+        elif not muxed_video_path:
             print(f"⚠️ Sin stream_urls — se intentará yt-dlp per-clip o deep-links")
-        
-        # Step 5: Save results
+
+        check_timeout()
         print("\n💾 Step 5: Saving results...")
         update_job_progress(job_id, current_step="generating", progress_percentage=85)
         
@@ -314,6 +358,7 @@ def process_job(job_data: dict) -> None:
         
         # Process each viral moment
         for i, moment in enumerate(result.viral_moments):
+            check_timeout()
             moment_index = i + 1
             clip_url = None
             # Plan C: cache para acelerar re-renders del editor post-clip.
@@ -349,7 +394,7 @@ def process_job(job_data: dict) -> None:
                         src_start = start_s
                         src_end = end_s
                         src_offset = start_s
-                        print(f"   ✓ Usando partial download cacheado")
+                        print(f"   ✓ Usando video muxeado cacheado")
                     else:
                         # ── BACKUP: yt-dlp download_ranges per clip ──────────
                         try:
@@ -586,10 +631,16 @@ def process_job(job_data: dict) -> None:
                         subs_words = None
                         subs_offset = src_offset
 
-                    # ── Plan C: cachear para re-renders rápidos ────────────────
-                    # Subir el segmento crudo (solo si vino de yt-dlp — el fallback
-                    # de partial download es el video entero, no sirve como cache).
-                    # Y guardar los words de Whisper para no re-transcribir.
+                    # ── Plan C: cachear segmento crudo para re-renders del editor ─
+                    if not seg_path and src_path and Path(src_path).exists():
+                        try:
+                            seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}.mp4")
+                            seg_path = extract_segment_copy(src_path, src_start, src_end, seg_out)
+                            print(f"   💾 Segmento crudo extraído para cache R2")
+                        except Exception as e_seg:
+                            print(f"   ⚠️ Extracción segmento cache falló (no fatal): {e_seg}")
+                            seg_path = None
+
                     if seg_path:
                         try:
                             from services.supabase_client import upload_raw_clip_to_storage

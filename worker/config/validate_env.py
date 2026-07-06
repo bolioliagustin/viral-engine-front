@@ -21,7 +21,25 @@ OPTIONAL_ENV_VARS = {
     'R2_SECRET_ACCESS_KEY': 'Required for clip uploads to Cloudflare R2',
     'R2_BUCKET_NAME': 'Required for clip uploads to Cloudflare R2',
     'R2_PUBLIC_URL': 'Public URL prefix for R2 bucket',
+    'USE_RAPIDAPI_DOWNLOAD': 'Set true on VPS for RapidAPI stream URLs (recommended with WEBSHARE_PROXY_FILE)',
+    'RAPIDAPI_KEY': 'Required when USE_RAPIDAPI_DOWNLOAD=true',
+    'WEBSHARE_PROXY_FILE': 'Residential proxies for YouTube downloads on datacenter VPS',
+    'WEBSHARE_PROXY_LIST': 'Comma/newline-separated proxy URLs (alternative to WEBSHARE_PROXY_FILE)',
+    'WEBSHARE_PROXY_URL': 'Single proxy URL (legacy)',
+    'MAX_WORKERS': 'Parallel jobs (default 2). Use 2 on 12GB RAM VPS.',
 }
+
+PRODUCTION_RECOMMENDED_VARS = [
+    'SUPADATA_API_KEY',
+    'R2_ACCOUNT_ID',
+    'R2_ACCESS_KEY_ID',
+    'R2_SECRET_ACCESS_KEY',
+    'R2_BUCKET_NAME',
+    'R2_PUBLIC_URL',
+    'USE_RAPIDAPI_DOWNLOAD',
+    'RAPIDAPI_KEY',
+    'WEBSHARE_PROXY_FILE',
+]
 
 def validate_env():
     """Validate that all required environment variables are set"""
@@ -44,7 +62,28 @@ def validate_env():
     for var, description in OPTIONAL_ENV_VARS.items():
         status = "✓ Set" if os.getenv(var) else f"○ Not set ({description})"
         print(f"   {var}: {status}")
-    print()
+
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    if env in ("production", "prod"):
+        missing_prod = [v for v in PRODUCTION_RECOMMENDED_VARS if not os.getenv(v)]
+        use_rapidapi = os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes")
+        if use_rapidapi and not os.getenv("RAPIDAPI_KEY"):
+            if "RAPIDAPI_KEY" not in missing_prod:
+                missing_prod.append("RAPIDAPI_KEY")
+        has_proxy = any(os.getenv(k) for k in (
+            "WEBSHARE_PROXY_FILE", "WEBSHARE_PROXY_LIST", "WEBSHARE_PROXY_URL"
+        ))
+        if not has_proxy and "WEBSHARE_PROXY_FILE" not in missing_prod:
+            missing_prod.append("WEBSHARE_PROXY_FILE (o WEBSHARE_PROXY_LIST/URL)")
+        if missing_prod:
+            print("\n⚠️  PRODUCTION: variables recomendadas no configuradas:")
+            for var in missing_prod:
+                print(f"   - {var}")
+            print("   El worker puede fallar en transcripts o descargas de YouTube.\n")
+        else:
+            print("\n✅ Variables de producción recomendadas: OK\n")
+    else:
+        print()
 
 if __name__ == "__main__":
     validate_env()

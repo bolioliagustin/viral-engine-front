@@ -849,6 +849,76 @@ def download_clip_ytdlp(
     raise FileNotFoundError(f"yt-dlp no generó archivo en: {out_stem}.*")
 
 
+def _get_stream_content_length(url: str, label: str = "stream") -> int:
+    """
+    Obtiene Content-Length de una URL de googlevideo probando directo y
+    cada proxy configurado (mismo patrón que _download_with_progress).
+    """
+    proxies = _get_proxy_list()
+    strategies: list[tuple[str, object]] = [("direct", urlopen)]
+    for i, p in enumerate(proxies):
+        opener = build_opener(ProxyHandler({"http": p, "https": p}))
+        name = f"proxy[{i + 1}/{len(proxies)}]" if len(proxies) > 1 else "proxy"
+        strategies.append((name, opener.open))
+
+    head_headers = {
+        "User-Agent": _DEFAULT_UA,
+        "Referer": "https://www.youtube.com/",
+        "Origin": "https://www.youtube.com",
+    }
+    last_err: Exception | None = None
+    for name, open_fn in strategies:
+        try:
+            req = Request(url, method="HEAD", headers=head_headers)
+            with open_fn(req, timeout=30) as resp:
+                size = int(resp.headers.get("Content-Length", 0))
+            if size > 0:
+                if name != "direct":
+                    print(f"   📦 {label} size via {name}: {size // (1 << 20)}MB")
+                return size
+            raise RuntimeError("Content-Length inválido o no informado")
+        except Exception as e:
+            last_err = e
+            if name == "direct" and proxies:
+                print(f"   ⚠️ {label} HEAD direct falló ({str(e)[:60]}), probando proxies...")
+            continue
+    raise RuntimeError(f"No se pudo obtener tamaño de {label}: {last_err}")
+
+
+def extract_segment_copy(
+    source_path: str,
+    start_sec: float,
+    end_sec: float,
+    output_path: str,
+) -> str:
+    """Extrae [start_sec, end_sec] del video fuente con ffmpeg -c copy (rápido)."""
+    ffmpeg_bin = "ffmpeg"
+    if FFMPEG_LOCATION:
+        p = Path(FFMPEG_LOCATION)
+        if p.is_file():
+            ffmpeg_bin = str(p)
+        elif p.is_dir():
+            candidate = p / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+            ffmpeg_bin = str(candidate if candidate.exists() else p / "ffmpeg")
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg_bin, "-y", "-loglevel", "error",
+        "-ss", str(start_sec), "-to", str(end_sec),
+        "-i", source_path,
+        "-c", "copy",
+        "-movflags", "+faststart",
+        str(out),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg extract falló: {result.stderr[-300:]}")
+    if not out.exists() or out.stat().st_size == 0:
+        raise RuntimeError("ffmpeg extract no generó archivo válido")
+    return str(out)
+
+
 def download_video_for_clips(
     video_url: str,
     audio_url: str,
@@ -880,36 +950,8 @@ def download_video_for_clips(
 
     print(f"   📐 Descargando 0s–{effective_end:.0f}s ({ratio * 100:.0f}% del video)")
 
-    # Obtener tamaños totales — intentar directo primero (googlevideo CDN),
-    # luego proxy si falla (proxy muerto con 402 no debe bloquear todo el job).
-    def _get_size(url: str) -> int:
-        strategies: list[tuple[str, object]] = [("direct", urlopen)]
-        proxy = _get_proxy_url()
-        if proxy:
-            opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
-            strategies.append(("proxy", opener.open))
-        last_err: Exception | None = None
-        head_headers = {
-            "User-Agent": _DEFAULT_UA,
-            "Referer": "https://www.youtube.com/",
-        }
-        for name, open_fn in strategies:
-            try:
-                req = Request(url, method="HEAD", headers=head_headers)
-                with open_fn(req, timeout=30) as resp:
-                    size = int(resp.headers.get("Content-Length", 0))
-                if name == "proxy":
-                    print(f"   📦 Stream size via proxy: {size // (1<<20)}MB")
-                return size
-            except Exception as e:
-                last_err = e
-                if name == "direct" and proxy:
-                    print(f"   ⚠️ HEAD direct falló ({str(e)[:60]}), probando proxy...")
-                continue
-        raise RuntimeError(f"No se pudo obtener tamaño de streams: {last_err}")
-
-    vid_total = _get_size(video_url)
-    aud_total = _get_size(audio_url)
+    vid_total = _get_stream_content_length(video_url, label="video")
+    aud_total = _get_stream_content_length(audio_url, label="audio")
 
     if vid_total <= 0 or aud_total <= 0:
         raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
@@ -1246,9 +1288,25 @@ def cleanup_video(file_path: str) -> None:
 def cleanup_all(video_id: str) -> None:
     """Remove all downloaded files for a video"""
     try:
-        for pattern in [f"{video_id}_audio.*", f"{video_id}_video.*"]:
+        patterns = [
+            f"{video_id}_audio.*",
+            f"{video_id}_video.*",
+            f"{video_id}_pvid.*",
+            f"{video_id}_paud.*",
+            f"{video_id}_muxed.*",
+            f"{video_id}_seg_*",
+            f"{video_id}_clip_*",
+            f"{video_id}_video_only.*",
+            f"{video_id}_audio_only.*",
+        ]
+        for pattern in patterns:
             for file in DOWNLOADS_DIR.glob(pattern):
                 file.unlink()
                 print(f"🧹 Cleaned up: {file}")
+        # Chunk temp dirs from parallel downloads
+        for tmp_dir in DOWNLOADS_DIR.glob(f".{video_id}_*_chunks"):
+            if tmp_dir.is_dir():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                print(f"🧹 Cleaned up: {tmp_dir}")
     except Exception as e:
         print(f"⚠️ Cleanup error: {e}")
