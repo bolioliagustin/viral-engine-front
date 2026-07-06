@@ -29,8 +29,14 @@ log "At commit: $(git log --oneline -1)"
 
 # ── 2. Rebuild and restart containers ─────────────────────────────────────────
 log "Building and restarting containers..."
-docker compose build --pull
-docker compose up -d --remove-orphans
+if docker info > /dev/null 2>&1; then
+    docker compose build --pull
+    docker compose up -d --remove-orphans
+else
+    log "Docker socket not accessible — using sudo (run: sudo usermod -aG docker $USER && newgrp docker)"
+    sudo docker compose build --pull
+    sudo docker compose up -d --remove-orphans
+fi
 
 # ── 3. Wait for backend health ────────────────────────────────────────────────
 log "Waiting for backend health check..."
@@ -41,7 +47,7 @@ for i in $(seq 1 30); do
     fi
     if [[ $i -eq 30 ]]; then
         log "Backend health check failed — showing logs:"
-        docker compose logs --tail=50 backend
+        docker compose logs --tail=50 2>/dev/null || sudo docker compose logs --tail=50
         exit 1
     fi
     sleep 2
@@ -49,8 +55,8 @@ done
 
 # ── 4. Prune old images ───────────────────────────────────────────────────────
 log "Pruning dangling images..."
-docker image prune -f > /dev/null 2>&1 || true
+(docker image prune -f > /dev/null 2>&1 || sudo docker image prune -f > /dev/null 2>&1) || true
 
 log "Deploy completed successfully"
-docker compose ps | tee -a "$LOG_FILE"
+(docker compose ps || sudo docker compose ps) | tee -a "$LOG_FILE" 2>/dev/null || sudo docker compose ps
 log "========================================="

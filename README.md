@@ -2,15 +2,44 @@
 
 SaaS que convierte videos de YouTube en clips virales 9:16 con copy para redes sociales (Twitter, TikTok, LinkedIn).
 
-## Arquitectura
+## Arquitectura de producción (actual)
 
 ```
-Frontend (Next.js / Vercel)
-    ↓ JWT
-Backend (Express :3000)
-    ↓ jobs en Supabase
-Worker (Python) → FFmpeg + IA → Cloudflare R2
+Vercel (frontend)  →  Render (backend API)  →  Supabase (cola)
+                                                    ↑
+                                            OVH VPS (worker)
+                                                    ↓
+                                            Cloudflare R2 (clips)
 ```
+
+| Componente | Dónde corre | URL / acceso |
+|------------|-------------|--------------|
+| Frontend | Vercel | `NEXT_PUBLIC_API_URL` → Render |
+| Backend API | Render | `https://viral-engine-backend.onrender.com` |
+| Worker | OVH VPS (Docker) | Solo worker — ver abajo |
+| DB + Auth | Supabase | Cloud |
+| Clips | Cloudflare R2 | Cloud |
+
+### Worker en OVH (solo worker, sin backend local)
+
+En el VPS, usar el compose de solo worker:
+
+```bash
+cd ~/viralengine
+bash deploy/worker-only.sh
+# o manualmente:
+docker compose -f docker-compose.worker.yml up -d --build
+docker compose -f docker-compose.worker.yml logs -f
+```
+
+Para volver a levantar backend + worker en OVH (si migrás la API):
+
+```bash
+docker compose -f docker-compose.worker.yml down
+docker compose up -d --build
+```
+
+## Arquitectura local
 
 | Servicio | Carpeta | Puerto |
 |----------|---------|--------|

@@ -1,0 +1,28 @@
+# Worker-only — use when the API runs elsewhere (e.g. Render).
+# Usage: docker compose -f docker-compose.worker.yml up -d --build
+
+services:
+  worker:
+    build: ./worker
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - MAX_WORKERS=${MAX_WORKERS:-3}
+    volumes:
+      - worker_downloads:/app/downloads
+      - worker_clips:/app/clips
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 10G
+
+volumes:
+  worker_downloads:
+  worker_clips:

@@ -1,17 +1,12 @@
 /**
- * Clip Edits Router (Phase 3 — foundation)
+ * Clip Edits Router
  *
- * Endpoints to save/retrieve user-driven post-clip edits and queue
- * a re-render job. The actual re-render is handled by the worker
- * (it polls clip_edits.status='queued').
- *
- * For now the heavy lifting (worker side) is NOT IMPLEMENTED — these
- * endpoints persist the user's intent in `clip_edits` and respond
- * with 202 Accepted. When the worker side ships, status transitions
- * will flow naturally without API contract changes.
+ * Save/retrieve post-clip edits and queue re-renders.
+ * Worker polls clip_edits.status='queued' and processes via clip_edit_processor.
  */
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+const { requireAuth } = require('../middleware/auth');
 const logger = require('../lib/logger');
 
 const router = express.Router();
@@ -21,15 +16,32 @@ const getSupabase = () => {
     return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 };
 
+/** Verify the authenticated user owns the content_result (via jobs.user_id). */
+async function verifyClipOwnership(supabase, contentResultId, userId) {
+    const { data, error } = await supabase
+        .from('content_results')
+        .select('id, jobs!inner(user_id)')
+        .eq('id', contentResultId)
+        .single();
+
+    if (error || !data) return { ok: false, status: 404, message: 'Clip not found' };
+    if (data.jobs.user_id !== userId) {
+        return { ok: false, status: 403, message: 'Not authorized to edit this clip' };
+    }
+    return { ok: true };
+}
+
 /**
  * GET /api/clips/:contentResultId/edit
- * Returns the latest draft/queued edit for this clip (or null).
  */
-router.get('/api/clips/:contentResultId/edit', async (req, res) => {
+router.get('/api/clips/:contentResultId/edit', requireAuth, async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(503).json({ error: 'Database not configured' });
 
     try {
+        const ownership = await verifyClipOwnership(supabase, req.params.contentResultId, req.user.id);
+        if (!ownership.ok) return res.status(ownership.status).json({ error: ownership.message });
+
         const { data, error } = await supabase
             .from('clip_edits')
             .select('*')
@@ -47,9 +59,8 @@ router.get('/api/clips/:contentResultId/edit', async (req, res) => {
 
 /**
  * POST /api/clips/:contentResultId/edit
- * Persist an edit draft. Body matches clip_edits columns.
  */
-router.post('/api/clips/:contentResultId/edit', async (req, res) => {
+router.post('/api/clips/:contentResultId/edit', requireAuth, async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(503).json({ error: 'Database not configured' });
 
@@ -62,15 +73,17 @@ router.post('/api/clips/:contentResultId/edit', async (req, res) => {
         trim_start_offset,
         trim_end_offset,
         music_track_id,
-        user_id,
     } = req.body || {};
 
     try {
+        const ownership = await verifyClipOwnership(supabase, req.params.contentResultId, req.user.id);
+        if (!ownership.ok) return res.status(ownership.status).json({ error: ownership.message });
+
         const { data, error } = await supabase
             .from('clip_edits')
             .insert({
                 content_result_id: req.params.contentResultId,
-                user_id: user_id || null,
+                user_id: req.user.id,
                 overlay_text,
                 overlay_position,
                 subtitle_style,
@@ -94,16 +107,15 @@ router.post('/api/clips/:contentResultId/edit', async (req, res) => {
 
 /**
  * POST /api/clips/:contentResultId/regenerate
- * Mark the latest edit as 'queued' so the worker picks it up.
- *
- * NOTE: worker side not yet implemented — for now this just
- * transitions state. UI can show "queued" status to the user.
  */
-router.post('/api/clips/:contentResultId/regenerate', async (req, res) => {
+router.post('/api/clips/:contentResultId/regenerate', requireAuth, async (req, res) => {
     const supabase = getSupabase();
     if (!supabase) return res.status(503).json({ error: 'Database not configured' });
 
     try {
+        const ownership = await verifyClipOwnership(supabase, req.params.contentResultId, req.user.id);
+        if (!ownership.ok) return res.status(ownership.status).json({ error: ownership.message });
+
         const { data: latest, error: fetchErr } = await supabase
             .from('clip_edits')
             .select('id, status')
@@ -135,7 +147,6 @@ router.post('/api/clips/:contentResultId/regenerate', async (req, res) => {
         res.status(202).json({
             edit: data,
             message: 'Re-render queued. Worker will pick it up shortly.',
-            note: 'Worker re-render not yet active — endpoint persisted for forward compatibility.',
         });
     } catch (e) {
         logger.error('POST /api/clips/:id/regenerate failed', { error: e.message });
