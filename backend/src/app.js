@@ -77,7 +77,7 @@ app.get('/', (req, res) => {
     });
 });
 
-// C3: Advanced health check
+// C3: Advanced health check (readiness — includes DB/queue)
 app.get('/health', async (req, res) => {
     const checks = {
         api: { status: 'ok' },
@@ -124,6 +124,16 @@ app.get('/health', async (req, res) => {
 
     const isHealthy = checks.database.status !== 'error' && checks.queue.status !== 'error';
     res.status(isHealthy ? 200 : 503).json(checks);
+});
+
+// Liveness probe for Docker — returns 200 if the API process is up.
+// Use this for container healthchecks; /health is for full readiness diagnostics.
+app.get('/health/live', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+    });
 });
 
 // C4: Sentry error handler (must be before generic error handler)
