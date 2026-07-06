@@ -239,9 +239,13 @@ router.get('/jobs', requireAuth, async (req, res) => {
 
 /**
  * GET /user/:userId/credits
+ * GET /user/me/credits  (alias — frontend uses this path)
  * Returns user credits
  */
-router.get('/user/:userId/credits', requireAuth, async (req, res) => {
+router.get('/user/me/credits', requireAuth, getUserCredits);
+router.get('/user/:userId/credits', requireAuth, getUserCredits);
+
+async function getUserCredits(req, res) {
     try {
         // Use verified user ID from auth middleware, not URL param (prevents enumeration)
         const userId = req.user.id;
@@ -269,7 +273,7 @@ router.get('/user/:userId/credits', requireAuth, async (req, res) => {
         console.error('Error getting credits:', error);
         res.status(500).json({ error: 'Failed to get credits' });
     }
-});
+}
 
 /**
  * POST /jobs/:jobId/retry

@@ -1,4 +1,7 @@
 #!/bin/bash
+# LEGACY: systemd-based deploy for old Hetzner VPS.
+# For Docker deployments (OVHcloud), use deploy-docker.sh instead.
+#
 # Auto-deploy script — runs on every push to main
 # Called by webhook_server.py
 

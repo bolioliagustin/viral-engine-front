@@ -2,7 +2,7 @@
  * Express App Configuration
  * Separated from index.js so tests can import the app without starting the server.
  */
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 
 const Sentry = require('@sentry/node');
 const express = require('express');

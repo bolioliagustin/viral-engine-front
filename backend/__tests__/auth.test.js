@@ -143,4 +143,17 @@ describe('GET /user/:userId/credits - Authentication (C1)', () => {
 
         expect(res.status).not.toBe(401);
     });
+
+    test('GET /user/me/credits should work as alias', async () => {
+        mockGetUser.mockResolvedValue({
+            data: { user: { id: 'user-123', email: 'test@test.com' } },
+            error: null
+        });
+
+        const res = await request(app)
+            .get('/user/me/credits')
+            .set('Authorization', 'Bearer valid-token');
+
+        expect(res.status).not.toBe(401);
+    });
 });

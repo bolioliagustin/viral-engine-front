@@ -1,0 +1,28 @@
+# Caddy reverse proxy — copy to /etc/caddy/Caddyfile on the VPS
+#
+# Replace api.YOURDOMAIN.com with your actual API domain.
+# Caddy auto-provisions TLS via Let's Encrypt.
+#
+# Setup:
+#   cp deploy/Caddyfile.example /etc/caddy/Caddyfile
+#   nano /etc/caddy/Caddyfile
+#   systemctl reload caddy
+
+api.YOURDOMAIN.com {
+    reverse_proxy 127.0.0.1:3000
+
+    # Lemon Squeezy webhooks need the raw body — don't buffer
+    @webhook path /billing/webhook
+    handle @webhook {
+        reverse_proxy 127.0.0.1:3000 {
+            flush_interval -1
+        }
+    }
+
+    log {
+        output file /var/log/caddy/api-access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}

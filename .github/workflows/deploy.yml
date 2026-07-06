@@ -1,0 +1,30 @@
+# Deploy to OVHcloud VPS on push to main
+#
+# Required GitHub repository secrets:
+#   VPS_HOST     — IP or hostname of the OVH VPS
+#   VPS_USER     — SSH user (ubuntu on OVHcloud)
+#   VPS_SSH_KEY  — Private SSH key (PEM format)
+
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy backend + worker
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ~/viralengine
+            bash deploy/deploy-docker.sh

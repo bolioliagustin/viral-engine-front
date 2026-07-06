@@ -1,21 +1,30 @@
-# S4: Docker Compose for YouTube Viral Content Engine
-# Usage: docker compose up -d
+# YouTube Viral Content Engine — Production Docker Compose
+# Usage: docker compose up -d --build
+#
+# Backend binds to 127.0.0.1:3000 only — expose via Caddy/Nginx on 80/443.
+# See deploy/Caddyfile.example and deploy/setup-vps.sh
 
 services:
   backend:
     build: ./backend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })" ]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
     build: ./worker
@@ -23,7 +32,7 @@ services:
       - .env
     environment:
       - ENVIRONMENT=production
-      - MAX_WORKERS=2
+      - MAX_WORKERS=${MAX_WORKERS:-3}
     volumes:
       - worker_downloads:/app/downloads
       - worker_clips:/app/clips
@@ -31,6 +40,15 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 10G
 
 volumes:
   worker_downloads:

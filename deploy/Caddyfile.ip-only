@@ -1,0 +1,19 @@
+# Caddy — HTTP only via IP (no domain, no TLS)
+# Use while testing before configuring a custom domain.
+#
+# Setup:
+#   sudo cp deploy/Caddyfile.ip-only /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# API will be available at: http://51.79.50.95/health
+
+:80 {
+    reverse_proxy 127.0.0.1:3000
+
+    @webhook path /billing/webhook
+    handle @webhook {
+        reverse_proxy 127.0.0.1:3000 {
+            flush_interval -1
+        }
+    }
+}
