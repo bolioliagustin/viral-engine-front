@@ -250,23 +250,35 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
             return build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
         return None
 
-    # Pre-build openers (una vez para reusar)
-    openers = [_make_opener(p) for p in proxies] if proxies else [None]
+    # Pre-build openers: direct first, then proxies (dead proxy 402 must not block)
+    openers = [None] + [_make_opener(p) for p in proxies] if proxies else [None]
 
     def _open_with(opener, req, timeout=30):
         if opener:
             return opener.open(req, timeout=timeout)
         return urlopen(req, timeout=timeout)
 
-    # HEAD vía primer proxy (o directo) para conocer tamaño
-    if n_proxies > 0:
-        print(f"   🌐 {label}: pool de {n_proxies} proxies disponibles")
-    head_opener = openers[0]
+    # HEAD — direct first, then each proxy
     req = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
-    with _open_with(head_opener, req, 30) as r:
-        total = int(r.headers.get("Content-Length", 0))
+    total = 0
+    last_head_err: Exception | None = None
+    for hi, head_opener in enumerate(openers):
+        try:
+            with _open_with(head_opener, req, 30) as r:
+                total = int(r.headers.get("Content-Length", 0))
+            if hi == 0 and n_proxies > 0:
+                print(f"   ✅ {label}: HEAD OK vía directo")
+            break
+        except Exception as e:
+            last_head_err = e
+            if hi == 0 and n_proxies > 0:
+                print(f"   ⚠️ {label}: HEAD direct falló ({str(e)[:50]}), probando proxies...")
+            continue
     if total <= 0:
-        raise RuntimeError(f"{label}: no se pudo determinar Content-Length")
+        raise RuntimeError(f"{label}: no se pudo determinar Content-Length ({last_head_err})")
+
+    if n_proxies > 0:
+        print(f"   🌐 {label}: pool de {n_proxies} proxies (+ directo) disponibles")
 
     # Limitar al end_byte pedido (descarga parcial desde byte 0)
     effective_end = (min(end_byte, total - 1) if end_byte is not None else total - 1)
@@ -868,24 +880,29 @@ def download_video_for_clips(
 
     print(f"   📐 Descargando 0s–{effective_end:.0f}s ({ratio * 100:.0f}% del video)")
 
-    # Obtener tamaños totales para calcular end_byte
-    proxy = _get_proxy_url()
-    if proxy:
-        opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
-        _open_head = lambda r, t=30: opener.open(r, timeout=t)
-    else:
-        _open_head = lambda r, t=30: urlopen(r, timeout=t)
-
+    # Obtener tamaños totales — intentar directo primero (googlevideo CDN),
+    # luego proxy si falla (proxy muerto con 402 no debe bloquear todo el job).
     def _get_size(url: str) -> int:
         r = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
-        with _open_head(r, 30) as resp:
-            return int(resp.headers.get("Content-Length", 0))
-
-    try:
-        vid_total = _get_size(video_url)
-        aud_total = _get_size(audio_url)
-    except Exception as e:
-        raise RuntimeError(f"No se pudo obtener tamaño de streams: {e}")
+        strategies: list[tuple[str, object]] = [("direct", urlopen)]
+        proxy = _get_proxy_url()
+        if proxy:
+            opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+            strategies.append(("proxy", opener.open))
+        last_err: Exception | None = None
+        for name, open_fn in strategies:
+            try:
+                with open_fn(r, 30) as resp:
+                    size = int(resp.headers.get("Content-Length", 0))
+                if name == "proxy":
+                    print(f"   📦 Stream size via proxy: {size // (1<<20)}MB")
+                return size
+            except Exception as e:
+                last_err = e
+                if name == "direct" and proxy:
+                    print(f"   ⚠️ HEAD direct falló ({str(e)[:60]}), probando proxy...")
+                continue
+        raise RuntimeError(f"No se pudo obtener tamaño de streams: {last_err}")
 
     if vid_total <= 0 or aud_total <= 0:
         raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
