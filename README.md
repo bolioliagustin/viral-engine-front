@@ -175,23 +175,19 @@ curl https://api.tudominio.com/health
 3. Verificar progreso en dashboard
 4. Confirmar clips en la página de resultados y en R2
 
-### Deploy automático (GitHub Actions)
+### Deploy automático (recomendado)
 
-Configurar secrets en el repo de GitHub:
+Ver guía completa: [deploy/SETUP-DEPLOY.md](deploy/SETUP-DEPLOY.md)
 
-| Secret | Valor |
-|--------|-------|
-| `VPS_HOST` | IP del VPS OVH |
-| `VPS_USER` | `root` |
-| `VPS_SSH_KEY` | Clave privada SSH |
+**Flujo:** `git push origin main` → GitHub Actions → VPS actualiza el worker solo.
 
-Cada push a `main` ejecuta `deploy/deploy-docker.sh` en el VPS.
+**Un comando desde Windows:**
 
-Deploy manual:
-
-```bash
-ssh root@<IP-VPS> "cd /opt/viralengine && bash deploy/deploy-docker.sh"
+```powershell
+.\deploy\push-deploy.ps1 -Message "fix: mi cambio"
 ```
+
+Configurar secrets en GitHub: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`
 
 ---
 
