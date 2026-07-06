@@ -210,6 +210,24 @@ class TestStreamUrlStrategy:
         assert result["video_url"] == "v"
 
 
+class TestRapidApiPreference:
+    """Tests for production RapidAPI-first download policy."""
+
+    @patch.dict(os.environ, {
+        "ENVIRONMENT": "production",
+        "RAPIDAPI_KEY": "test-key",
+    }, clear=False)
+    def test_production_skips_ytdlp_clips(self):
+        from main import _should_use_ytdlp_for_clips, _prefer_rapidapi_download
+        assert _prefer_rapidapi_download() is True
+        assert _should_use_ytdlp_for_clips() is False
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_dev_allows_ytdlp_clips_without_rapidapi(self):
+        from main import _should_use_ytdlp_for_clips
+        assert _should_use_ytdlp_for_clips() is True
+
+
 class TestStructuredLogging:
     """Tests for S6 logging configuration."""
 

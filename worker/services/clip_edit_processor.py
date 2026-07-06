@@ -14,6 +14,7 @@ para que la UI lo muestre.
 """
 import gc
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -75,7 +76,22 @@ def _download_segment_with_fallback(
         except Exception as e_cache:
             print(f"   ⚠️ R2 cache miss ({e_cache}) — fallback a yt-dlp")
 
-    # ── Intento 1: yt-dlp download_ranges ─────────────────────────────
+    # ── Intento 1: RapidAPI / stream partial (prod) ───────────────────
+    if os.getenv("ENVIRONMENT", "").lower() in ("production", "prod") or os.getenv("RAPIDAPI_KEY"):
+        try:
+            return download_clip_via_stream_urls(
+                youtube_url=video_url,
+                start_sec=start_s,
+                end_sec=end_s,
+                video_duration=end_s + 30,
+                video_id=edit_id,
+                temp_id=f"edit_{edit_id}",
+                force_rapidapi=True,
+            )
+        except Exception as e_rapid:
+            print(f"   ⚠️ RapidAPI edit falló ({e_rapid}) — probando yt-dlp")
+
+    # ── Intento 2: yt-dlp download_ranges (dev) ─────────────────────
     try:
         seg_out = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg")
         path = download_clip_ytdlp(

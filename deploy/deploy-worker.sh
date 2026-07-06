@@ -44,9 +44,9 @@ if [[ ! -f proxies.txt ]]; then
     log "WARNING: proxies.txt not found — YouTube downloads may fail"
 fi
 
-log "Building and restarting worker..."
-dc -f "$COMPOSE_FILE" build --pull
-dc -f "$COMPOSE_FILE" up -d --remove-orphans
+log "Building and restarting worker (no cache)..."
+dc -f "$COMPOSE_FILE" build --pull --no-cache
+dc -f "$COMPOSE_FILE" up -d --remove-orphans --force-recreate
 
 log "Worker status:"
 dc -f "$COMPOSE_FILE" ps

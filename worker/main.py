@@ -161,7 +161,7 @@ def _resolve_video_duration(video_info: dict, transcript: dict, viral_moments) -
 
 def _should_try_full_ytdlp_download(video_duration: float) -> bool:
     """En VPS con RapidAPI o videos largos, saltar yt-dlp full (OOM/bandwidth)."""
-    if os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes"):
+    if _prefer_rapidapi_download():
         return False
     if video_duration > FULL_YTDLP_MAX_DURATION_SEC:
         print(
@@ -170,6 +170,33 @@ def _should_try_full_ytdlp_download(video_duration: float) -> bool:
         )
         return False
     return True
+
+
+def _prefer_rapidapi_download() -> bool:
+    """True cuando debemos usar RapidAPI en lugar de yt-dlp para video."""
+    if os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes"):
+        return True
+    if os.getenv("ENVIRONMENT", "development").lower() in ("production", "prod"):
+        return True
+    return bool(os.getenv("RAPIDAPI_KEY"))
+
+
+def _should_use_ytdlp_for_clips() -> bool:
+    """yt-dlp per-clip está roto en DRM — nunca en prod ni si hay RapidAPI."""
+    if _prefer_rapidapi_download():
+        return False
+    return True
+
+
+def _log_download_config() -> None:
+    rapid = os.getenv("RAPIDAPI_KEY")
+    print(
+        f"🔧 Download config: ENV={os.getenv('ENVIRONMENT', 'development')} | "
+        f"USE_RAPIDAPI={os.getenv('USE_RAPIDAPI_DOWNLOAD', 'false')} | "
+        f"RAPIDAPI_KEY={'SET' if rapid else '❌ MISSING'} | "
+        f"prefer_rapidapi={_prefer_rapidapi_download()} | "
+        f"yt_dlp_clips={_should_use_ytdlp_for_clips()}"
+    )
 
 
 def process_job(job_data: dict) -> None:
@@ -276,6 +303,13 @@ def process_job(job_data: dict) -> None:
         #   4. FALLBACK final: deep-link de YouTube (sin MP4, mantiene el job vivo).
         supabase = get_supabase()
         print("\n📹 Step 4: Preparando descarga del video...")
+        _log_download_config()
+        if _prefer_rapidapi_download() and not os.getenv("RAPIDAPI_KEY"):
+            raise RuntimeError(
+                "RAPIDAPI_KEY no configurada en el worker. "
+                "Agregala en ~/viralengine/.env y reinicia: "
+                "docker compose -f docker-compose.worker.yml up -d --build"
+            )
         update_job_progress(job_id, current_step="clipping", progress_percentage=70)
         stream_urls = None
         video_path = None
@@ -283,7 +317,7 @@ def process_job(job_data: dict) -> None:
         # Flag para que si la partial falla en el upfront, no la reintentamos
         # per-clip (cada intento puede comer hasta 8 min del watchdog).
         partial_download_failed = False
-        ytdlp_blocked = False  # DRM / PO Token — no reintentar yt-dlp
+        ytdlp_blocked = _prefer_rapidapi_download()  # prod: nunca yt-dlp
 
         # ── PRIMARY: yt-dlp full download (solo videos cortos, sin USE_RAPIDAPI) ─
         if _should_try_full_ytdlp_download(video_duration):
@@ -355,7 +389,7 @@ def process_job(job_data: dict) -> None:
                 muxed_video_path = None
                 partial_download_failed = True
         elif not muxed_video_path:
-            print(f"⚠️ Sin stream_urls — se intentará yt-dlp per-clip o deep-links")
+            print(f"⚠️ Sin stream_urls — se intentará RapidAPI per-clip")
 
         check_timeout()
         print("\n💾 Step 5: Saving results...")
@@ -406,8 +440,33 @@ def process_job(job_data: dict) -> None:
                         print(f"   ✓ Usando video muxeado cacheado")
                     else:
                         seg_path = None
-                        # ── BACKUP 1: yt-dlp per-clip (omitir si DRM conocido) ──
-                        if not ytdlp_blocked:
+                        # ── BACKUP 1: RapidAPI / stream partial (prod default) ────
+                        if _prefer_rapidapi_download() or partial_download_failed:
+                            try:
+                                print(f"   📥 Descargando clip vía RapidAPI streams...")
+                                seg_path = download_clip_via_stream_urls(
+                                    youtube_url=video_url,
+                                    start_sec=start_s,
+                                    end_sec=end_s,
+                                    video_duration=video_duration,
+                                    video_id=video_id,
+                                    temp_id=f"{video_id}_m{moment_index}",
+                                    force_rapidapi=True,
+                                )
+                                src_path = seg_path
+                                src_start = 0.0
+                                src_end = end_s - start_s
+                                src_offset = start_s
+                            except Exception as e_stream:
+                                print(f"   ⚠️ RapidAPI per-clip falló: {e_stream}")
+                                if not _should_use_ytdlp_for_clips():
+                                    raise RuntimeError(
+                                        f"Sin video para clip {moment_index} — "
+                                        f"RapidAPI falló y yt-dlp deshabilitado en producción: {e_stream}"
+                                    ) from e_stream
+
+                        # ── BACKUP 2: yt-dlp per-clip (solo dev, sin RapidAPI) ──
+                        if not seg_path and _should_use_ytdlp_for_clips():
                             try:
                                 seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}")
                                 seg_path = download_clip_ytdlp(
@@ -420,35 +479,37 @@ def process_job(job_data: dict) -> None:
                                 src_start = 0.0
                                 src_end = end_s - start_s
                                 src_offset = start_s
-                                print(f"   ✓ yt-dlp per-clip OK (backup)")
+                                print(f"   ✓ yt-dlp per-clip OK (dev fallback)")
                             except Exception as e_ytdlp:
                                 if is_ytdlp_drm_error(e_ytdlp):
                                     ytdlp_blocked = True
                                 print(f"   ⚠️ yt-dlp per-clip falló: {e_ytdlp}")
+                                try:
+                                    seg_path = download_clip_via_stream_urls(
+                                        youtube_url=video_url,
+                                        start_sec=start_s,
+                                        end_sec=end_s,
+                                        video_duration=video_duration,
+                                        video_id=video_id,
+                                        temp_id=f"{video_id}_m{moment_index}",
+                                        force_rapidapi=True,
+                                    )
+                                    src_path = seg_path
+                                    src_start = 0.0
+                                    src_end = end_s - start_s
+                                    src_offset = start_s
+                                except Exception as e_stream2:
+                                    raise RuntimeError(
+                                        f"Sin video disponible para clip {moment_index} "
+                                        f"(yt-dlp y RapidAPI fallaron: {e_stream2})"
+                                    ) from e_stream2
 
-                        # ── BACKUP 2: RapidAPI / stream partial per-clip ────────
                         if not seg_path:
-                            try:
-                                seg_path = download_clip_via_stream_urls(
-                                    youtube_url=video_url,
-                                    start_sec=start_s,
-                                    end_sec=end_s,
-                                    video_duration=video_duration,
-                                    video_id=video_id,
-                                    temp_id=f"{video_id}_m{moment_index}",
-                                    force_rapidapi=ytdlp_blocked or partial_download_failed,
-                                )
-                                src_path = seg_path
-                                src_start = 0.0
-                                src_end = end_s - start_s
-                                src_offset = start_s
-                            except Exception as e_stream:
-                                raise RuntimeError(
-                                    f"Sin video disponible para clip {moment_index} "
-                                    f"(partial upfront={'falló' if partial_download_failed else 'no'}, "
-                                    f"yt-dlp={'DRM' if ytdlp_blocked else 'falló'}, "
-                                    f"RapidAPI: {e_stream})"
-                                ) from e_stream
+                            raise RuntimeError(
+                                f"Sin video disponible para clip {moment_index} "
+                                f"(muxed={'no' if not muxed_video_path else 'sí'}, "
+                                f"partial upfront={'falló' if partial_download_failed else 'no'})"
+                            )
 
                     # ── Whisper per-clip: sync perfecto palabra por palabra ────
                     # Extraemos audio del rango del clip y lo transcribimos con
@@ -872,7 +933,7 @@ def watch_queue():
     
     print(f"""
 ╔════════════════════════════════════════════════════════════╗
-║     YouTube Viral Content Engine - AI Worker v3.0         ║
+║     YouTube Viral Content Engine - AI Worker v3.1         ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Queue: Supabase (jobs table)                             ║
 ║  Workers: {max_workers} parallel                                      ║

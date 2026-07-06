@@ -65,6 +65,10 @@ def validate_env():
 
     env = os.getenv("ENVIRONMENT", "development").lower()
     if env in ("production", "prod"):
+        if not os.getenv("RAPIDAPI_KEY"):
+            print("\n❌ RAPIDAPI_KEY es OBLIGATORIA en producción (yt-dlp falla con DRM).")
+            print("   Agregala en ~/viralengine/.env en el VPS.\n")
+            sys.exit(1)
         missing_prod = [v for v in PRODUCTION_RECOMMENDED_VARS if not os.getenv(v)]
         use_rapidapi = os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes")
         if use_rapidapi and not os.getenv("RAPIDAPI_KEY"):
