@@ -276,7 +276,38 @@ def clean_moment(moment: dict, *, expected_tweets: int = 7) -> ValidationStats:
     return stats
 
 
-def clean_analysis(result_dict: dict) -> ValidationStats:
+def moment_needs_copy_retry(stats: ValidationStats) -> bool:
+    """True when copy should be regenerated (max 1 retry in caller)."""
+    return stats.wrong_tweet_count > 0 or stats.linkedin_out_of_range > 0 or stats.cliche_hits > 0
+
+
+def clean_moment_with_retry(
+    moment: dict,
+    *,
+    expected_tweets: int = 7,
+    regenerate_fn=None,
+    max_retries: int = 1,
+) -> ValidationStats:
+    """
+    Clean + validate a moment; optionally retry copy regeneration once.
+
+    regenerate_fn(moment_dict) -> None should update content_pieces in-place.
+    """
+    stats = clean_moment(moment, expected_tweets=expected_tweets)
+    retries = 0
+    while (
+        regenerate_fn
+        and moment_needs_copy_retry(stats)
+        and retries < max_retries
+    ):
+        retries += 1
+        print(f"   🔄 Copy retry {retries}/{max_retries} for '{moment.get('hook', '')[:30]}'")
+        regenerate_fn(moment)
+        stats = clean_moment(moment, expected_tweets=expected_tweets)
+    return stats
+
+
+def clean_analysis(result_dict: dict, regenerate_fn=None, max_retries: int = 1) -> ValidationStats:
     """Apply clean_moment over all viral_moments. Returns aggregate stats."""
     agg = ValidationStats()
     moments = result_dict.get('viral_moments') or []
@@ -284,5 +315,12 @@ def clean_analysis(result_dict: dict) -> ValidationStats:
         return agg
     for m in moments:
         if isinstance(m, dict):
-            agg.merge(clean_moment(m))
+            if regenerate_fn:
+                agg.merge(clean_moment_with_retry(
+                    m,
+                    regenerate_fn=regenerate_fn,
+                    max_retries=max_retries,
+                ))
+            else:
+                agg.merge(clean_moment(m))
     return agg

@@ -27,6 +27,11 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
+import {
+  type WhisperWordsData,
+  computeSubtitleCoverage,
+  isSubtitleCoverageComplete,
+} from "@/types/subtitles";
 
 interface ScoreJustification {
   metric: string;
@@ -58,6 +63,7 @@ interface ViralMomentCardProps {
   sentiment?: string;
   pillarType?: string;
   roiTimeSaved?: number;
+  whisperWords?: WhisperWordsData | null;
 }
 
 // ─── Pillar config ─────────────────────────────────────────────────────────
@@ -178,6 +184,7 @@ export function ViralMomentCard({
   sentiment,
   pillarType,
   roiTimeSaved,
+  whisperWords,
 }: ViralMomentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -218,6 +225,11 @@ export function ViralMomentCard({
   ).toFixed(1);
   const duration = endTime - startTime;
   const pillar = pillarType ? PILLAR_CONFIG[pillarType.toLowerCase()] : null;
+  const subtitleCoverage = computeSubtitleCoverage(whisperWords ?? null, duration);
+  const subsComplete = isSubtitleCoverageComplete(subtitleCoverage);
+  const improvementTips = justifications
+    .map((j) => j.improvement_tip)
+    .filter((tip): tip is string => Boolean(tip?.trim()));
 
   const isYouTubeUrl = Boolean(
     effectiveClipUrl &&
@@ -294,6 +306,17 @@ export function ViralMomentCard({
                   >
                     <span className="mr-1">{pillar.icon}</span>
                     {pillar.label}
+                  </Badge>
+                )}
+                {subtitleCoverage !== null && (
+                  <Badge
+                    className={
+                      subsComplete
+                        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 text-[10px] px-2 py-0.5 font-semibold border"
+                        : "bg-amber-500/15 text-amber-300 border-amber-500/30 text-[10px] px-2 py-0.5 font-semibold border"
+                    }
+                  >
+                    {subsComplete ? "Subs completos" : "Subs parciales"}
                   </Badge>
                 )}
               </div>
@@ -516,6 +539,27 @@ export function ViralMomentCard({
             </div>
           </div>
 
+          {/* ════════════════════ SUGERENCIAS ════════════════════ */}
+          {improvementTips.length > 0 && (
+            <div className="border-t border-slate-800 bg-green-950/10 px-4 sm:px-5 py-4">
+              <h4 className="text-xs font-semibold text-green-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Sugerencias
+              </h4>
+              <ul className="space-y-1.5">
+                {improvementTips.map((tip, i) => (
+                  <li
+                    key={i}
+                    className="text-xs text-green-300/90 flex gap-2 leading-relaxed"
+                  >
+                    <span className="shrink-0">💡</span>
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* ════════════════════ COLLAPSIBLE AI ANALYSIS ════════════════════ */}
           {justifications.length > 0 && (
             <div className="border-t border-slate-800 bg-slate-950/30">
@@ -594,6 +638,7 @@ export function ViralMomentCard({
         clipUrl={clipUrl}
         overlayText={overlayText}
         clipDuration={Math.max(1, endTime - startTime)}
+        whisperWords={whisperWords?.words}
         onRendered={(url) => {
           setRenderedOverride(url);
           toast({

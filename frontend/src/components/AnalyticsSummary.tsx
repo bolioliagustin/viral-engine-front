@@ -305,14 +305,14 @@ export function AnalyticsSummary({ results }: AnalyticsSummaryProps) {
                 <RadialGauge 
                   value={totalTimeSaved} 
                   max={300} 
-                  label="Min Ahorrados" 
+                  label="Total min." 
                   icon={Clock}
                   color="cyan"
                 />
                 <RadialGauge 
                   value={avgRoi} 
-                  max={100} 
-                  label="ROI %" 
+                  max={120} 
+                  label="Min. ahorrados" 
                   icon={Target}
                   color="green"
                 />

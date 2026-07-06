@@ -725,6 +725,100 @@ VIDEO INFO:
         raise ValueError(f"Invalid JSON response: {e}")
 
 
+        raise ValueError(f"Invalid JSON response: {e}")
+
+
+def _clip_text_from_words(words: list[dict]) -> str:
+    """Build plain transcript from whisper words."""
+    return " ".join((w.get("word") or "").strip() for w in words if (w.get("word") or "").strip())
+
+
+def regenerate_moment_copy(
+    moment,
+    clip_text: str,
+    *,
+    category: str = "business",
+    tone: str = "profesional",
+    client=None,
+) -> None:
+    """
+    Lightweight second-pass LLM: regenerate twitter_thread + linkedin_post
+    using ONLY the clip's actual whisper text (post-Whisper in main.py).
+    Mutates moment.content_pieces in-place.
+    """
+    if not clip_text or not clip_text.strip():
+        return
+
+    if client is None:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+
+    model = os.getenv("OPENROUTER_COPY_MODEL", os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001"))
+    hook = getattr(moment, 'hook', '') or ''
+    viral_overlay = getattr(moment, 'viral_overlay', '') or ''
+
+    prompt = f"""Genera copy viral SOLO a partir del texto real del clip (no inventes fuera de este audio).
+
+CLIP TRANSCRIPT (texto exacto del audio del clip):
+{clip_text[:4000]}
+
+Hook del momento: {hook}
+Overlay TikTok: {viral_overlay}
+Categoría: {category}
+Tono: {tone}
+
+REGLAS:
+- twitter_thread: exactamente 7 tweets separados por \\n\\n
+- Sin prefijos "Tweet 1:", sin [Link]
+- Cada tweet 180-280 caracteres, funciona solo fuera del hilo
+- linkedin_post: 800-1200 caracteres, párrafos cortos, pregunta al final
+- Sin clichés ("en el mundo de hoy", "descubre cómo", "es importante destacar")
+- Usa SOLO ideas y frases presentes en el transcript del clip
+
+Responde SOLO JSON:
+{{"twitter_thread": "...", "linkedin_post": "..."}}"""
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "Copywriter viral. Respondes solo JSON válido."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.6,
+            max_tokens=4000,
+            response_format={"type": "json_object"},
+            timeout=45,
+        )
+        raw = response.choices[0].message.content if response.choices else None
+        if not raw or not raw.strip():
+            print("   ⚠️ Copy regen: LLM devolvió vacío")
+            return
+
+        data = json.loads(raw.strip())
+        cp = moment.content_pieces
+        if data.get("twitter_thread"):
+            cp.twitter_thread = data["twitter_thread"]
+        if data.get("linkedin_post"):
+            cp.linkedin_post = data["linkedin_post"]
+        print(f"   ✅ Copy regenerado desde whisper ({len(clip_text)} chars)")
+    except Exception as e:
+        print(f"   ⚠️ Copy regen falló: {str(e)[:120]}")
+
+
+def regenerate_moment_copy_dict(moment_dict: dict, clip_text: str, **kwargs) -> None:
+    """Dict-friendly wrapper for content_validators retry."""
+    from models.schemas import ViralMoment
+    try:
+        m = ViralMoment(**moment_dict)
+        regenerate_moment_copy(m, clip_text, **kwargs)
+        moment_dict["content_pieces"] = m.content_pieces.model_dump()
+    except Exception as e:
+        print(f"   ⚠️ Copy regen dict falló: {str(e)[:80]}")
+
+
 # Keep old function name for backwards compatibility
 def analyze_with_gemini(audio_path: str, video_info: dict, tone: str = "profesional") -> Optional[AnalysisResult]:
     """Wrapper for backwards compatibility - now uses OpenRouter"""

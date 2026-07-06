@@ -10,7 +10,6 @@ import {
   Wand2,
   Info,
   Sparkles,
-  Lock,
   Check,
   Loader2,
   AlertCircle,
@@ -21,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { WordSubtitleEditor } from "@/components/WordSubtitleEditor";
+import type { WhisperWord, WordCorrection, WordStyle } from "@/types/subtitles";
 
 type SubtitleStyle = "tiktok_viral" | "clean" | "podcast";
 type OverlayPosition = "top" | "center" | "bottom";
@@ -37,6 +38,8 @@ interface ClipEdit {
   rendered_clip_url?: string | null;
   error_message?: string | null;
   updated_at?: string;
+  word_corrections?: WordCorrection[] | null;
+  word_styles?: WordStyle[] | null;
 }
 
 interface EditClipDrawerProps {
@@ -48,6 +51,8 @@ interface EditClipDrawerProps {
   overlayText?: string;
   /** Duración del clip en segundos — usada para el slider de trim. */
   clipDuration?: number;
+  /** Palabras transcritas del clip (whisper_words.words). */
+  whisperWords?: WhisperWord[];
   /**
    * Notifica al padre cuando un re-render completa con una URL nueva,
    * para que pueda reemplazar el clip mostrado en la card.
@@ -56,11 +61,8 @@ interface EditClipDrawerProps {
 }
 
 /**
- * Fase 3 — skeleton del editor post-clip.
- *
- * Por ahora, todas las acciones de re-render están BLOQUEADAS (esperando
- * endpoint `POST /api/clips/:id/regenerate`). La UI sirve para validar
- * el flujo con usuarios y guardar sus preferencias en `clip_edits`.
+ * Editor post-clip: título, subtítulos palabra por palabra, estilo y trim.
+ * Guarda borradores en clip_edits y encola re-render vía POST /regenerate.
  */
 export function EditClipDrawer({
   open,
@@ -70,6 +72,7 @@ export function EditClipDrawer({
   clipUrl,
   overlayText,
   clipDuration,
+  whisperWords = [],
   onRendered,
 }: EditClipDrawerProps) {
   const { toast } = useToast();
@@ -83,6 +86,10 @@ export function EditClipDrawer({
   const [trimStart, setTrimStart] = useState<number>(0);
   const [trimEnd, setTrimEnd] = useState<number>(0);
   const safeDuration = Math.max(1, clipDuration ?? 30);
+  const [wordCorrections, setWordCorrections] = useState<WordCorrection[]>([]);
+  const [wordStyles, setWordStyles] = useState<WordStyle[]>([]);
+  const [loadedCorrections, setLoadedCorrections] = useState<WordCorrection[]>([]);
+  const [loadedStyles, setLoadedStyles] = useState<WordStyle[]>([]);
 
   // Backend wiring state
   const [latestEdit, setLatestEdit] = useState<ClipEdit | null>(null);
@@ -121,6 +128,20 @@ export function EditClipDrawer({
             setTrimStart(edit.trim_start_offset);
           if (typeof edit.trim_end_offset === "number")
             setTrimEnd(edit.trim_end_offset);
+          if (Array.isArray(edit.word_corrections)) {
+            setWordCorrections(edit.word_corrections);
+            setLoadedCorrections(edit.word_corrections);
+          } else {
+            setWordCorrections([]);
+            setLoadedCorrections([]);
+          }
+          if (Array.isArray(edit.word_styles)) {
+            setWordStyles(edit.word_styles);
+            setLoadedStyles(edit.word_styles);
+          } else {
+            setWordStyles([]);
+            setLoadedStyles([]);
+          }
           // Si ya hay un re-render completado, notificar al padre para
           // que reemplace el clip mostrado en la card.
           if (edit.status === "completed" && edit.rendered_clip_url) {
@@ -199,6 +220,8 @@ export function EditClipDrawer({
     subtitle_style: selectedStyle,
     trim_start_offset: trimStart > 0.05 ? Number(trimStart.toFixed(2)) : null,
     trim_end_offset: trimEnd > 0.05 ? Number(trimEnd.toFixed(2)) : null,
+    word_corrections: wordCorrections.length > 0 ? wordCorrections : null,
+    word_styles: wordStyles.length > 0 ? wordStyles : null,
   });
 
   // ─── Save draft ────────────────────────────────────────────────────
@@ -387,9 +410,8 @@ export function EditClipDrawer({
               <div className="px-5 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
                 <span className="text-xs text-amber-200">
-                  <strong className="font-semibold">Beta</strong> · el worker
-                  re-render aún no está activo. Guardá preferencias y encolá; se
-                  aplicarán cuando se lance.
+                  <strong className="font-semibold">Editor activo</strong> · guardá
+                  cambios y pulsá Regenerar para aplicarlos al clip.
                 </span>
               </div>
             )}
@@ -452,18 +474,19 @@ export function EditClipDrawer({
                   <label className="text-xs uppercase tracking-wider text-slate-400 font-semibold block">
                     Subtítulos
                   </label>
-                  <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 flex items-start gap-3">
-                    <Lock className="w-4 h-4 text-slate-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-slate-300 font-medium">
-                        Edición palabra por palabra
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Pronto: corregir palabras mal transcritas, ajustar
-                        timing, cambiar agrupaciones.
-                      </p>
-                    </div>
-                  </div>
+                  <WordSubtitleEditor
+                    key={`${contentResultId}-${latestEdit?.id ?? "new"}`}
+                    words={whisperWords}
+                    clipUrl={clipUrl}
+                    clipDuration={safeDuration}
+                    disabled={isLocked}
+                    initialCorrections={loadedCorrections}
+                    initialStyles={loadedStyles}
+                    onChange={(corrections, styles) => {
+                      setWordCorrections(corrections);
+                      setWordStyles(styles);
+                    }}
+                  />
                 </div>
               </TabsContent>
 

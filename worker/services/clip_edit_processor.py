@@ -22,7 +22,7 @@ from services.downloader import (
     download_clip_ytdlp,
     download_clip_via_stream_urls,
 )
-from services.clip_generator import generate_clip, ClipGenerationError
+from services.clip_generator import generate_clip, ClipGenerationError, apply_word_corrections
 from services.supabase_client import (
     get_content_result,
     get_job,
@@ -267,6 +267,24 @@ def process_clip_edit(edit: dict) -> None:
         if not words and not segments:
             words, segments = _whisper_per_clip(seg_path, clip_duration, edit_id)
 
+        # Apply user word corrections before render
+        word_corrections = edit.get("word_corrections")
+        if words and word_corrections:
+            try:
+                if isinstance(word_corrections, str):
+                    word_corrections = json.loads(word_corrections)
+                words = apply_word_corrections(words, word_corrections)
+                print(f"   ✅ Applied {len(word_corrections)} word_corrections")
+            except Exception as e_corr:
+                print(f"   ⚠️ word_corrections falló ({e_corr}) — sigo sin correcciones")
+
+        word_styles = edit.get("word_styles")
+        if isinstance(word_styles, str):
+            try:
+                word_styles = json.loads(word_styles)
+            except Exception:
+                word_styles = None
+
         # 5) Generate clip with edit's overrides
         clip_output = CLIPS_DIR / f"edit_{edit_id}.mp4"
 
@@ -284,6 +302,7 @@ def process_clip_edit(edit: dict) -> None:
             segments=segments,
             segments_start_offset_sec=0.0,
             words=words,
+            word_styles=word_styles,
             subtitle_style=subtitle_style,
             overlay_text=overlay_text,
             overlay_style="tiktok_viral",

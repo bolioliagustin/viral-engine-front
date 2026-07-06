@@ -243,6 +243,143 @@ def extract_whisper_audio(video_path: str, output_mp3: str) -> None:
     subprocess.run(cmd, check=True, timeout=120, capture_output=True, text=True)
 
 
+_WORD_CORRECTION_TOLERANCE = 0.05
+
+
+def apply_word_corrections(
+    words: list[dict],
+    corrections: list[dict],
+    tolerance: float = _WORD_CORRECTION_TOLERANCE,
+) -> list[dict]:
+    """
+    Apply user word_corrections to whisper word list.
+
+    corrections format: [{start, end, original, corrected, index?}]
+    Matches by start/end tolerance (~0.05s) or optional index fallback.
+    """
+    if not words:
+        return []
+    if not corrections:
+        return [dict(w) for w in words]
+
+    result = [dict(w) for w in words]
+    for corr in corrections:
+        corrected = corr.get("corrected")
+        if corrected is None:
+            continue
+
+        c_start = float(corr.get("start", -1))
+        c_end = float(corr.get("end", c_start))
+        matched = False
+
+        for w in result:
+            ws = float(w.get("start", 0))
+            we = float(w.get("end", ws))
+            if abs(ws - c_start) <= tolerance and abs(we - c_end) <= tolerance:
+                w["word"] = corrected
+                matched = True
+                break
+
+        if not matched and corr.get("index") is not None:
+            idx = int(corr["index"])
+            if 0 <= idx < len(result):
+                result[idx]["word"] = corrected
+
+    return result
+
+
+def snap_trim_bounds(
+    words: list[dict],
+    clip_duration: float,
+    silence_threshold: float = 2.0,
+    start_pad: float = 0.3,
+    end_pad: float = 0.5,
+) -> tuple[float, float]:
+    """
+    Snap clip bounds to speech, trimming leading/trailing silence > threshold.
+
+    Returns (trim_start, trim_end) within [0, clip_duration].
+    """
+    if not words or clip_duration <= 0:
+        return 0.0, clip_duration
+
+    first_start = float(words[0].get("start", 0))
+    last_end = float(words[-1].get("end", first_start))
+
+    trim_start = 0.0
+    if first_start > silence_threshold:
+        trim_start = max(0.0, first_start - start_pad)
+
+    trim_end = clip_duration
+    trailing_silence = clip_duration - last_end
+    if trailing_silence > silence_threshold:
+        trim_end = min(clip_duration, last_end + end_pad)
+
+    if trim_end - trim_start < 3.0:
+        return 0.0, clip_duration
+    return trim_start, trim_end
+
+
+def shift_words_timeline(words: list[dict], offset_sec: float) -> list[dict]:
+    """Shift word timestamps after trimming clip start."""
+    shifted = []
+    for w in words:
+        ws = max(0.0, float(w.get("start", 0)) - offset_sec)
+        we = max(ws + 0.04, float(w.get("end", ws + 0.08)) - offset_sec)
+        w2 = dict(w)
+        w2["start"] = ws
+        w2["end"] = we
+        shifted.append(w2)
+    return shifted
+
+
+def _parse_srt_timestamp(ts: str) -> float:
+    """Parse HH:MM:SS,mmm to seconds."""
+    h, m, rest = ts.strip().split(":")
+    s, ms = rest.split(",")
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+
+def first_srt_chunk_duration(srt_entries: list[str]) -> Optional[float]:
+    """Duration in seconds of the first SRT chunk."""
+    if not srt_entries:
+        return None
+    first = srt_entries[0].split("\n")
+    if len(first) < 2 or "-->" not in first[1]:
+        return None
+    start_ts, end_ts = [t.strip() for t in first[1].split("-->")]
+    return _parse_srt_timestamp(end_ts) - _parse_srt_timestamp(start_ts)
+
+
+def srt_coverage_metric(
+    words: list[dict],
+    clip_duration: float,
+    max_words_per_line: int = 4,
+    start_offset_sec: float = 0.0,
+) -> float:
+    """
+    Ratio of clip duration covered by subtitles (last chunk end / clip_duration).
+
+    Returns 0.0–1.0; target >= 0.9 for golden-set regression.
+    """
+    if not words or clip_duration <= 0:
+        return 0.0
+    entries = _words_to_srt_entries(
+        words=words,
+        start_offset_sec=start_offset_sec,
+        clip_duration_sec=clip_duration,
+        max_words_per_line=max_words_per_line,
+    )
+    if not entries:
+        return 0.0
+    last = entries[-1].split("\n")
+    if len(last) < 2 or "-->" not in last[1]:
+        return 0.0
+    end_ts = last[1].split("-->")[1].strip()
+    last_end = _parse_srt_timestamp(end_ts)
+    return min(1.0, max(0.0, last_end / clip_duration))
+
+
 def filter_whisper_words(raw_words: list, clip_duration: float) -> list[dict]:
     """Filtra alucinaciones de Whisper; conserva el máximo de palabras del clip."""
     clip_words = []
@@ -620,6 +757,149 @@ def _srt_time_to_ass(srt_ts: str) -> str:
     s, ms = rest.split(",")
     cc = int(ms) // 10  # centesimas
     return f"{int(h)}:{m}:{s}.{cc:02d}"
+
+
+def _hex_to_ass_color(hex_color: str) -> str:
+    """Convert #RRGGBB to ASS &HBBGGRR (no alpha prefix)."""
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return "&H00FFFFFF"
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"&H00{b:02X}{g:02X}{r:02X}"
+
+
+def _ass_inline_tags_for_word(
+    word_entry: dict,
+    word_styles: Optional[list[dict]],
+    tolerance: float = _WORD_CORRECTION_TOLERANCE,
+) -> tuple[str, str]:
+    """Return (open_tags, close_tag) for per-word ASS styling."""
+    if not word_styles:
+        return "", ""
+
+    ws = float(word_entry.get("start", 0))
+    we = float(word_entry.get("end", ws))
+    for st in word_styles:
+        st_start = float(st.get("start", -1))
+        st_end = float(st.get("end", st_start))
+        if abs(ws - st_start) > tolerance or abs(we - st_end) > tolerance:
+            continue
+
+        style_name = (st.get("style") or "default").lower()
+        open_tags = []
+        if style_name in ("highlight", "emphasis"):
+            open_tags.append(r"{\b1}")
+        if style_name == "highlight":
+            open_tags.append(r"{\c&H0000FFFF&}")
+        if st.get("color"):
+            open_tags.append(r"{\c" + _hex_to_ass_color(st["color"]) + r"&}")
+        if open_tags:
+            return "".join(open_tags), r"{\r}"
+    return "", ""
+
+
+def _words_to_per_word_ass(
+    words: list[dict],
+    output_path: str,
+    base_style: dict,
+    play_res_x: int,
+    play_res_y: int,
+    clip_duration_sec: Optional[float],
+    max_words_per_line: int = 4,
+    word_styles: Optional[list[dict]] = None,
+    start_offset_sec: float = 0.0,
+) -> str:
+    """Build ASS with grouped chunks and per-word inline style tags."""
+    clip_words = []
+    end_limit = (clip_duration_sec + 0.25) if clip_duration_sec is not None else None
+    for w in words:
+        w_start = float(w.get("start", 0)) - start_offset_sec
+        w_end = float(w.get("end", w_start + 0.1)) - start_offset_sec
+        word_text = (w.get("word") or "").strip()
+        if not word_text or w_end <= 0:
+            continue
+        if end_limit is not None and w_start > end_limit:
+            break
+        w_start = max(0.0, w_start)
+        if clip_duration_sec is not None:
+            w_end = min(clip_duration_sec + 0.15, w_end)
+        if w_end <= w_start:
+            w_end = w_start + 0.06
+        clip_words.append({"text": word_text, "start": w_start, "end": w_end})
+
+    if not clip_words:
+        raise ClipGenerationError("No words for per-word ASS")
+
+    groups = _group_words_for_srt(clip_words, max_words_per_line)
+    events = []
+    last_entry_end = -1.0
+    gap_sec = 0.030
+
+    for gi, group in enumerate(groups):
+        is_last_group = gi == len(groups) - 1
+        chunk_start = group[0]["start"]
+        chunk_end = group[-1]["end"]
+        if chunk_start < last_entry_end + gap_sec:
+            chunk_start = last_entry_end + gap_sec
+        if not is_last_group:
+            next_start = groups[gi + 1][0]["start"]
+            chunk_end = min(chunk_end + 0.10, next_start - gap_sec)
+        elif clip_duration_sec is not None:
+            chunk_end = min(chunk_end + 0.15, clip_duration_sec + 0.10)
+        chunk_end = max(chunk_start + 0.08, chunk_end)
+
+        styled_parts = []
+        for g in group:
+            open_tags, close_tag = _ass_inline_tags_for_word(g, word_styles)
+            safe = g["text"].replace("{", "\\{").replace("}", "\\}")
+            styled_parts.append(f"{open_tags}{safe}{close_tag}")
+        text = " ".join(styled_parts)
+
+        start_ass = _format_ass_time(chunk_start)
+        end_ass = _format_ass_time(chunk_end)
+        events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text}")
+        last_entry_end = chunk_end
+
+    s = base_style
+    style_line = (
+        f"Style: Default,"
+        f"{s.get('FontName', 'Arial')},"
+        f"{s.get('FontSize', '48')},"
+        f"{s.get('PrimaryColour', '&H00FFFFFF')},"
+        f"&H000000FF,"
+        f"{s.get('OutlineColour', '&H00000000')},"
+        f"{s.get('BackColour', '&H00000000')},"
+        f"{s.get('Bold', '0')},"
+        f"0,0,0,"
+        f"100,100,{s.get('Spacing', '0')},0,"
+        f"{s.get('BorderStyle', '1')},"
+        f"{s.get('Outline', '1')},"
+        f"{s.get('Shadow', '0')},"
+        f"{s.get('Alignment', '2')},"
+        f"60,60,"
+        f"{s.get('MarginV', '40')},"
+        f"1"
+    )
+    ass_content = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+{style_line}
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+""" + "\n".join(events) + "\n"
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(ass_content)
+    print(f"   🎬 Per-word ASS: {len(events)} dialogue events")
+    return output_path
 
 
 def _srt_to_ass(srt_path: str, ass_path: str, style: dict, play_res_x: int, play_res_y: int) -> None:
@@ -1122,6 +1402,7 @@ def generate_clip(
     segments: Optional[list[dict]] = None,
     segments_start_offset_sec: Optional[float] = None,
     words: Optional[list[dict]] = None,  # word-level timestamps (Whisper verbose_json)
+    word_styles: Optional[list[dict]] = None,  # per-word ASS overrides
     subtitle_style: str = "tiktok_viral",
     overlay_text: Optional[str] = None,
     overlay_style: str = "tiktok_viral",
@@ -1223,23 +1504,37 @@ def generate_clip(
         # Paso A: generar ASS de subtítulos (si hay segments o words)
         subs_ass_path = None
         if segments or words:
-            srt_path = str(Path(workdir) / f"{stem}_subs.srt")
             offset = segments_start_offset_sec if segments_start_offset_sec is not None else start_sec
+            ass_path = str(Path(workdir) / f"{stem}_subs.ass")
             try:
-                segments_to_srt(
-                    segments=segments,
-                    output_path=srt_path,
-                    start_offset_sec=offset,
-                    clip_duration_sec=duration_sec,
-                    max_words_per_line=4,
-                    words=words,  # ← sync perfecto cuando hay word timestamps
-                )
-                intermediates.append(srt_path)
-                ass_path = srt_path.replace(".srt", ".ass")
-                _srt_to_ass(srt_path, ass_path, SUBTITLE_STYLES[subtitle_style],
-                            W, H)
-                subs_ass_path = ass_path
-                intermediates.append(ass_path)
+                if words and word_styles:
+                    _words_to_per_word_ass(
+                        words=words,
+                        output_path=ass_path,
+                        base_style=SUBTITLE_STYLES[subtitle_style],
+                        play_res_x=W,
+                        play_res_y=H,
+                        clip_duration_sec=duration_sec,
+                        max_words_per_line=4,
+                        word_styles=word_styles,
+                        start_offset_sec=offset,
+                    )
+                    subs_ass_path = ass_path
+                    intermediates.append(ass_path)
+                else:
+                    srt_path = str(Path(workdir) / f"{stem}_subs.srt")
+                    segments_to_srt(
+                        segments=segments,
+                        output_path=srt_path,
+                        start_offset_sec=offset,
+                        clip_duration_sec=duration_sec,
+                        max_words_per_line=4,
+                        words=words,
+                    )
+                    intermediates.append(srt_path)
+                    _srt_to_ass(srt_path, ass_path, SUBTITLE_STYLES[subtitle_style], W, H)
+                    subs_ass_path = ass_path
+                    intermediates.append(ass_path)
             except ClipGenerationError as e:
                 print(f"⚠️ Sin segments para rango {start_sec}-{end_sec}s, sigo sin subs: {e}")
         # Nota: srt_to_ass usa W,H (dimensiones del target) como PlayRes,

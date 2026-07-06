@@ -10,6 +10,7 @@ import { ToastProvider } from "@/components/ui/use-toast";
 import { ProcessingScreen } from "@/components/ProcessingScreen";
 import { ArrowLeft, LayoutDashboard, Sparkles } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { parseWhisperWords } from "@/types/subtitles";
 
 interface Result {
   id: string;
@@ -30,6 +31,7 @@ interface Result {
   pillar_type?: string;
   sentiment_detected?: string;
   viral_overlay?: string;
+  whisper_words?: string | { words: { word: string; start: number; end: number }[] };
 }
 
 
@@ -236,6 +238,7 @@ export default function ResultsPage() {
                   const tiktokContent = results.find(r => r.type === "tiktok_caption")?.content;
                   const linkedinContent = results.find(r => r.type === "linkedin_post")?.content;
                   const scriptContent = results.find(r => r.type === "short_video_script")?.content;
+                  const whisperWords = parseWhisperWords(firstResult.whisper_words);
 
                   let justifications = [];
                   try {
@@ -275,6 +278,7 @@ export default function ResultsPage() {
                         sentiment={firstResult.sentiment_detected}
                         pillarType={firstResult.pillar_type}
                         roiTimeSaved={firstResult.roi_time_saved}
+                        whisperWords={whisperWords}
                       />
                     </motion.div>
                   );

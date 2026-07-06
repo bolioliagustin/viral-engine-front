@@ -55,6 +55,9 @@ from services.clip_generator import (
     cut_clip,
     extract_whisper_audio,
     filter_whisper_words,
+    snap_trim_bounds,
+    shift_words_timeline,
+    srt_coverage_metric,
 )
 from services.supabase_client import (
     update_job_status,
@@ -280,20 +283,24 @@ def process_job(job_data: dict) -> None:
         # guaranteed to be populated here (the workaround that used to live
         # in this step has been removed).
         print("\n🔍 Step 3.5: Quality filter...")
-        from services.validation import validate_durations
-        result.viral_moments = validate_durations(result.viral_moments, min_duration=10)
+        from services.validation import (
+            validate_durations,
+            filter_overlapping_moments,
+            validate_against_transcript,
+        )
+        result.viral_moments = validate_durations(result.viral_moments, min_duration=10, max_duration=60)
+        result.viral_moments = filter_overlapping_moments(result.viral_moments, max_overlap_ratio=0.5)
 
         if not result.viral_moments:
             raise Exception("No viral moments passed quality filter (all clips too short)")
 
+        print("\n🎯 Step 3.6: Transcript verification (first/last phrase)...")
+        for moment in result.viral_moments:
+            validate_against_transcript(moment, transcript)
+
         video_duration = _resolve_video_duration(video_info, transcript, result.viral_moments)
         print(f"📏 Duración efectiva para descarga: {video_duration:.0f}s")
         check_timeout()
-        # TODO: Implement in Sprint 3
-        # print("\n🎯 Step 3.6: Whisper validation (transcript verification)...")
-        # from services.validation import validate_against_transcript
-        # for moment in result.viral_moments:
-        #     validate_against_transcript(moment, transcript)
         
         # Step 4: Preparar para clipping.
         # Estrategia (Fase 1.6 v3):
@@ -612,6 +619,67 @@ def process_job(job_data: dict) -> None:
                         subs_segments = clip_segments_whisper
                         subs_words = clip_words
                         subs_offset = 0.0
+
+                        # Fase A: snap trim leading/trailing silence to speech
+                        from services.validation import verify_phrases_against_whisper
+                        trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
+                        if trim_start > 0.05 or trim_end < clip_duration - 0.05:
+                            print(
+                                f"   ✂️ Snap trim: {clip_duration:.1f}s → "
+                                f"{trim_end - trim_start:.1f}s "
+                                f"(start={trim_start:.2f}, end={trim_end:.2f})"
+                            )
+                            snapped_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_snapped.mp4"
+                            cut_clip(
+                                video_path=str(precut_path),
+                                start_sec=trim_start,
+                                end_sec=trim_end,
+                                output_path=str(snapped_path),
+                            )
+                            precut_path = snapped_path
+                            clip_duration = trim_end - trim_start
+                            clip_words = shift_words_timeline(clip_words, trim_start)
+                            clip_segments_whisper = [
+                                {
+                                    **sg,
+                                    "start": max(0.0, float(sg["start"]) - trim_start),
+                                    "end": max(0.0, float(sg["end"]) - trim_start),
+                                }
+                                for sg in clip_segments_whisper
+                            ]
+                            subs_words = clip_words
+                            subs_segments = clip_segments_whisper
+
+                        verify_phrases_against_whisper(moment, clip_words)
+                        coverage = srt_coverage_metric(clip_words, clip_duration)
+                        print(f"   📊 Sub coverage: {coverage:.0%}")
+
+                        # Fase B: regenerate copy from actual clip whisper text
+                        from services.processor import (
+                            regenerate_moment_copy,
+                            _clip_text_from_words,
+                        )
+                        from services.content_validators import clean_moment
+                        clip_text = _clip_text_from_words(clip_words)
+                        category = getattr(moment, 'category', None) or 'business'
+                        regenerate_moment_copy(
+                            moment,
+                            clip_text,
+                            category=category,
+                        )
+                        moment_dict = moment.model_dump()
+                        copy_stats = clean_moment(moment_dict)
+                        if copy_stats.wrong_tweet_count or copy_stats.linkedin_out_of_range:
+                            print("   🔄 Copy validation retry (tweet count / LinkedIn length)...")
+                            regenerate_moment_copy(moment, clip_text, category=category)
+                            moment_dict = moment.model_dump()
+                            clean_moment(moment_dict)
+                        if moment_dict.get("content_pieces"):
+                            cp = moment_dict["content_pieces"]
+                            if cp.get("twitter_thread"):
+                                moment.content_pieces.twitter_thread = cp["twitter_thread"]
+                            if cp.get("linkedin_post"):
+                                moment.content_pieces.linkedin_post = cp["linkedin_post"]
                     else:
                         subs_segments = transcript.get("segments")
                         subs_words = None

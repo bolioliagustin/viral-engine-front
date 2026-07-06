@@ -4,14 +4,22 @@
     {
       "id": "business_spanish_01",
       "url": "https://www.youtube.com/watch?v=Lqq78q17jDY",
-      "note": "Podcast/charla de negocios en español — caso de uso prioritario",
+      "youtube_id": "Lqq78q17jDY",
+      "note": "Podcast/charla de negocios en español — golden set post-Groq (job Lqq78q17jDY)",
       "expected_category": "podcast",
+      "subtitle_regression": {
+        "first_srt_chunk_max_sec": 2.0,
+        "coverage_min": 0.9,
+        "whisper_provider": "groq"
+      },
       "test_focus": [
         "El clasificador debe devolver 'podcast' (conversación 2+ personas)",
         "Twitter thread de 7 tweets con char counts válidos",
         "LinkedIn post 800-1200 chars",
         "Cero clichés AI",
-        "viral_overlay <=4 palabras UPPERCASE"
+        "viral_overlay <=4 palabras UPPERCASE",
+        "Primer chunk SRT < 2s (post _group_words_for_srt)",
+        "Cobertura subs >= 0.9 del clip duration"
       ]
     },
     {

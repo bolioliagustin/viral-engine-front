@@ -299,3 +299,120 @@ class TestStructuredLogging:
         
         captured = capsys.readouterr()
         assert "test message" in captured.out
+
+
+class TestApplyWordCorrections:
+    """Tests for E.1 word_corrections pipeline."""
+
+    def test_matches_by_timestamp_tolerance(self):
+        from services.clip_generator import apply_word_corrections
+        words = [
+            {"word": "hola", "start": 1.0, "end": 1.3},
+            {"word": "mundo", "start": 1.4, "end": 1.8},
+        ]
+        corrections = [
+            {"start": 1.02, "end": 1.28, "original": "hola", "corrected": "ola"},
+        ]
+        result = apply_word_corrections(words, corrections)
+        assert result[0]["word"] == "ola"
+        assert result[1]["word"] == "mundo"
+
+    def test_fallback_to_index(self):
+        from services.clip_generator import apply_word_corrections
+        words = [
+            {"word": "foo", "start": 0.0, "end": 0.2},
+            {"word": "bar", "start": 0.3, "end": 0.5},
+        ]
+        corrections = [
+            {"start": 9.9, "end": 9.9, "index": 1, "corrected": "baz"},
+        ]
+        result = apply_word_corrections(words, corrections)
+        assert result[1]["word"] == "baz"
+
+    def test_empty_corrections_returns_copy(self):
+        from services.clip_generator import apply_word_corrections
+        words = [{"word": "test", "start": 0.0, "end": 0.3}]
+        result = apply_word_corrections(words, [])
+        assert result[0]["word"] == "test"
+        assert result is not words
+
+
+class TestSnapTrimAndCoverage:
+    """Tests for Fase A snap trim and Fase D coverage metrics."""
+
+    def test_snap_trim_bounds_trims_leading_silence(self):
+        from services.clip_generator import snap_trim_bounds
+        words = [
+            {"word": "hola", "start": 3.0, "end": 3.4},
+            {"word": "mundo", "start": 3.5, "end": 9.5},
+        ]
+        start, end = snap_trim_bounds(words, clip_duration=10.0)
+        assert start == pytest.approx(2.7)
+        assert end == 10.0
+
+    def test_snap_trim_bounds_trims_trailing_silence(self):
+        from services.clip_generator import snap_trim_bounds
+        words = [{"word": "fin", "start": 1.0, "end": 3.0}]
+        start, end = snap_trim_bounds(words, clip_duration=10.0)
+        assert start == 0.0
+        assert end == pytest.approx(3.5)
+
+    def test_first_srt_chunk_duration_under_2s(self):
+        from services.clip_generator import _words_to_srt_entries, first_srt_chunk_duration
+        words = [
+            {"word": "uno", "start": 0.4, "end": 0.7},
+            {"word": "dos", "start": 0.8, "end": 1.1},
+            {"word": "tres", "start": 1.2, "end": 1.5},
+        ]
+        entries = _words_to_srt_entries(words, 0.0, 5.0, max_words_per_line=4)
+        dur = first_srt_chunk_duration(entries)
+        assert dur is not None
+        assert dur < 2.0
+
+    def test_srt_coverage_metric(self):
+        from services.clip_generator import srt_coverage_metric
+        words = [
+            {"word": f"w{i}", "start": i * 0.5, "end": i * 0.5 + 0.3}
+            for i in range(20)
+        ]
+        coverage = srt_coverage_metric(words, clip_duration=10.0)
+        assert 0.5 <= coverage <= 1.0
+
+
+class TestOverlapFilter:
+    """Tests for Fase A overlap rejection."""
+
+    def test_rejects_high_overlap(self):
+        from services.validation import filter_overlapping_moments
+        from types import SimpleNamespace
+
+        moments = [
+            SimpleNamespace(start_time=10, end_time=50, hook="A"),
+            SimpleNamespace(start_time=20, end_time=60, hook="B"),
+            SimpleNamespace(start_time=100, end_time=140, hook="C"),
+        ]
+        kept = filter_overlapping_moments(moments, max_overlap_ratio=0.5)
+        assert len(kept) == 2
+        assert kept[0].hook == "A"
+        assert kept[1].hook == "C"
+
+    def test_validate_durations_enforces_max_60(self):
+        from services.validation import validate_durations
+        from types import SimpleNamespace
+
+        moment = SimpleNamespace(start_time=0, end_time=90, hook="long")
+        kept = validate_durations([moment], max_duration=60)
+        assert len(kept) == 1
+        assert kept[0].end_time == 60
+
+
+class TestGoldenSetRegression:
+    """Static checks against golden_set.json Lqq78q17jDY criteria."""
+
+    def test_lqq78_case_has_subtitle_regression(self):
+        golden_path = Path(__file__).parent.parent / "eval" / "golden_set.json"
+        data = json.loads(golden_path.read_text(encoding="utf-8"))
+        case = next(v for v in data["videos"] if v.get("youtube_id") == "Lqq78q17jDY")
+        reg = case["subtitle_regression"]
+        assert reg["first_srt_chunk_max_sec"] == 2.0
+        assert reg["coverage_min"] == 0.9
