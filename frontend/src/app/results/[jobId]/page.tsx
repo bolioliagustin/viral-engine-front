@@ -10,7 +10,7 @@ import { ToastProvider } from "@/components/ui/use-toast";
 import { ProcessingScreen } from "@/components/ProcessingScreen";
 import { ArrowLeft, LayoutDashboard, Sparkles } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { parseWhisperWords } from "@/types/subtitles";
+import { parseWhisperWords, effectiveClipDuration } from "@/types/subtitles";
 
 interface Result {
   id: string;
@@ -239,6 +239,10 @@ export default function ResultsPage() {
                   const linkedinContent = results.find(r => r.type === "linkedin_post")?.content;
                   const scriptContent = results.find(r => r.type === "short_video_script")?.content;
                   const whisperWords = parseWhisperWords(firstResult.whisper_words);
+                  const clipDuration = effectiveClipDuration(
+                    whisperWords,
+                    firstResult.end_time - firstResult.start_time
+                  );
 
                   let justifications = [];
                   try {
@@ -279,6 +283,7 @@ export default function ResultsPage() {
                         pillarType={firstResult.pillar_type}
                         roiTimeSaved={firstResult.roi_time_saved}
                         whisperWords={whisperWords}
+                        clipDuration={clipDuration}
                       />
                     </motion.div>
                   );

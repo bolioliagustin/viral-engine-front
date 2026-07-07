@@ -64,6 +64,8 @@ interface ViralMomentCardProps {
   pillarType?: string;
   roiTimeSaved?: number;
   whisperWords?: WhisperWordsData | null;
+  /** Duración real del MP4 (post-snap); fallback end-start. */
+  clipDuration?: number;
 }
 
 // ─── Pillar config ─────────────────────────────────────────────────────────
@@ -185,6 +187,7 @@ export function ViralMomentCard({
   pillarType,
   roiTimeSaved,
   whisperWords,
+  clipDuration: clipDurationProp,
 }: ViralMomentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -223,7 +226,7 @@ export function ViralMomentCard({
     (scores.hook + scores.retention + scores.shareability) /
     3
   ).toFixed(1);
-  const duration = endTime - startTime;
+  const duration = clipDurationProp ?? endTime - startTime;
   const pillar = pillarType ? PILLAR_CONFIG[pillarType.toLowerCase()] : null;
   const subtitleCoverage = computeSubtitleCoverage(whisperWords ?? null, duration);
   const subsComplete = isSubtitleCoverageComplete(subtitleCoverage);
@@ -635,9 +638,9 @@ export function ViralMomentCard({
         onOpenChange={setEditOpen}
         momentIndex={momentIndex}
         contentResultId={contentResultId}
-        clipUrl={clipUrl}
+        clipUrl={effectiveClipUrl}
         overlayText={overlayText}
-        clipDuration={Math.max(1, endTime - startTime)}
+        clipDuration={duration}
         whisperWords={whisperWords?.words}
         onRendered={(url) => {
           setRenderedOverride(url);

@@ -1536,6 +1536,11 @@ def generate_clip(
                     subs_ass_path = ass_path
                     intermediates.append(ass_path)
             except ClipGenerationError as e:
+                if words:
+                    raise ClipGenerationError(
+                        f"Subs fallaron con {len(words)} words "
+                        f"(rango {start_sec}-{end_sec}s): {e}"
+                    ) from e
                 print(f"⚠️ Sin segments para rango {start_sec}-{end_sec}s, sigo sin subs: {e}")
         # Nota: srt_to_ass usa W,H (dimensiones del target) como PlayRes,
         # así que no necesitamos hacer probe del video fuente aquí.

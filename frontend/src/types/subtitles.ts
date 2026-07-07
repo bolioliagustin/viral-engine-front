@@ -7,6 +7,8 @@ export interface WhisperWord {
 export interface WhisperWordsData {
   words: WhisperWord[];
   segments?: unknown[];
+  duration_sec?: number;
+  snap_trim_start?: number;
 }
 
 export interface WordCorrection {
@@ -40,6 +42,10 @@ export function parseWhisperWords(
         end: Number(w.end ?? w.start ?? 0),
       })),
       segments: data.segments,
+      duration_sec:
+        data.duration_sec != null ? Number(data.duration_sec) : undefined,
+      snap_trim_start:
+        data.snap_trim_start != null ? Number(data.snap_trim_start) : undefined,
     };
   } catch {
     return null;
@@ -59,6 +65,21 @@ export function computeSubtitleCoverage(
 
 export function isSubtitleCoverageComplete(coverage: number | null): boolean {
   return coverage !== null && coverage >= 0.75;
+}
+
+/** Clip length aligned with whisper timestamps (post-snap when available). */
+export function effectiveClipDuration(
+  whisperWords: WhisperWordsData | null,
+  fallbackDuration: number
+): number {
+  if (whisperWords?.duration_sec && whisperWords.duration_sec > 0) {
+    return whisperWords.duration_sec;
+  }
+  if (whisperWords?.words?.length) {
+    const maxEnd = Math.max(...whisperWords.words.map((w) => w.end));
+    return Math.max(1, maxEnd + 0.3);
+  }
+  return Math.max(1, fallbackDuration);
 }
 
 /** Build corrections array from edited texts vs originals. */

@@ -22,7 +22,7 @@ from services.downloader import (
     download_clip_ytdlp,
     download_clip_via_stream_urls,
 )
-from services.clip_generator import generate_clip, ClipGenerationError, apply_word_corrections
+from services.clip_generator import generate_clip, ClipGenerationError, apply_word_corrections, probe_video
 from services.supabase_client import (
     get_content_result,
     get_job,
@@ -246,7 +246,6 @@ def process_clip_edit(edit: dict) -> None:
         )
 
         # 4) Whisper words: usar cache si existe, sino transcribir
-        clip_duration = end_s - start_s
         words, segments = None, None
         cached_whisper = cr.get("whisper_words")
         if cached_whisper:
@@ -263,6 +262,51 @@ def process_clip_edit(edit: dict) -> None:
             except Exception as e_cache:
                 print(f"   ⚠️ Whisper cache parse falló ({e_cache}) — re-transcribo")
                 words, segments = None, None
+
+        # Duración real del MP4 cacheado (post-snap) — no end_s-start_s del job original.
+        try:
+            probed = probe_video(seg_path)
+            clip_duration = float(probed.duration_sec or 0)
+        except Exception as e_probe:
+            print(f"   ⚠️ ffprobe falló ({e_probe}) — uso duración del job")
+            clip_duration = end_s - start_s
+
+        cached_duration = None
+        if cached_whisper and isinstance(cached_whisper, dict):
+            cached_duration = cached_whisper.get("duration_sec")
+        if cached_duration and abs(float(cached_duration) - clip_duration) > 0.5:
+            print(
+                f"   📐 Ajustando duración clip: job={end_s - start_s:.1f}s "
+                f"→ cache={float(cached_duration):.1f}s (whisper alineado)"
+            )
+            clip_duration = float(cached_duration)
+
+        probed_duration = clip_duration
+        snap_trim_start = 0.0
+        if cached_whisper and isinstance(cached_whisper, dict):
+            stored_snap = float(cached_whisper.get("snap_trim_start") or 0)
+            # Solo aplicar offset si el raw cache es pre-snap (más largo que whisper).
+            if (
+                stored_snap > 0
+                and cached_duration
+                and probed_duration > float(cached_duration) + 0.5
+            ):
+                snap_trim_start = stored_snap
+
+        # Legacy jobs: raw pre-snap en R2 + words post-snap → re-transcribir para alinear.
+        if words and clip_duration > 0:
+            word_max = max(float(w.get("end", 0)) for w in words)
+            legacy_mismatch = (
+                not cached_duration
+                and clip_duration - word_max > 2.5
+                and float(words[0].get("start", 0)) < 0.5
+            )
+            if legacy_mismatch:
+                print(
+                    "   🔄 Raw cache legacy (pre-snap) — re-transcribo para alinear subs"
+                )
+                words, segments = _whisper_per_clip(seg_path, clip_duration, edit_id)
+                snap_trim_start = 0.0
 
         if not words and not segments:
             words, segments = _whisper_per_clip(seg_path, clip_duration, edit_id)
@@ -291,7 +335,7 @@ def process_clip_edit(edit: dict) -> None:
         # Apply trim offsets if present (recortes adicionales del usuario)
         trim_start = float(edit.get("trim_start_offset") or 0.0)
         trim_end_off = float(edit.get("trim_end_offset") or 0.0)
-        clip_start = max(0.0, trim_start)
+        clip_start = max(0.0, snap_trim_start + trim_start)
         clip_end = max(clip_start + 1.0, clip_duration - trim_end_off)
 
         gen = generate_clip(

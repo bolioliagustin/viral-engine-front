@@ -619,11 +619,13 @@ def process_job(job_data: dict) -> None:
                         subs_segments = clip_segments_whisper
                         subs_words = clip_words
                         subs_offset = 0.0
+                        snap_trim_start = 0.0
 
                         # Fase A: snap trim leading/trailing silence to speech
                         from services.validation import verify_phrases_against_whisper
                         trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
                         if trim_start > 0.05 or trim_end < clip_duration - 0.05:
+                            snap_trim_start = trim_start
                             print(
                                 f"   ✂️ Snap trim: {clip_duration:.1f}s → "
                                 f"{trim_end - trim_start:.1f}s "
@@ -639,6 +641,7 @@ def process_job(job_data: dict) -> None:
                             precut_path = snapped_path
                             clip_duration = trim_end - trim_start
                             clip_words = shift_words_timeline(clip_words, trim_start)
+                            clip_words = filter_whisper_words(clip_words, clip_duration)
                             clip_segments_whisper = [
                                 {
                                     **sg,
@@ -646,6 +649,8 @@ def process_job(job_data: dict) -> None:
                                     "end": max(0.0, float(sg["end"]) - trim_start),
                                 }
                                 for sg in clip_segments_whisper
+                                if float(sg.get("end", 0)) > trim_start
+                                and float(sg.get("start", 0)) < trim_end
                             ]
                             subs_words = clip_words
                             subs_segments = clip_segments_whisper
@@ -685,11 +690,17 @@ def process_job(job_data: dict) -> None:
                         subs_words = None
                         subs_offset = start_s
 
-                    if seg_path:
+                    # Cache post-snap precut so re-edits align with whisper_words (0-based).
+                    raw_cache_path = str(precut_path) if precut_path else seg_path
+                    if raw_cache_path and Path(raw_cache_path).exists():
                         try:
                             from services.supabase_client import upload_raw_clip_to_storage
                             raw_clip_url_cache = upload_raw_clip_to_storage(
-                                seg_path, job_id, moment_index
+                                raw_cache_path, job_id, moment_index
+                            )
+                            print(
+                                f"   💾 Raw cache subido "
+                                f"({'post-snap' if raw_cache_path == str(precut_path) else 'segment'})"
                             )
                         except Exception as e_cache:
                             print(f"   ⚠️ Cache raw clip falló (no fatal): {e_cache}")
@@ -698,6 +709,8 @@ def process_job(job_data: dict) -> None:
                         whisper_words_cache = {
                             "words": clip_words or [],
                             "segments": clip_segments_whisper or [],
+                            "duration_sec": clip_duration,
+                            "snap_trim_start": snap_trim_start,
                         }
 
                     gen_result = generate_clip(
