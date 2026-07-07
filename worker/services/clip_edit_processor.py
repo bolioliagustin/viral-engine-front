@@ -21,7 +21,9 @@ from typing import Optional
 from services.downloader import (
     download_clip_ytdlp,
     download_clip_via_stream_urls,
+    _extract_video_id,
 )
+from services.storage_client import download_file, object_key_from_public_url
 from services.clip_generator import generate_clip, ClipGenerationError, apply_word_corrections, probe_video
 from services.supabase_client import (
     get_content_result,
@@ -35,19 +37,47 @@ DOWNLOADS_DIR = Path(__file__).parent.parent / "downloads"
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
 
 
-def _download_from_r2(raw_clip_url: str, edit_id: str) -> str:
+def _download_from_r2(
+    raw_clip_url: str,
+    edit_id: str,
+    *,
+    job_id: Optional[str] = None,
+    moment_index: Optional[int] = None,
+) -> str:
     """
-    Plan C: descarga el segmento crudo cacheado desde R2.
-    Mucho más rápido y confiable que yt-dlp (sin bot-detection issues).
+    Descarga el segmento crudo cacheado en R2.
+    Usa API S3 autenticada (raw_clips/ no siempre es público) y cae a URL pública.
     """
     import urllib.request
+
     DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
     out = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg.mp4")
     print(f"   ⬇️  Cache hit: bajando segmento crudo desde R2")
-    urllib.request.urlretrieve(raw_clip_url, out)
-    size_mb = Path(out).stat().st_size // (1 << 20)
-    print(f"   ✅ R2 segment OK ({size_mb}MB)")
-    return out
+
+    keys_to_try: list[str] = []
+    if raw_clip_url:
+        parsed = object_key_from_public_url(raw_clip_url)
+        if parsed:
+            keys_to_try.append(parsed)
+    if job_id is not None and moment_index is not None:
+        stable = f"raw_clips/{job_id}_{moment_index}.mp4"
+        if stable not in keys_to_try:
+            keys_to_try.append(stable)
+
+    for key in keys_to_try:
+        if download_file(key, out):
+            size_mb = Path(out).stat().st_size // (1 << 20)
+            print(f"   ✅ R2 segment OK via S3 ({size_mb}MB, key={key})")
+            return out
+
+    if raw_clip_url:
+        print(f"   ⚠️ S3 download falló — probando URL pública")
+        urllib.request.urlretrieve(raw_clip_url, out)
+        size_mb = Path(out).stat().st_size // (1 << 20)
+        print(f"   ✅ R2 segment OK via URL pública ({size_mb}MB)")
+        return out
+
+    raise RuntimeError("No raw clip key/URL available for R2 download")
 
 
 def _download_segment_with_fallback(
@@ -56,6 +86,9 @@ def _download_segment_with_fallback(
     end_s: float,
     edit_id: str,
     raw_clip_url: Optional[str] = None,
+    *,
+    job_id: Optional[str] = None,
+    moment_index: Optional[int] = None,
 ) -> str:
     """
     Descarga el segmento [start_s, end_s] del video con cascada:
@@ -68,13 +101,19 @@ def _download_segment_with_fallback(
     (start=0, duration=end_s-start_s) para simplificar el resto del pipeline.
     """
     DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    yt_video_id = _extract_video_id(video_url)
 
     # ── Intento 0: cache R2 (Plan C) ──────────────────────────────────
-    if raw_clip_url:
+    if raw_clip_url or (job_id and moment_index is not None):
         try:
-            return _download_from_r2(raw_clip_url, edit_id)
+            return _download_from_r2(
+                raw_clip_url or "",
+                edit_id,
+                job_id=job_id,
+                moment_index=moment_index,
+            )
         except Exception as e_cache:
-            print(f"   ⚠️ R2 cache miss ({e_cache}) — fallback a yt-dlp")
+            print(f"   ⚠️ R2 cache miss ({e_cache}) — fallback a streams")
 
     # ── Intento 1: RapidAPI / stream partial (prod) ───────────────────
     if os.getenv("ENVIRONMENT", "").lower() in ("production", "prod") or os.getenv("RAPIDAPI_KEY"):
@@ -84,7 +123,7 @@ def _download_segment_with_fallback(
                 start_sec=start_s,
                 end_sec=end_s,
                 video_duration=end_s + 30,
-                video_id=edit_id,
+                video_id=yt_video_id,
                 temp_id=f"edit_{edit_id}",
                 force_rapidapi=True,
             )
@@ -112,7 +151,7 @@ def _download_segment_with_fallback(
             start_sec=start_s,
             end_sec=end_s,
             video_duration=end_s + 30,
-            video_id=edit_id,
+            video_id=yt_video_id,
             temp_id=f"edit_{edit_id}",
             force_rapidapi=True,
         )
@@ -243,6 +282,8 @@ def process_clip_edit(edit: dict) -> None:
             end_s=end_s,
             edit_id=edit_id,
             raw_clip_url=cached_raw_url,
+            job_id=cr.get("job_id"),
+            moment_index=cr.get("moment_index"),
         )
 
         # 4) Whisper words: usar cache si existe, sino transcribir

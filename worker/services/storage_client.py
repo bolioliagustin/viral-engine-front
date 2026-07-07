@@ -6,6 +6,7 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 from pathlib import Path
+from typing import Optional
 
 # R2 Configuration from env
 R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
@@ -81,3 +82,52 @@ def upload_file(file_path: str, object_name: str, content_type: str = 'video/mp4
     except Exception as e:
         print(f"❌ Unexpected error uploading to R2: {e}")
         return None
+
+
+def object_key_from_public_url(url: str) -> Optional[str]:
+    """Extract R2 object key from a public bucket URL."""
+    if not url:
+        return None
+    clean = url.split("?", 1)[0].rstrip("/")
+    if R2_PUBLIC_URL:
+        base = R2_PUBLIC_URL.rstrip("/")
+        if clean.startswith(base + "/"):
+            return clean[len(base) + 1 :]
+    # Fallback: last path segments (e.g. raw_clips/job_m0.mp4)
+    marker = "/raw_clips/"
+    idx = clean.find(marker)
+    if idx >= 0:
+        return clean[idx + 1 :]
+    marker = "/clips/"
+    idx = clean.find(marker)
+    if idx >= 0:
+        return clean[idx + 1 :]
+    marker = "/clip_edits/"
+    idx = clean.find(marker)
+    if idx >= 0:
+        return clean[idx + 1 :]
+    return None
+
+
+def download_file(object_name: str, dest_path: str) -> bool:
+    """
+    Download an object from R2 via authenticated S3 API.
+    Works even when the bucket/path is not publicly readable.
+    """
+    s3 = get_s3_client()
+    if not s3 or not R2_BUCKET_NAME:
+        return False
+
+    clean_key = object_name.lstrip("/")
+    Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
+    try:
+        s3.download_file(R2_BUCKET_NAME, clean_key, dest_path)
+        if Path(dest_path).stat().st_size <= 0:
+            raise OSError("downloaded file is empty")
+        return True
+    except ClientError as e:
+        print(f"⚠️ R2 S3 download failed ({clean_key}): {e}")
+        return False
+    except Exception as e:
+        print(f"⚠️ R2 download error ({clean_key}): {e}")
+        return False
