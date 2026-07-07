@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from config.logging import trace, set_phase
 from services.downloader import (
     download_clip_ytdlp,
     download_clip_via_stream_urls,
@@ -243,6 +244,28 @@ def process_clip_edit(edit: dict) -> None:
     subtitle_style = edit.get("subtitle_style") or "tiktok_viral"
     overlay_position = edit.get("overlay_position") or "top"
 
+    with trace(edit_id=edit_id, phase="clip_edit"):
+        _process_clip_edit_inner(
+            edit_id=edit_id,
+            edit=edit,
+            content_result_id=content_result_id,
+            overlay_text=overlay_text,
+            subtitle_style=subtitle_style,
+            overlay_position=overlay_position,
+        )
+
+
+def _process_clip_edit_inner(
+    *,
+    edit_id: str,
+    edit: dict,
+    content_result_id: str,
+    overlay_text,
+    subtitle_style: str,
+    overlay_position: str,
+) -> None:
+    """Inner implementation so trace context wraps the full edit lifecycle."""
+
     print(f"\n{'─'*60}")
     print(f"🎨 Processing clip_edit: {edit_id}")
     print(f"   overlay_text={overlay_text!r}  style={subtitle_style}  pos={overlay_position}")
@@ -270,6 +293,7 @@ def process_clip_edit(edit: dict) -> None:
             raise RuntimeError("job sin video_url")
 
         # 3) Re-download segment con cascada (cache R2 → yt-dlp → partial)
+        set_phase("download")
         CLIPS_DIR.mkdir(parents=True, exist_ok=True)
         cached_raw_url = cr.get("raw_clip_url")
         print(
@@ -287,6 +311,7 @@ def process_clip_edit(edit: dict) -> None:
         )
 
         # 4) Whisper words: usar cache si existe, sino transcribir
+        set_phase("whisper")
         words, segments = None, None
         cached_whisper = cr.get("whisper_words")
         if cached_whisper:
@@ -371,6 +396,7 @@ def process_clip_edit(edit: dict) -> None:
                 word_styles = None
 
         # 5) Generate clip with edit's overrides
+        set_phase("render")
         clip_output = CLIPS_DIR / f"edit_{edit_id}.mp4"
 
         # Apply trim offsets if present (recortes adicionales del usuario)

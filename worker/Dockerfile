@@ -15,6 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create directories for media files
-RUN mkdir -p downloads clips
+RUN mkdir -p downloads clips logs
 
 CMD ["python", "main.py"]

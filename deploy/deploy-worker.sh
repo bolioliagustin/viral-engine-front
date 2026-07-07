@@ -60,4 +60,5 @@ dc -f "$COMPOSE_FILE" ps
 (docker image prune -f > /dev/null 2>&1 || sudo docker image prune -f > /dev/null 2>&1) || true
 
 log "Deploy completed"
+log "Logs: bash scripts/worker-logs.sh tail   (or: tail -f worker-logs/worker.log)"
 log "========================================="

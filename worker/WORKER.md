@@ -74,6 +74,39 @@ Archivos solo en el VPS (no en Git): `.env`, `proxies.txt`
 
 ---
 
+## 2.1 Logs y trazabilidad
+
+El worker escribe logs **persistentes** en el host (no hace falta `docker compose logs` para cada consulta):
+
+| Archivo | Contenido |
+|---------|-----------|
+| `worker-logs/worker.log` | Todo (rotación 20MB × 5) |
+| `worker-logs/worker-error.log` | Solo WARNING+ |
+
+Cada línea incluye contexto cuando aplica: `job=abc12345 m=1 phase=clip`.
+
+### Comandos rápidos (VPS, desde la raíz del repo)
+
+```bash
+bash scripts/worker-logs.sh              # follow en vivo (rápido)
+bash scripts/worker-logs.sh tail 200     # últimas 200 líneas
+bash scripts/worker-logs.sh job abc123   # filtrar por job id (prefijo)
+bash scripts/worker-logs.sh edit b05b33  # filtrar clip_edit
+bash scripts/worker-logs.sh errors       # últimos errores/warnings
+bash scripts/worker-logs.sh docker       # fallback docker compose logs
+```
+
+Windows (local):
+
+```powershell
+.\scripts\worker-logs.ps1 tail 100
+.\scripts\worker-logs.ps1 job abc123
+```
+
+Variables opcionales: `LOG_LEVEL=DEBUG`, `LOG_FORMAT=json`, `WORKER_LOG_DIR=/app/logs`.
+
+---
+
 ## 3. Loop principal (`watch_queue`)
 
 ```mermaid

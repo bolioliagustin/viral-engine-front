@@ -13,11 +13,14 @@ services:
       - ENVIRONMENT=production
       - USE_RAPIDAPI_DOWNLOAD=true
       - MAX_WORKERS=${MAX_WORKERS:-3}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - WORKER_LOG_DIR=/app/logs
       # Path inside container (proxies.txt is mounted below)
       - WEBSHARE_PROXY_FILE=/app/proxies.txt
     volumes:
       - worker_downloads:/app/downloads
       - worker_clips:/app/clips
+      - ./worker-logs:/app/logs
       - ./proxies.txt:/app/proxies.txt:ro
     restart: unless-stopped
     logging:

@@ -27,6 +27,9 @@ sentry_sdk.init(
 
 # Validate environment variables before proceeding
 sys.path.insert(0, str(Path(__file__).parent))
+from config.logging import setup_logging, trace, set_phase, bind_trace
+setup_logging()
+
 from config.validate_env import validate_env
 validate_env()
 
@@ -213,6 +216,11 @@ def process_job(job_data: dict) -> None:
     C5: Includes a 30-minute timeout to prevent stuck jobs.
     """
     job_id = job_data["id"]
+    with trace(job_id=job_id, phase="start"):
+        _process_job_inner(job_data, job_id)
+
+
+def _process_job_inner(job_data: dict, job_id: str) -> None:
     video_url = job_data["videoUrl"]
     audio_path = None
     video_path = None
@@ -245,6 +253,7 @@ def process_job(job_data: dict) -> None:
         
         # Steps 1+2: Get transcript via YouTube Transcript API (no download needed)
         # This bypasses yt-dlp bot detection entirely.
+        set_phase("transcript")
         print("\n📝 Steps 1+2: Fetching transcript from YouTube...")
         from services.supabase_client import update_job_progress
         update_job_progress(job_id, current_step="downloading", progress_percentage=10)
@@ -269,6 +278,7 @@ def process_job(job_data: dict) -> None:
         print(f"💾 Transcript cached for video {video_id}")
         
         # Step 3: Analyze transcript with AI (via OpenRouter)
+        set_phase("analyze")
         print("\n🤖 Step 3: Analyzing transcript for viral moments...")
         update_job_progress(job_id, current_step="analyzing", progress_percentage=50)
         
@@ -415,6 +425,7 @@ def process_job(job_data: dict) -> None:
         for i, moment in enumerate(result.viral_moments):
             check_timeout()
             moment_index = i + 1
+            bind_trace(moment_index=moment_index, phase="clip")
             clip_url = None
             # Plan C: cache para acelerar re-renders del editor post-clip.
             # Se popula tras yt-dlp + Whisper; queda en None si caemos a paths

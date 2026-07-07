@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import time
+import logging
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -416,3 +417,28 @@ class TestGoldenSetRegression:
         reg = case["subtitle_regression"]
         assert reg["first_srt_chunk_max_sec"] == 2.0
         assert reg["coverage_min"] == 0.9
+
+
+class TestWorkerLogging:
+    def test_trace_context_in_format(self):
+        from config.logging import TraceFormatter, bind_trace, reset_trace, get_trace_context
+
+        token = bind_trace(job_id="abc123456789", moment_index=2, phase="clip")
+        try:
+            assert get_trace_context()["job_id"] == "abc123456789"
+            record = logging.LogRecord(
+                name="worker",
+                level=logging.INFO,
+                pathname=__file__,
+                lineno=1,
+                msg="hello",
+                args=(),
+                exc_info=None,
+            )
+            formatted = TraceFormatter("%(trace)s%(message)s").format(record)
+            assert "job=abc12345" in formatted
+            assert "m=2" in formatted
+            assert "phase=clip" in formatted
+            assert "hello" in formatted
+        finally:
+            reset_trace(token)
