@@ -5,23 +5,32 @@ from openai import OpenAI
 from pathlib import Path
 from typing import Optional
 from models.schemas import AnalysisResult
+from config.model_tiers import (
+    get_model,
+    get_temperature,
+    output_language_instruction,
+)
 
 
-def get_video_category(video_info: dict, client=None) -> str:
+def get_video_category(video_info: dict, client=None, transcript_excerpt: str = None) -> str:
     """
-    Meta-Classifier: Binary classifier — podcast vs business.
+    Meta-Classifier: podcast vs business (vs entertainment si está habilitado).
 
     Phase 1.4: Reduced from 5 categories to 2 (the only ones with professionally
     tuned prompts). Anything that isn't clearly a podcast/interview falls back
     to 'business' (broader prompt that handles monologues, keynotes, talks,
     tutorials and general content reasonably).
+    Fase 5: acepta un excerpt del transcript (~1500 chars) para clasificar por
+    contenido real, y puede devolver 'entertainment' si
+    ENABLE_ENTERTAINMENT_CATEGORY=true.
 
     Args:
         video_info: Dict with 'title' and optionally 'description'
         client: OpenAI client for OpenRouter (reuses existing connection)
+        transcript_excerpt: First ~1500 chars of the transcript (optional)
 
     Returns:
-        Category string: 'podcast' or 'business'
+        Category string: 'podcast', 'business' (or 'entertainment' if enabled)
     """
     title = video_info.get('title', '')
     description = video_info.get('description', '')[:300]
@@ -43,14 +52,30 @@ def get_video_category(video_info: dict, client=None) -> str:
 
     # LLM classification — Gemini Flash with longer timeout for reliability
     try:
-        model = os.getenv("OPENROUTER_CLASSIFIER_MODEL", "google/gemini-2.0-flash-001")
+        model = get_model("classifier")
 
-        classification_prompt = f"""Clasifica este video en UNA de DOS categorías:
+        # Fase 5: clasificar también con el inicio del transcript (el título
+        # solo suele ser insuficiente y la descripción de oEmbed viene vacía).
+        transcript_block = ""
+        if transcript_excerpt:
+            transcript_block = f"\nInicio del transcript:\n{transcript_excerpt[:1500]}\n"
 
-Título: {title}
-Descripción: {description}
+        # Fase 5: entertainment reactivable por env (cuando pasada A esté estable)
+        allow_entertainment = os.getenv(
+            "ENABLE_ENTERTAINMENT_CATEGORY", ""
+        ).lower() in ("1", "true", "yes")
 
-Categorías:
+        if allow_entertainment:
+            categories_block = """Categorías:
+- podcast: Entrevistas, conversaciones entre 2+ personas, episodios de podcast, mesas redondas, charlas con invitados.
+- entertainment: Comedia, humor, reacciones, gaming, clips de streamers, contenido puramente de entretenimiento sin intención educativa.
+- business: TODO LO DEMÁS — monólogos, keynotes, talks, tutoriales, contenido de un solo orador, vlogs, contenido educativo, deportes, lifestyle, motivacional, tech.
+
+REGLA: Si NO es claramente conversación 2+ personas ni humor/entretenimiento puro, es 'business'.
+
+Responde con UNA SOLA PALABRA: podcast, entertainment o business."""
+        else:
+            categories_block = """Categorías:
 - podcast: Entrevistas, conversaciones entre 2+ personas, episodios de podcast, mesas redondas, charlas con invitados.
 - business: TODO lO DEMÁS — monólogos, keynotes, talks, tutoriales, contenido de un solo orador, vlogs, contenido educativo, comedia, deportes, lifestyle, motivacional, tech.
 
@@ -58,14 +83,21 @@ REGLA: Si NO es claramente una conversación entre 2+ personas, es 'business'.
 
 Responde con UNA SOLA PALABRA: podcast o business."""
 
+        classification_prompt = f"""Clasifica este video en UNA categoría:
+
+Título: {title}
+Descripción: {description}
+{transcript_block}
+{categories_block}"""
+
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "Clasificador binario. Respondes con una sola palabra: podcast o business."},
+                {"role": "system", "content": "Clasificador de contenido. Respondes con una sola palabra (la categoría)."},
                 {"role": "user", "content": classification_prompt}
             ],
             max_tokens=5,
-            temperature=0,
+            temperature=get_temperature("classifier"),
             timeout=10,  # Phase 1.4: bumped from 3s — was failing too often
         )
 
@@ -74,7 +106,8 @@ Responde con UNA SOLA PALABRA: podcast o business."""
             raise ValueError("LLM devolvió respuesta vacía")
         category = content.strip().lower()
 
-        if category in ('podcast', 'business'):
+        valid = ('podcast', 'business', 'entertainment') if allow_entertainment else ('podcast', 'business')
+        if category in valid:
             return category
         print(f"⚠️ Categoría inválida del LLM ('{category}'), usando fallback de keywords")
         return _keyword_classify()
@@ -85,7 +118,7 @@ Responde con UNA SOLA PALABRA: podcast o business."""
 
 
 
-def get_dynamic_prompt(duration: int, tone: str = "profesional", category: str = "business", transcript: dict = None, user_name: str = "Creador", user_title: str = "Experto") -> str:
+def get_dynamic_prompt(duration: int, tone: str = "profesional", category: str = "business", transcript: dict = None, user_name: str = "Creador", user_title: str = "Experto", language: str = None) -> str:
     """
     Generate dynamic prompt based on video duration, tone, and category.
     
@@ -96,6 +129,7 @@ def get_dynamic_prompt(duration: int, tone: str = "profesional", category: str =
         transcript: Optional transcript data (not used in prompt directly, passed for context)
         user_name: User's name for personalization
         user_title: User's professional title
+        language: Transcript language code — forces output language (Fase 1)
     """
     # Dynamic density based on duration
     if duration < 90:
@@ -116,23 +150,41 @@ def get_dynamic_prompt(duration: int, tone: str = "profesional", category: str =
         "casual": "Usa un tono casual y cercano, como hablando con un amigo."
     }
     tone_style = tone_instructions.get(tone.lower(), tone_instructions["profesional"])
-    
+    lang_instruction = output_language_instruction(language)
+
     # Phase 1.4: Binary routing — podcast OR business (default).
-    # Other category values (entertainment/tech/lifestyle) are legacy and now
-    # all fall through to the business prompt, which handles general content
-    # better than the half-finished alternatives. Entertainment-specific
-    # prompt is parked in category_prompts.py for a possible future reactivation.
+    # Fase 5: entertainment reactivable vía ENABLE_ENTERTAINMENT_CATEGORY
+    # (el prompt vive en category_prompts.py). Otros valores legacy
+    # (tech/lifestyle) caen al prompt de business.
     if category == 'podcast':
         print(f"🎙️ Using PODCAST strategy")
         import services.podcast_prompt as pp
         try:
-            return pp.get_podcast_prompt(duration, num_moments, moments_instruction, tone_style, user_name, user_title)
+            return (
+                pp.get_podcast_prompt(duration, num_moments, moments_instruction, tone_style, user_name, user_title)
+                + f"\n\n{lang_instruction}"
+            )
         except Exception as e:
             print(f"⚠️ Podcast prompt import failed, falling back to business: {e}")
+
+    if category == 'entertainment' and os.getenv(
+        "ENABLE_ENTERTAINMENT_CATEGORY", ""
+    ).lower() in ("1", "true", "yes"):
+        print(f"🎭 Using ENTERTAINMENT strategy")
+        try:
+            from services.category_prompts import get_entertainment_prompt
+            return (
+                get_entertainment_prompt(duration, num_moments, moments_instruction, tone_style, user_name, user_title)
+                + f"\n\n{lang_instruction}"
+            )
+        except Exception as e:
+            print(f"⚠️ Entertainment prompt failed, falling back to business: {e}")
 
     print(f"💼 Using BUSINESS strategy (category={category})")
     
     return f"""Actúa como un Director de Contenido Viral con 15 años de experiencia en psicología de masas y algoritmos de redes sociales.
+
+{lang_instruction}
 
 MISIÓN CRÍTICA:
 Crear contenido diseñado para **Dwell Time** (tiempo de permanencia). Los algoritmos de 2025 priorizan contenido que mantiene al usuario leyendo. Contenido corto = scroll rápido = muerte algorítmica.
@@ -236,107 +288,6 @@ Y les está costando oportunidades reales.
 - Ejemplo: "¿Cuál de estos errores reconoces en tu perfil? Cuéntame en comentarios."
 
 ═══════════════════════════════════════
-🎬 SHORT VIDEO SCRIPT - MULTIMODAL STORYTELLING
-═══════════════════════════════════════
-
-**FASE C: INTELIGENCIA VISUAL CONTEXTUAL**
-
-Analiza el AUDIO para detectar:
-1. **Palabras de énfasis** (repetidas, dichas más fuerte)
-2. **Pausas significativas** (silencios dramáticos)
-3. **Temas visualizables** (conceptos que piden gráficos)
-
-**BIBLIOTECA DE B-ROLL POR TEMA:**
-
-Si el audio menciona...
-• **Dinero/Finanzas** → Billetes quemándose, gráficos subiendo/bajando, calculadora, wallet, cripto
-• **Tiempo** → Reloj acelerado, calendario pasando páginas, arena cayendo
-• **Crecimiento/Éxito** → Plantas creciendo time-lapse, cohete despegando, gráfico exponencial
-• **Fracaso/Error** → Documentos rojos, X gigante, persona frustrada, edificio colapsando
-• **Comparación** → Split screen, VS animado, balanza desequilibrada
-• **Transformación** → Before/after, metamorfosis, upgrade visual
-
-**MEMES Y REFERENCIAS CULTURALES:**
-
-Según el tema detectado, sugiere:
-• **Finanzas** → "Stonks" meme, "This is fine" dog, Breaking Bad money pile
-• **Productividad** → Drake pointing meme, distracted boyfriend, galaxy brain
-• **Decisiones** → Two buttons meme, expanding brain, trade offer
-• **Sorpresa** → Surprised Pikachu, "Wait, what?", mind blown gif
-
-**ESTRUCTURA DETALLADA:**
-
-**[0-3s] HOOK VISUAL + VERBAL**
-- Acción visual IMPACTANTE (no genérica)
-- Conecta el visual con palabra clave del audio
-- Ejemplo específico:
-  ```
-  [VISUAL: Primer plano de mano estirando billete nuevo sin romperlo, luego ZOOM OUT 
-   revelando que el billete se está desvaneciendo como humo desde los bordes]
-  [AUDIO: Identifica la frase exacta más impactante del clip]
-  [TIMING: 0-3s]
-  [EFECTO: Desvanecimiento gradual con partículas]
-  ```
-
-**[3-50s] DESARROLLO CON MICRO-SEGMENTOS**
-
-Divide en segmentos de 10-15s cada uno:
-
-**Segmento 1 [3-15s]:**
-- VISUAL PRINCIPAL: [Describe escena específica]
-- B-ROLL SUGERIDO: [Insertos complementarios]
-- TEXTO EN PANTALLA: [Keyword o stat]
-- TRANSICIÓN: [Tipo de corte/efecto]
-- ÉNFASIS DETECTADO: [Si hay palabra repetida o pausa, marcala]
-
-**Segmento 2 [15-30s]:**
-- VISUAL PRINCIPAL: [Nueva escena]
-- MEME/REFERENCIA: [Si aplica, meme específico]
-- GRÁFICO SUGERIDO: [Si hay datos, tipo de visualización]
-- RITMO: [Mantener/Acelerar/Ralentizar]
-
-**Segmento 3 [30-50s]:**
-- VISUAL PRINCIPAL: [Clímax visual]
-- LLAMADA DE ATENCIÓN: [Hook secondary]
-- PREPARACIÓN PARA CIERRE: [Setup del loop]
-
-**[50-60s] CTA + LOOP CIRCULAR**
-- **Visual que regresa al inicio** (circularidad)
-- **Frase gancho final**
-- **Llamado a acción visual** (sutil, no "sígueme")
-- Ejemplo:
-  ```
-  [VISUAL: Volver al billete del inicio, pero ahora con overlay de "valor real" bajando]
-  [AUDIO: "La próxima vez que tengas un billete 'indestructible' en la mano..."]
-  [JUMP CUT: Al billete quemándose/desvaneciéndose]
-  [AUDIO: "...recuerda esto."]
-  [END CARD: Logo/handle con animación sutil]
-  ```
-
-**REGLAS CRÍTICAS PARA VISUAL STORYTELLING:**
-
-✅ **Especificidad sobre generalidad**: No digas "persona pensando", di "hombre de 30s con expresión confundida mirando pantalla de celular"
-✅ **Continuidad visual**: Los elementos del hook deben reaparecer en el cierre
-✅ **1 idea = 1 visual**: No cambies el visual si la idea no cambió
-✅ **Contraste de ritmo**: Alterna escenas rápidas (3-5s) con lentas (8-10s)
-✅ **Texto en pantalla estratégico**: Números, stats o keywords clave (no todo)
-✅ **Sonido diegético**: Sugiere sonidos que refuercen (ej: "sonido de billete rasgándose")
-
-**DETECCIÓN DE ÉNFASIS (Analizar el audio):**
-
-Identifica y marca:
-• Palabras repetidas 2+ veces → **[ÉNFASIS]**
-• Pausas de 2+ segundos → **[PAUSA DRAMÁTICA]** 
-• Cambios de tono → **[TONO CAMBIA]**
-• Velocidad de habla aumenta → **[ACELERA]**
-
-En esos momentos, el visual debe REFORZAR con:
-- Zoom in/out
-- Freeze frame momentáneo
-- Cambio de color/saturación
-- Texto en pantalla que aparece
-
-═══════════════════════════════════════
 ⚙️ REGLAS TÉCNICAS OBLIGATORIAS
 ═══════════════════════════════════════
 
@@ -398,22 +349,13 @@ FORMATO JSON DE SALIDA:
       "content_pieces": {{
         "twitter_thread": "[Hook contraintuitivo 240-260 chars]\\n\\n[El dolor específico 230-260 chars]\\n\\n[El giro que nadie ve venir 230-260 chars]\\n\\n[La prueba o mecanismo 220-260 chars]\\n\\n[La aplicación práctica 220-250 chars]\\n\\n[El remate que escala 220-250 chars]\\n\\n[CTA con loop mental 180-220 chars]",
         "linkedin_post": "[Hook 3 líneas]\\n\\n[Cuerpo 800-1200 chars con white space]\\n\\n[Pregunta engagement]",
-        "short_video_script": "[0-3s] VISUAL: ... | AUDIO: ...\\n\\n[3-15s] VISUAL: ... | AUDIO: ...\\n\\n[continuar hasta 60s]"
+        "tiktok_caption": "[Caption 1-2 líneas + 3-4 hashtags relevantes]"
       }}
     }}
   ],
   "overall_virality_score": 8,
   "total_roi_minutes": 135
 }}
-
-📊 CÁLCULO DE ROI (Tiempo Ahorrado):
-Para cada momento, estima cuántos minutos un humano tardaría en:
-1. Escuchar y transcribir el clip (10-15 min)
-2. Idear hooks y estructura (15-20 min)
-3. Redactar contenido para Twitter (15 min)
-4. Adaptar para LinkedIn (10 min)
-5. Crear guion de video (10-15 min)
-TOTAL PROMEDIO: 60-75 minutos por momento
 
 🎭 DETECCIÓN DE SENTIMIENTO:
 Analiza el tono del audio y asigna:
@@ -428,16 +370,30 @@ Asegúrate que el contenido generado MANTENGA ese sentimiento.
 El objetivo NO es resumir, es EXPANDIR el contenido para maximizar tiempo de lectura y engagement."""
 
 
-def analyze_with_openrouter(transcript: dict, video_info: dict, tone: str = "profesional") -> Optional[AnalysisResult]:
+def analyze_with_openrouter(
+    transcript: dict,
+    video_info: dict,
+    tone: str = "profesional",
+    user_name: str = None,
+    user_title: str = None,
+) -> Optional[AnalysisResult]:
     """
     Analyze transcript with OpenRouter for viral moment detection.
     Uses Whisper transcript with precise timestamps for deterministic results.
-    
+
+    Fase 2: por defecto usa el pipeline de dos pasadas — pasada A (selección
+    de momentos con sobre-generación, sin copy) acá, y pasada B (copy completo
+    desde el texto Whisper real) en main.py post-clip. El mega-prompt legacy
+    queda como fallback si la pasada A falla (TWO_PASS_ANALYSIS=false lo
+    fuerza).
+
     Args:
         transcript: Whisper transcript with segments and timestamps
         video_info: Video metadata
         tone: Voice tone for content generation
-        
+        user_name: Nombre real del creador (Fase 5) — default "Creador"
+        user_title: Título profesional real (Fase 5) — default "Experto"
+
     Returns:
         AnalysisResult with viral moments and content
     """
@@ -447,8 +403,10 @@ def analyze_with_openrouter(transcript: dict, video_info: dict, tone: str = "pro
         api_key=os.getenv("OPENROUTER_API_KEY")
     )
 
-    # Get model from env or use default
-    model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+    # Fase 1: model tier para análisis (env MODEL_ANALYSIS → legacy → default)
+    model = get_model("analysis")
+    user_name = (user_name or "").strip() or "Creador"
+    user_title = (user_title or "").strip() or "Experto"
 
     # ── Cache lookup: evita re-llamar al modelo si ya analizamos ────────────
     # Si reprocesamos el mismo video con la misma config, devolvemos el
@@ -468,6 +426,20 @@ def analyze_with_openrouter(transcript: dict, video_info: dict, tone: str = "pro
                 print(f"   ⚠️ Cached analysis no valida ({e}), re-analizando")
 
     # PHASE 0: META-CLASSIFIER - Detect content category (con cache)
+    # Fase 5: el clasificador recibe también el inicio del transcript (~1500
+    # chars) — el título solo no alcanza y la descripción de oEmbed viene vacía.
+    def _transcript_excerpt(t: dict, max_chars: int = 1500) -> str:
+        parts, total = [], 0
+        for sg in (t.get("segments") or []):
+            txt = (sg.get("text") or "").strip()
+            if not txt:
+                continue
+            parts.append(txt)
+            total += len(txt) + 1
+            if total >= max_chars:
+                break
+        return " ".join(parts)[:max_chars]
+
     category = None
     if video_id:
         category = get_cached_category(video_id, model)
@@ -475,7 +447,9 @@ def analyze_with_openrouter(transcript: dict, video_info: dict, tone: str = "pro
             print(f"✅ Category cached: {category.upper()}")
     if not category:
         print(f"📂 Detecting content category...")
-        category = get_video_category(video_info, client)
+        category = get_video_category(
+            video_info, client, transcript_excerpt=_transcript_excerpt(transcript)
+        )
         print(f"✅ Category detected: {category.upper()}")
         if video_id:
             save_category(video_id, model, category)
@@ -493,12 +467,47 @@ def analyze_with_openrouter(transcript: dict, video_info: dict, tone: str = "pro
         transcript_text = format_transcript_for_prompt_compact(transcript)
     print(f"   📝 Transcript prompt: {len(transcript_text)} chars")
     
-    # Get dynamic prompt based on video duration AND CATEGORY
-    duration = video_info.get('duration', 180)
-    dynamic_prompt = get_dynamic_prompt(duration, tone, category, transcript)
-    
-    # Context about the video
-    context = f"""
+    # Duración efectiva: oEmbed suele devolver 0 — usar último segmento
+    duration = video_info.get('duration') or 0
+    _segments = transcript.get('segments') or []
+    if not duration and _segments:
+        duration = float(_segments[-1].get('end', 0))
+    duration = duration or 180
+    language = transcript.get('language')
+
+    # ── Fase 2: pasada A (selección de momentos, sin copy) ──────────────────
+    # Default ON. TWO_PASS_ANALYSIS=false fuerza el mega-prompt legacy.
+    # Si la pasada A falla tras retries, caemos al mega-prompt (su copy queda
+    # como borrador que la pasada B pisa post-Whisper).
+    use_two_pass = os.getenv("TWO_PASS_ANALYSIS", "true").lower() not in ("false", "0", "no")
+    result_dict = None
+    analysis_mode = "mega_prompt"
+    if use_two_pass:
+        try:
+            from services.moment_selector import select_moments
+            result_dict = select_moments(
+                transcript_text=transcript_text,
+                video_info=video_info,
+                duration=duration,
+                category=category,
+                language=language,
+                client=client,
+                model=model,
+            )
+            analysis_mode = "two_pass"
+        except Exception as e:
+            print(f"⚠️ Pasada A falló ({str(e)[:150]}) — fallback a mega-prompt legacy")
+            result_dict = None
+
+    if result_dict is None:
+        # ── Legacy: mega-prompt (selección + copy en una sola llamada) ──────
+        dynamic_prompt = get_dynamic_prompt(
+            duration, tone, category, transcript,
+            user_name=user_name, user_title=user_title, language=language,
+        )
+
+        # Context about the video
+        context = f"""
 VIDEO INFO:
 - Título original: {video_info.get('title', 'Desconocido')}
 - Duración: {duration} segundos
@@ -514,73 +523,73 @@ VIDEO INFO:
 - NO adivines los segundos, COPIA los valores del mapa
 - Si mencionas una frase, usa los timestamps del segmento que la contiene
 """
-    
-    # Prepare messages (TEXT-ONLY, no audio)
-    messages = [
-        {
-            "role": "system",
-            "content": dynamic_prompt
-        },
-        {
-            "role": "user",
-            "content": f"{context}\n\nAnaliza esta transcripción y genera el contenido viral. Responde SOLO con JSON válido."
-        }
-    ]
-    
-    # Generate analysis with retry (Q5: exponential backoff)
-    print(f"🧠 Analyzing with {model}...")
-    
-    max_retries = 3
-    last_error = None
-    
-    response_text = None
-    for attempt in range(max_retries + 1):
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=16000,
-                response_format={"type": "json_object"}
-            )
 
-            # Defensive: Gemini Pro occasionally returns choices[0].message.content = None
-            # (safety filter trip, rate limit, or upstream timeout). Treat as failure
-            # and retry instead of crashing with `NoneType has no attribute strip`.
-            raw = response.choices[0].message.content if response.choices else None
-            if not raw or not raw.strip():
-                finish = response.choices[0].finish_reason if response.choices else "no_choices"
-                raise ValueError(f"LLM returned empty content (finish_reason={finish})")
+        # Prepare messages (TEXT-ONLY, no audio)
+        messages = [
+            {
+                "role": "system",
+                "content": dynamic_prompt
+            },
+            {
+                "role": "user",
+                "content": f"{context}\n\nAnaliza esta transcripción y genera el contenido viral. Responde SOLO con JSON válido."
+            }
+        ]
 
-            response_text = raw.strip()
-            break
-        except Exception as e:
-            last_error = e
-            if attempt < max_retries:
-                wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
-                print(f"⚠️ Attempt {attempt + 1} failed: {str(e)[:120]}")
-                print(f"   Retrying in {wait_time}s... ({attempt + 1}/{max_retries})")
-                import time
-                time.sleep(wait_time)
-            else:
-                print(f"❌ All {max_retries} retries exhausted")
-                raise last_error
+        # Generate analysis with retry (Q5: exponential backoff)
+        print(f"🧠 Analyzing with {model}...")
 
-    if not response_text:
-        # Should never happen — loop above either sets it or raises — but guard anyway
-        raise RuntimeError("analyze_with_openrouter: no response_text after retry loop")
-    
-    # Clean up response if wrapped in markdown
-    if response_text.startswith("```json"):
-        response_text = response_text[7:]
-    if response_text.startswith("```"):
-        response_text = response_text[3:]
-    if response_text.endswith("```"):
-        response_text = response_text[:-3]
-    
-    response_text = response_text.strip()
-    
-    try:
+        max_retries = 3
+        last_error = None
+
+        response_text = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    # Fase 1: output estructural — temperature baja (era 0.7)
+                    temperature=get_temperature("analysis"),
+                    max_tokens=16000,
+                    response_format={"type": "json_object"}
+                )
+
+                # Defensive: Gemini Pro occasionally returns choices[0].message.content = None
+                # (safety filter trip, rate limit, or upstream timeout). Treat as failure
+                # and retry instead of crashing with `NoneType has no attribute strip`.
+                raw = response.choices[0].message.content if response.choices else None
+                if not raw or not raw.strip():
+                    finish = response.choices[0].finish_reason if response.choices else "no_choices"
+                    raise ValueError(f"LLM returned empty content (finish_reason={finish})")
+
+                response_text = raw.strip()
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                    print(f"⚠️ Attempt {attempt + 1} failed: {str(e)[:120]}")
+                    print(f"   Retrying in {wait_time}s... ({attempt + 1}/{max_retries})")
+                    import time
+                    time.sleep(wait_time)
+                else:
+                    print(f"❌ All {max_retries} retries exhausted")
+                    raise last_error
+
+        if not response_text:
+            # Should never happen — loop above either sets it or raises — but guard anyway
+            raise RuntimeError("analyze_with_openrouter: no response_text after retry loop")
+
+        # Clean up response if wrapped in markdown
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.startswith("```"):
+            response_text = response_text[3:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+
+        response_text = response_text.strip()
+
         try:
             result_dict = json.loads(response_text)
         except json.JSONDecodeError:
@@ -590,6 +599,7 @@ VIDEO INFO:
             result_dict = json.loads(repaired_json)
             print("✅ JSON repaired successfully")
 
+    try:
         # Si Gemini envolvió el objeto raíz en un array, desenvuelve
         if isinstance(result_dict, list):
             if len(result_dict) == 1 and isinstance(result_dict[0], dict):
@@ -655,46 +665,52 @@ VIDEO INFO:
         # formatting) and emit telemetry on what needs attention (wrong tweet
         # count, char overflow, AI clichés). The cleaned dict is then validated
         # by Pydantic. Future Phase 2/3 may trigger retries based on warnings.
+        # Fase 2: en two-pass no hay copy todavía (pasada B lo genera post-
+        # Whisper), así que solo validamos overlay y saltamos los checks de copy.
         from services.content_validators import clean_analysis
         validation_stats = clean_analysis(result_dict)
-        print(f"🧹 Content validators: {validation_stats.summary_line()}")
-        if validation_stats.problems:
-            for p in validation_stats.problems[:5]:
-                print(f"   ⚠️ {p}")
-            if len(validation_stats.problems) > 5:
-                print(f"   ... +{len(validation_stats.problems) - 5} more")
+        if analysis_mode != "two_pass":
+            print(f"🧹 Content validators: {validation_stats.summary_line()}")
+            if validation_stats.problems:
+                for p in validation_stats.problems[:5]:
+                    print(f"   ⚠️ {p}")
+                if len(validation_stats.problems) > 5:
+                    print(f"   ... +{len(validation_stats.problems) - 5} more")
 
         # Phase 1.5: emit metrics to Sentry as breadcrumb + tag.
         # Lets us build a dashboard "% of jobs with wrong_tweet_count > 0" and
         # alert when quality regresses (e.g. after a prompt change).
-        try:
-            import sentry_sdk as _sentry
-            _sentry.add_breadcrumb(
-                category="content_quality",
-                message="content validators",
-                level="warning" if validation_stats.problems else "info",
-                data={
-                    "moments_checked": validation_stats.moments_checked,
-                    "model": model,
-                    "category": category,
-                    "links_stripped": validation_stats.links_stripped,
-                    "tweet_prefixes_stripped": validation_stats.tweet_prefixes_stripped,
-                    "overlay_fixes": validation_stats.overlay_truncated + validation_stats.overlay_uppercased,
-                    "wrong_tweet_count": validation_stats.wrong_tweet_count,
-                    "tweets_too_long": validation_stats.tweets_too_long,
-                    "tweets_too_short": validation_stats.tweets_too_short,
-                    "cliche_hits": validation_stats.cliche_hits,
-                    "linkedin_out_of_range": validation_stats.linkedin_out_of_range,
-                    "missing_twitter": validation_stats.missing_twitter,
-                    "missing_linkedin": validation_stats.missing_linkedin,
-                    "missing_tiktok_caption": validation_stats.missing_tiktok_caption,
-                },
-            )
-            # Tag the scope so the metric is queryable in Sentry's UI per-job
-            _sentry.set_tag("content_quality.has_problems", bool(validation_stats.problems))
-            _sentry.set_tag("content_quality.category", category)
-        except Exception as _e:
-            print(f"   (sentry telemetry skipped: {_e})")
+        # (two-pass: sin copy todavía — la telemetría de copy emitiría falsos
+        # "missing"; se salta y la pasada B valida por momento en main.py.)
+        if analysis_mode != "two_pass":
+            try:
+                import sentry_sdk as _sentry
+                _sentry.add_breadcrumb(
+                    category="content_quality",
+                    message="content validators",
+                    level="warning" if validation_stats.problems else "info",
+                    data={
+                        "moments_checked": validation_stats.moments_checked,
+                        "model": model,
+                        "category": category,
+                        "links_stripped": validation_stats.links_stripped,
+                        "tweet_prefixes_stripped": validation_stats.tweet_prefixes_stripped,
+                        "overlay_fixes": validation_stats.overlay_truncated + validation_stats.overlay_uppercased,
+                        "wrong_tweet_count": validation_stats.wrong_tweet_count,
+                        "tweets_too_long": validation_stats.tweets_too_long,
+                        "tweets_too_short": validation_stats.tweets_too_short,
+                        "cliche_hits": validation_stats.cliche_hits,
+                        "linkedin_out_of_range": validation_stats.linkedin_out_of_range,
+                        "missing_twitter": validation_stats.missing_twitter,
+                        "missing_linkedin": validation_stats.missing_linkedin,
+                        "missing_tiktok_caption": validation_stats.missing_tiktok_caption,
+                    },
+                )
+                # Tag the scope so the metric is queryable in Sentry's UI per-job
+                _sentry.set_tag("content_quality.has_problems", bool(validation_stats.problems))
+                _sentry.set_tag("content_quality.category", category)
+            except Exception as _e:
+                print(f"   (sentry telemetry skipped: {_e})")
 
         result = AnalysisResult(**result_dict)
         print(f"✅ Analysis complete: {len(result.viral_moments)} viral moments found")
@@ -725,12 +741,121 @@ VIDEO INFO:
         raise ValueError(f"Invalid JSON response: {e}")
 
 
-        raise ValueError(f"Invalid JSON response: {e}")
-
-
 def _clip_text_from_words(words: list[dict]) -> str:
     """Build plain transcript from whisper words."""
     return " ".join((w.get("word") or "").strip() for w in words if (w.get("word") or "").strip())
+
+
+def generate_moment_copy_full(
+    moment,
+    clip_text: str,
+    *,
+    category: str = "business",
+    tone: str = "profesional",
+    language: str = None,
+    user_name: str = "Creador",
+    user_title: str = "Experto",
+    client=None,
+) -> bool:
+    """
+    Pasada B (Fase 2): genera TODO el copy del momento desde el texto real
+    del clip (Whisper post-corte, o slice del transcript si no hay Whisper).
+
+    Genera: twitter_thread, linkedin_post, tiktok_caption, hook final y
+    viral_overlay. Mutates moment in-place. El copy previo (si existía, del
+    mega-prompt) queda como fallback si esta pasada falla.
+
+    Returns True si el copy se regeneró OK.
+    """
+    if not clip_text or not clip_text.strip():
+        return False
+
+    if client is None:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+
+    model = get_model("copy")
+    hook_draft = getattr(moment, 'hook', '') or ''
+    overlay_draft = getattr(moment, 'viral_overlay', '') or ''
+    trigger = getattr(moment, 'emotional_trigger', '') or ''
+    lang_instruction = output_language_instruction(language)
+
+    tone_map = {
+        "profesional": "profesional, directo y con autoridad",
+        "sarcastico": "sarcástico e irónico, con humor inteligente",
+        "motivador": "motivador y energético, que inspira acción",
+        "casual": "casual y cercano, como hablando con un amigo",
+    }
+    tone_desc = tone_map.get((tone or "profesional").lower(), tone_map["profesional"])
+
+    prompt = f"""Eres un copywriter viral senior. Genera el paquete COMPLETO de copy para este clip, usando SOLO el texto real del audio (no inventes contenido que no esté en el transcript).
+
+{lang_instruction}
+
+CLIP TRANSCRIPT (texto exacto del audio del clip final):
+{clip_text[:4000]}
+
+CONTEXTO:
+- Creador: {user_name} ({user_title})
+- Tono de marca: {tone_desc}
+- Categoría: {category}
+- Trigger emocional detectado: {trigger}
+- Hook borrador (mejóralo si puedes, siempre anclado al transcript): {hook_draft}
+- Overlay borrador: {overlay_draft}
+
+REGLAS POR PIEZA:
+1. twitter_thread: EXACTAMENTE 7 tweets separados por \\n\\n. Sin prefijos "Tweet 1:", sin [Link], sin hashtags de relleno. Cada tweet 180-280 chars y funciona solo fuera del hilo. Estructura: hook contraintuitivo → dolor específico → giro → prueba/mecanismo → aplicación práctica → remate que escala → CTA con pregunta abierta.
+2. linkedin_post: 800-1200 caracteres. Hook de 3 líneas antes del "ver más", párrafos de máx 2-3 líneas, bullets si aplica, pregunta de engagement al final. Sin pedir likes.
+3. tiktok_caption: 1-2 líneas coloquiales + 3-4 hashtags relevantes al tema.
+4. hook: frase gancho del momento (1-2 líneas, forma larga) fiel al contenido real del clip.
+5. viral_overlay: MÁXIMO 4 PALABRAS EN MAYÚSCULAS. Cartel TikTok que frena el scroll en <1s (ej: "NADIE TE DICE ESTO"). NO resume el clip.
+
+PROHIBIDO: clichés de IA ("en el mundo de hoy", "descubre cómo", "es importante destacar", "sumérgete").
+
+Responde SOLO JSON:
+{{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "..."}}"""
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "Copywriter viral senior. Respondes solo JSON válido."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=get_temperature("copy"),
+            max_tokens=4000,
+            response_format={"type": "json_object"},
+            timeout=60,
+        )
+        raw = response.choices[0].message.content if response.choices else None
+        if not raw or not raw.strip():
+            print("   ⚠️ Pasada B: LLM devolvió vacío")
+            return False
+
+        try:
+            data = json.loads(raw.strip())
+        except json.JSONDecodeError:
+            from json_repair import repair_json
+            data = json.loads(repair_json(raw.strip()))
+
+        cp = moment.content_pieces
+        if data.get("twitter_thread"):
+            cp.twitter_thread = data["twitter_thread"]
+        if data.get("linkedin_post"):
+            cp.linkedin_post = data["linkedin_post"]
+        if data.get("tiktok_caption"):
+            cp.tiktok_caption = data["tiktok_caption"]
+        if data.get("hook"):
+            moment.hook = data["hook"]
+        if data.get("viral_overlay"):
+            moment.viral_overlay = data["viral_overlay"]
+        print(f"   ✅ Pasada B: copy completo generado desde texto real ({len(clip_text)} chars, model={model})")
+        return True
+    except Exception as e:
+        print(f"   ⚠️ Pasada B falló: {str(e)[:150]}")
+        return False
 
 
 def regenerate_moment_copy(
@@ -755,7 +880,7 @@ def regenerate_moment_copy(
             api_key=os.getenv("OPENROUTER_API_KEY"),
         )
 
-    model = os.getenv("OPENROUTER_COPY_MODEL", os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001"))
+    model = get_model("copy")
     hook = getattr(moment, 'hook', '') or ''
     viral_overlay = getattr(moment, 'viral_overlay', '') or ''
 
@@ -787,7 +912,7 @@ Responde SOLO JSON:
                 {"role": "system", "content": "Copywriter viral. Respondes solo JSON válido."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.6,
+            temperature=get_temperature("copy"),
             max_tokens=4000,
             response_format={"type": "json_object"},
             timeout=45,

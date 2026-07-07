@@ -32,6 +32,11 @@ interface Result {
   sentiment_detected?: string;
   viral_overlay?: string;
   whisper_words?: string | { words: { word: string; start: number; end: number }[] };
+  // Fase 4: calidad
+  verification_failed?: boolean;
+  sub_coverage?: number;
+  words_per_sec?: number;
+  score_judge?: string | { hook: number; retention: number; shareability: number; reasoning?: string };
 }
 
 
@@ -284,6 +289,8 @@ export default function ResultsPage() {
                         roiTimeSaved={firstResult.roi_time_saved}
                         whisperWords={whisperWords}
                         clipDuration={clipDuration}
+                        verificationFailed={firstResult.verification_failed === true}
+                        subCoverage={firstResult.sub_coverage}
                       />
                     </motion.div>
                   );

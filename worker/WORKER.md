@@ -297,6 +297,78 @@ Cuando el usuario edita un clip en el frontend (`EditClipDrawer`):
 
 ---
 
+## 6.1 Pipeline de IA (Plan calidad IA, 2026)
+
+### Modelos por tarea (`config/model_tiers.py`)
+
+| Tarea | Env var | Default | Temperature |
+|-------|---------|---------|-------------|
+| Selección de momentos | `MODEL_ANALYSIS` | `google/gemini-2.5-pro` | 0.3 |
+| Copy (threads/posts) | `MODEL_COPY` | `google/gemini-2.5-flash` | 0.65 |
+| Juez de scoring | `MODEL_JUDGE` | `google/gemini-2.5-flash-lite` | 0.1 |
+| Clasificador | `MODEL_CLASSIFIER` | `google/gemini-2.0-flash-001` | 0.0 |
+
+Compat: `OPENROUTER_MODEL` / `OPENROUTER_COPY_MODEL` / `OPENROUTER_CLASSIFIER_MODEL`
+siguen funcionando como fallback. El worker warnea al arrancar si algún
+modelo es `:free`.
+
+### Dos pasadas (`TWO_PASS_ANALYSIS=true`, default)
+
+1. **Pasada A** (`services/moment_selector.py`): prompt corto enfocado SOLO en
+   seleccionar momentos. Sobre-genera `min(12, minutos)` candidatos con scores
+   preliminares, rankea y conserva los top N. Sin copy.
+2. **Pasada B** (`generate_moment_copy_full` en `processor.py`): post-Whisper,
+   genera TODO el copy (thread, LinkedIn, caption, hook final, viral_overlay)
+   desde el texto REAL del clip recortado. Corre antes de `generate_clip` para
+   que el overlay quemado sea el final. Si el clip cae a fallback de YouTube,
+   hay un "copy rescue" con el slice del transcript.
+
+Con `TWO_PASS_ANALYSIS=false` (o si la pasada A falla) se usa el mega-prompt
+legacy y su copy queda como borrador que la pasada B pisa.
+
+### Refinamiento de cortes (Fase 3)
+
+- `refine_bounds_to_sentences` (clip_generator): tras Whisper, los límites del
+  clip se ajustan a boundaries de oración (puntuación + gaps >0.6s + fin de
+  segmentos). Fragmentos iniciales (arranque en minúscula) se dropean y
+  oraciones finales incompletas se recortan.
+- `validate_durations(transcript=...)`: el truncado a 60s snapea al fin de
+  segmento más cercano en vez de cortar seco.
+- Ancla de verificación: si `first_phrase_in_audio` aparece desplazada dentro
+  del clip, el inicio se ajusta al match real.
+
+### Scoring calibrado y ROI honesto (Fase 4)
+
+- `services/scorer.py`: juez independiente (`MODEL_JUDGE`) puntúa el clip
+  final contra una rúbrica anclada. Se persisten `score_judge` y `score_llm`
+  (columnas JSONB en `content_results`) para calibrar; los scores mostrados
+  son los del juez.
+- `roi_time_saved` = `8 + 0.5×seg_clip + 15×piezas_de_copy` (determinístico).
+- `verification_failed` (bool): first Y last phrase no matchean el audio real
+  — visible como badge "⚠ Verificar corte" en la card.
+- `sub_coverage` y `words_per_sec` se persisten como métricas de calidad.
+- Requiere `supabase_migration_ai_quality.sql`.
+
+### Personalización (Fase 5)
+
+- `jobs.tone` (selector en el dashboard) + `users.display_name` /
+  `users.professional_title` se inyectan en los prompts de copy.
+- El clasificador recibe los primeros ~1500 chars del transcript.
+- `ENABLE_ENTERTAINMENT_CATEGORY=true` reactiva el prompt de entertainment.
+
+### Eval loop (Fase 6)
+
+```bash
+python worker/eval/run_golden_set.py           # análisis-only
+python worker/eval/run_golden_set.py --copy    # + pasada B + juez
+python worker/eval/run_golden_set.py --json    # output para CI
+```
+
+Corre el golden set (`worker/eval/golden_set.json`) y sale con exit code 1 si
+alguna métrica queda bajo los `thresholds` — usable antes de deploy.
+
+---
+
 ## 7. Funcionamiento ideal vs realidad actual
 
 ### Flujo ideal (happy path)

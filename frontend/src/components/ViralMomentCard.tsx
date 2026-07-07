@@ -66,6 +66,10 @@ interface ViralMomentCardProps {
   whisperWords?: WhisperWordsData | null;
   /** Duración real del MP4 (post-snap); fallback end-start. */
   clipDuration?: number;
+  /** Fase 4: first Y last phrase no matchean el audio real del clip. */
+  verificationFailed?: boolean;
+  /** Fase 4: cobertura de subs 0-1 persistida por el worker. */
+  subCoverage?: number;
 }
 
 // ─── Pillar config ─────────────────────────────────────────────────────────
@@ -188,6 +192,8 @@ export function ViralMomentCard({
   roiTimeSaved,
   whisperWords,
   clipDuration: clipDurationProp,
+  verificationFailed,
+  subCoverage,
 }: ViralMomentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -320,6 +326,22 @@ export function ViralMomentCard({
                     }
                   >
                     {subsComplete ? "Subs completos" : "Subs parciales"}
+                  </Badge>
+                )}
+                {verificationFailed && (
+                  <Badge
+                    className="bg-red-500/15 text-red-300 border-red-500/30 text-[10px] px-2 py-0.5 font-semibold border"
+                    title="El audio del clip no coincide con el momento detectado por la IA — revisá el corte antes de publicar"
+                  >
+                    ⚠ Verificar corte
+                  </Badge>
+                )}
+                {subCoverage !== undefined && subCoverage !== null && subCoverage < 0.85 && (
+                  <Badge
+                    className="bg-amber-500/15 text-amber-300 border-amber-500/30 text-[10px] px-2 py-0.5 font-semibold border"
+                    title={`Los subtítulos cubren el ${Math.round(subCoverage * 100)}% del clip`}
+                  >
+                    Subs {Math.round(subCoverage * 100)}%
                   </Badge>
                 )}
               </div>

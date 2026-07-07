@@ -355,6 +355,144 @@ def shift_words_timeline(
     return shifted
 
 
+_SENTENCE_END_CHARS = (".", "?", "!", "…", "。", "؟")
+
+
+def detect_sentence_boundaries(
+    words: list[dict],
+    segments: list[dict] = None,
+    gap_threshold: float = 0.6,
+) -> list[float]:
+    """
+    Fase 3: detecta boundaries de oración en el timeline del clip.
+
+    Señales combinadas:
+      - Palabra que termina en puntuación de fin de oración (. ? ! …)
+      - Gap de silencio > gap_threshold entre palabra y palabra siguiente
+      - Fin de segmento Whisper cuyo texto termina en puntuación
+        (los words de Groq/OpenAI a veces vienen sin puntuación; los
+        segments sí la conservan)
+
+    Returns:
+        Lista ordenada de timestamps (segundos, timeline del clip) donde
+        termina una oración.
+    """
+    boundaries: set[float] = set()
+
+    for i, w in enumerate(words or []):
+        txt = (w.get("word") or "").strip()
+        we = float(w.get("end", 0))
+        if txt and txt[-1] in _SENTENCE_END_CHARS:
+            boundaries.add(round(we, 3))
+        if i + 1 < len(words):
+            next_start = float(words[i + 1].get("start", we))
+            if next_start - we > gap_threshold:
+                boundaries.add(round(we, 3))
+
+    for sg in segments or []:
+        txt = (sg.get("text") or "").strip()
+        if txt and txt[-1] in _SENTENCE_END_CHARS:
+            boundaries.add(round(float(sg.get("end", 0)), 3))
+
+    return sorted(boundaries)
+
+
+def refine_bounds_to_sentences(
+    words: list[dict],
+    clip_duration: float,
+    segments: list[dict] = None,
+    max_duration: float = None,
+    min_duration: float = 5.0,
+    start_pad: float = 0.15,
+    end_pad: float = 0.40,
+    max_head_drop: float = 4.0,
+    max_tail_drop_ratio: float = 0.35,
+) -> tuple[float, float]:
+    """
+    Fase 3: refina (trim_start, trim_end) a boundaries de oración.
+
+    - Si el clip arranca a mitad de oración (primer boundary muy temprano),
+      corta hacia adelante hasta el inicio de la siguiente oración — solo si
+      el fragmento inicial es corto (< max_head_drop s) para no perder el hook.
+    - Si el clip corta a mitad de oración al final, recorta al fin de la
+      última oración completa — solo si no pierde más de max_tail_drop_ratio
+      del clip.
+    - Si max_duration está definido y el resultado lo excede, trunca al
+      boundary de oración más cercano <= max_duration (en vez de corte seco).
+
+    Returns (trim_start, trim_end) dentro de [0, clip_duration]. Si no hay
+    señal suficiente devuelve (0.0, clip_duration).
+    """
+    if not words or clip_duration <= 0:
+        return 0.0, clip_duration
+
+    # Sin puntuación en words NI segments no hay señal confiable de oración
+    # (solo gaps) — no refinar, el snap de silencio ya cubre ese caso.
+    has_punct = any(
+        (w.get("word") or "").strip().endswith(_SENTENCE_END_CHARS) for w in words
+    ) or any(
+        (sg.get("text") or "").strip().endswith(_SENTENCE_END_CHARS) for sg in segments or []
+    )
+    if not has_punct:
+        return 0.0, clip_duration
+
+    boundaries = detect_sentence_boundaries(words, segments)
+    first_word_start = float(words[0].get("start", 0))
+    last_word_end = float(words[-1].get("end", first_word_start))
+
+    trim_start = 0.0
+    trim_end = clip_duration
+
+    # ── Head: dropear fragmento inicial de oración incompleta ────────────
+    # Solo si hay evidencia de que el clip arranca a MITAD de oración
+    # (el texto empieza en minúscula — Whisper capitaliza inicios de oración)
+    # Y existe un boundary temprano donde termina ese fragmento.
+    def _starts_mid_sentence() -> bool:
+        txt = ""
+        if segments:
+            txt = (segments[0].get("text") or "").strip()
+        if not txt and words:
+            txt = (words[0].get("word") or "").strip()
+        for ch in txt:
+            if ch.isalpha():
+                return ch.islower()
+        return False
+
+    if _starts_mid_sentence():
+        early = [b for b in boundaries if first_word_start < b <= first_word_start + max_head_drop]
+        if early:
+            head_boundary = early[0]
+            # Solo dropear si quedan palabras suficientes después
+            remaining = [w for w in words if float(w.get("start", 0)) > head_boundary]
+            if remaining and (last_word_end - head_boundary) >= min_duration:
+                next_word_start = float(remaining[0].get("start", head_boundary))
+                trim_start = max(0.0, next_word_start - start_pad)
+
+    # ── Tail: recortar oración final incompleta ──────────────────────────
+    ends_at_boundary = any(abs(last_word_end - b) <= 0.30 for b in boundaries)
+    if not ends_at_boundary:
+        prior = [b for b in boundaries if trim_start + min_duration <= b < last_word_end]
+        if prior:
+            candidate_end = min(clip_duration, prior[-1] + end_pad)
+            dropped = clip_duration - candidate_end
+            if dropped / clip_duration <= max_tail_drop_ratio:
+                trim_end = candidate_end
+
+    # ── Cap por max_duration en boundary de oración ──────────────────────
+    if max_duration and (trim_end - trim_start) > max_duration:
+        limit = trim_start + max_duration
+        fitting = [b for b in boundaries if trim_start + min_duration <= b <= limit - end_pad + 0.5]
+        if fitting:
+            trim_end = min(limit, fitting[-1] + end_pad)
+        else:
+            trim_end = limit
+
+    # Sanity: resultado degenerado → no tocar
+    if trim_end - trim_start < min_duration:
+        return 0.0, clip_duration
+    return trim_start, min(trim_end, clip_duration)
+
+
 def _parse_srt_timestamp(ts: str) -> float:
     """Parse HH:MM:SS,mmm to seconds."""
     h, m, rest = ts.strip().split(":")

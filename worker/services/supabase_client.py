@@ -176,6 +176,11 @@ def save_content_result(
     viral_overlay: str = None,  # TikTok burn-in title (hook corto UPPERCASE)
     raw_clip_url: str = None,  # Plan C: cache del segmento crudo en R2
     whisper_words: dict = None,  # Plan C: {"words": [...], "segments": [...]}
+    score_llm: dict = None,  # Fase 4: scores autoevaluados del análisis
+    score_judge: dict = None,  # Fase 4: scores del juez independiente
+    verification_failed: bool = None,  # Fase 4: first Y last phrase fallaron
+    sub_coverage: float = None,  # Fase 4: cobertura de subs 0-1
+    words_per_sec: float = None,  # Fase 4: densidad de palabras del clip
 ) -> str:
     """Save content result to Supabase or SQLite"""
     import uuid
@@ -220,18 +225,49 @@ def save_content_result(
             data["raw_clip_url"] = raw_clip_url
         if whisper_words:
             data["whisper_words"] = json.dumps(whisper_words) if not isinstance(whisper_words, str) else whisper_words
+        # Fase 4: scoring calibrado + métricas de calidad.
+        # Estos campos requieren supabase_migration_ai_quality.sql — si las
+        # columnas no existen todavía, reintentamos el insert sin ellas.
+        _quality_keys = []
+        if score_llm:
+            data["score_llm"] = json.dumps(score_llm)
+            _quality_keys.append("score_llm")
+        if score_judge:
+            data["score_judge"] = json.dumps(score_judge)
+            _quality_keys.append("score_judge")
+        if verification_failed is not None:
+            data["verification_failed"] = verification_failed
+            _quality_keys.append("verification_failed")
+        if sub_coverage is not None:
+            data["sub_coverage"] = round(float(sub_coverage), 4)
+            _quality_keys.append("sub_coverage")
+        if words_per_sec is not None:
+            data["words_per_sec"] = round(float(words_per_sec), 3)
+            _quality_keys.append("words_per_sec")
+
+        def _insert(payload):
+            supabase.table("content_results").insert(payload).execute()
 
         try:
-            supabase.table("content_results").insert(data).execute()
+            _insert(data)
         except Exception as e:
             if _is_connection_error(e):
                 print(f"⚠️ save_content_result: conexión perdida, reconectando y reintentando...")
                 reset_supabase()
                 supabase = get_supabase()
                 if supabase:
-                    supabase.table("content_results").insert(data).execute()
+                    _insert(data)
                 else:
                     raise RuntimeError("No se pudo reconectar a Supabase para guardar resultado")
+            elif _quality_keys and ("column" in str(e).lower() or "pgrst204" in str(e).lower()):
+                print(
+                    f"⚠️ save_content_result: columnas de calidad no existen aún "
+                    f"({_quality_keys}) — corré supabase_migration_ai_quality.sql. "
+                    f"Guardando sin esas columnas."
+                )
+                for k in _quality_keys:
+                    data.pop(k, None)
+                _insert(data)
             else:
                 raise
     else:

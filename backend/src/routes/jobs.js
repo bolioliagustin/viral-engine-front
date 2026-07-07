@@ -30,12 +30,18 @@ const processLimiter = rateLimit({
 router.post('/process', requireAuth, processLimiter, async (req, res) => {
     try {
         // userId is now guaranteed to be the verified user's ID (set by requireAuth middleware)
-        const { videoUrl, userId } = req.body;
+        const { videoUrl, userId, tone } = req.body;
 
         // Validate YouTube URL
         if (!videoUrl) {
             return res.status(400).json({ error: 'videoUrl is required' });
         }
+
+        // Fase 5: tono opcional del contenido generado
+        const VALID_TONES = ['profesional', 'sarcastico', 'motivador', 'casual'];
+        const jobTone = tone && VALID_TONES.includes(String(tone).toLowerCase())
+            ? String(tone).toLowerCase()
+            : null;
 
         const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)[\w-]+/;
         if (!youtubeRegex.test(videoUrl)) {
@@ -90,12 +96,21 @@ router.post('/process', requireAuth, processLimiter, async (req, res) => {
             }
 
             // Create job in Supabase
-            const { error: jobError } = await supabase.from('jobs').insert({
+            const jobRow = {
                 id: jobId,
                 user_id: userId || null,
                 video_url: videoUrl,
                 status: 'pending'
-            });
+            };
+            if (jobTone) jobRow.tone = jobTone;
+            let { error: jobError } = await supabase.from('jobs').insert(jobRow);
+
+            // Compat: si la columna tone no existe todavía (migración
+            // ai_quality sin correr), reintentar sin tone.
+            if (jobError && jobTone && /tone/i.test(jobError.message || '')) {
+                delete jobRow.tone;
+                ({ error: jobError } = await supabase.from('jobs').insert(jobRow));
+            }
 
             if (jobError) {
                 console.error('Error creating job:', jobError);

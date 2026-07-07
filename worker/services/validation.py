@@ -162,22 +162,26 @@ def validate_against_transcript(moment, transcript: dict) -> bool:
     return ok
 
 
-def verify_phrases_against_whisper(moment, words: list[dict]) -> bool:
+def verify_phrases_against_whisper(moment, words: list[dict]) -> dict:
     """
     Post-Whisper check: compare verification claims to actual clip words.
-    Updates nothing; logs mismatches for telemetry.
+
+    Fase 4: devuelve dict {"first_ok": bool, "last_ok": bool, "failed": bool}.
+    `failed` es True solo cuando AMBAS frases (first Y last) no matchean —
+    señal fuerte de que el corte no corresponde al momento elegido.
+    El dict es truthy siempre; usar las keys, no el valor booleano.
     """
+    result = {"first_ok": True, "last_ok": True, "failed": False}
     verification = getattr(moment, 'verification', None)
     if not verification or not words:
-        return True
+        return result
 
     whisper_text = " ".join((w.get("word") or "").strip() for w in words)
     norm = _normalize_phrase(whisper_text)
     if not norm:
-        return True
+        return result
 
     wlist = norm.split()
-    ok = True
     hook = getattr(moment, 'hook', 'Unknown')[:30]
 
     first_claim = _normalize_phrase(getattr(verification, 'first_phrase_in_audio', '') or '')
@@ -186,7 +190,7 @@ def verify_phrases_against_whisper(moment, words: list[dict]) -> bool:
         actual = " ".join(wlist[:len(cw)])
         if cw and cw[0] not in actual:
             print(f"⚠️ [{hook}] Whisper first_phrase mismatch: '{first_claim[:40]}' vs '{actual[:40]}'")
-            ok = False
+            result["first_ok"] = False
 
     last_claim = _normalize_phrase(getattr(verification, 'last_phrase_in_audio', '') or '')
     if last_claim and len(wlist) >= 3:
@@ -194,18 +198,75 @@ def verify_phrases_against_whisper(moment, words: list[dict]) -> bool:
         actual = " ".join(wlist[-len(cw):])
         if cw and cw[-1] not in actual:
             print(f"⚠️ [{hook}] Whisper last_phrase mismatch: '{last_claim[-40:]}' vs '{actual[-40:]}'")
-            ok = False
+            result["last_ok"] = False
 
-    return ok
+    result["failed"] = not result["first_ok"] and not result["last_ok"]
+    return result
+
+
+def find_phrase_start_in_words(words: list[dict], phrase: str, max_words: int = 6) -> Optional[float]:
+    """
+    Fase 3: busca la frase (first_phrase_in_audio) en los whisper words del
+    clip y devuelve el timestamp de inicio del match, o None.
+
+    Match fuzzy: compara las primeras `max_words` palabras normalizadas de la
+    frase contra ventanas consecutivas del clip.
+    """
+    if not words or not phrase:
+        return None
+
+    target = _normalize_phrase(phrase).split()[:max_words]
+    if len(target) < 2:
+        return None
+
+    norm_words = []
+    for w in words:
+        nw = _normalize_phrase(w.get("word") or "")
+        norm_words.append((nw, float(w.get("start", 0))))
+
+    n = len(target)
+    for i in range(len(norm_words) - n + 1):
+        window = [norm_words[i + j][0] for j in range(n)]
+        matches = sum(1 for a, b in zip(target, window) if a and a == b)
+        # >= 70% de las palabras de la frase matchean en orden
+        if matches >= max(2, int(round(n * 0.7))):
+            return norm_words[i][1]
+    return None
+
+
+def _snap_end_to_segment_boundary(
+    transcript: dict,
+    start: float,
+    hard_max_end: float,
+    min_end: float,
+) -> Optional[float]:
+    """
+    Fase 3: al truncar un momento a max_duration, elegir el fin de segmento
+    de transcript más cercano <= hard_max_end (corta en fin de frase en vez
+    de corte seco a mitad de oración).
+    """
+    segments = (transcript or {}).get("segments") or []
+    best = None
+    for sg in segments:
+        sg_end = float(sg.get("end", 0))
+        if min_end <= sg_end <= hard_max_end:
+            if best is None or sg_end > best:
+                best = sg_end
+    return best
 
 
 def validate_durations(
     viral_moments: list,
     min_duration: int = 10,
     max_duration: int = 60,
+    transcript: dict = None,
 ) -> list:
     """
     Filter viral moments by duration; trim moments exceeding max_duration.
+
+    Fase 3: si se pasa `transcript`, el truncado a max_duration se ajusta al
+    boundary de segmento (fin de frase) más cercano <= max_duration en lugar
+    de cortar seco.
     """
     valid_moments = []
     for i, moment in enumerate(viral_moments):
@@ -224,9 +285,19 @@ def validate_durations(
 
         if duration > max_duration:
             new_end = start + max_duration
+            snapped = _snap_end_to_segment_boundary(
+                transcript,
+                start=float(start),
+                hard_max_end=float(start + max_duration),
+                min_end=float(start + min_duration),
+            )
+            boundary_note = ""
+            if snapped is not None:
+                new_end = int(snapped)
+                boundary_note = " (snap a fin de frase)"
             print(
                 f"⚠️ Trimming moment {i+1} '{hook}' "
-                f"from {duration}s to {max_duration}s (end {end} → {new_end})"
+                f"from {duration}s to {new_end - start}s (end {end} → {new_end}){boundary_note}"
             )
             moment.end_time = new_end
 

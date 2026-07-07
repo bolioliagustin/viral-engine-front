@@ -281,9 +281,32 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         set_phase("analyze")
         print("\n🤖 Step 3: Analyzing transcript for viral moments...")
         update_job_progress(job_id, current_step="analyzing", progress_percentage=50)
-        
+
+        # Fase 5: personalización — tone del job + perfil real del usuario
+        job_tone = (job_data.get("tone") or "").strip().lower() or "profesional"
+        user_name = None
+        user_title = None
+        _user_id = job_data.get("userId")
+        if _user_id:
+            try:
+                _sb = get_supabase()
+                if _sb:
+                    _profile = _sb.table("users") \
+                        .select("display_name, professional_title") \
+                        .eq("id", _user_id).limit(1).execute()
+                    if _profile.data:
+                        user_name = _profile.data[0].get("display_name")
+                        user_title = _profile.data[0].get("professional_title")
+                        if user_name or user_title:
+                            print(f"👤 Perfil: {user_name or 'Creador'} ({user_title or 'Experto'}) | tono={job_tone}")
+            except Exception as e_profile:
+                print(f"   ⚠️ Perfil de usuario no disponible (no fatal): {str(e_profile)[:80]}")
+
         from services.processor import analyze_with_openrouter
-        result = analyze_with_openrouter(transcript, video_info)
+        result = analyze_with_openrouter(
+            transcript, video_info,
+            tone=job_tone, user_name=user_name, user_title=user_title,
+        )
         update_job_progress(job_id, progress_percentage=65)
         check_timeout()  # C5
         
@@ -292,13 +315,16 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # inside processor.py BEFORE Pydantic validation, so timestamps are
         # guaranteed to be populated here (the workaround that used to live
         # in this step has been removed).
+        # Fase 3: el truncado a 60s ahora snapea al fin de frase del transcript.
         print("\n🔍 Step 3.5: Quality filter...")
         from services.validation import (
             validate_durations,
             filter_overlapping_moments,
             validate_against_transcript,
         )
-        result.viral_moments = validate_durations(result.viral_moments, min_duration=10, max_duration=60)
+        result.viral_moments = validate_durations(
+            result.viral_moments, min_duration=10, max_duration=60, transcript=transcript
+        )
         result.viral_moments = filter_overlapping_moments(result.viral_moments, max_overlap_ratio=0.5)
 
         if not result.viral_moments:
@@ -432,6 +458,13 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             # de fallback (entonces el editor re-descargará desde YouTube).
             raw_clip_url_cache = None
             whisper_words_cache = None
+            # Fase 4: métricas de calidad del clip (persisten en content_results)
+            clip_text_final = None      # texto real del clip (whisper o slice YT)
+            verification_info = None    # dict de verify_phrases_against_whisper
+            coverage_val = None         # cobertura de subs 0-1
+            wps_val = None              # words per second
+            judge_scores = None         # scores del juez independiente
+            roi_clip_duration = None    # duración usada para el ROI determinístico
 
             # Generate clip (Fase 1.6 — orden invertido):
             #   1. PRIMARY: usar muxed_video_path (partial download ya hecha upfront)
@@ -632,9 +665,53 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         subs_offset = 0.0
                         snap_trim_start = 0.0
 
-                        # Fase A: snap trim leading/trailing silence to speech
-                        from services.validation import verify_phrases_against_whisper
+                        # Fase A: snap trim silencio + refinamiento a oración
+                        from services.validation import (
+                            verify_phrases_against_whisper,
+                            find_phrase_start_in_words,
+                        )
+                        from services.clip_generator import refine_bounds_to_sentences
                         trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
+
+                        # Fase 3: límites a boundaries de oración (puntuación +
+                        # gaps >0.6s + fin de segmentos Whisper)
+                        s_start, s_end = refine_bounds_to_sentences(
+                            clip_words, clip_duration,
+                            segments=clip_segments_whisper,
+                            max_duration=60.0,
+                        )
+                        if s_start > trim_start:
+                            print(f"   📝 Sentence snap start: {trim_start:.2f} → {s_start:.2f}")
+                            trim_start = s_start
+                        if s_end < trim_end:
+                            print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
+                            trim_end = s_end
+
+                        # Fase 3: ancla de verificación — si la primera frase
+                        # prometida aparece desplazada dentro del clip, ajustar
+                        # el inicio al match real en vez de solo loguearlo.
+                        _first_phrase = getattr(
+                            getattr(moment, "verification", None),
+                            "first_phrase_in_audio", None,
+                        )
+                        if _first_phrase:
+                            anchor_t = find_phrase_start_in_words(clip_words, _first_phrase)
+                            if (
+                                anchor_t is not None
+                                and anchor_t - trim_start > 1.5
+                                and anchor_t < clip_duration * 0.5
+                                and (trim_end - anchor_t) >= 8.0
+                            ):
+                                print(
+                                    f"   ⚓ First-phrase anchor: frase encontrada en "
+                                    f"{anchor_t:.2f}s — ajustando inicio "
+                                    f"({trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f})"
+                                )
+                                trim_start = max(0.0, anchor_t - 0.35)
+
+                        if trim_end - trim_start < 3.0:
+                            trim_start, trim_end = 0.0, clip_duration
+
                         if trim_start > 0.05 or trim_end < clip_duration - 0.05:
                             snap_trim_start = trim_start
                             words_before_snap = len(clip_words)
@@ -673,40 +750,92 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             subs_words = clip_words
                             subs_segments = clip_segments_whisper
 
-                        verify_phrases_against_whisper(moment, clip_words)
-                        coverage = srt_coverage_metric(clip_words, clip_duration)
-                        print(f"   📊 Sub coverage: {coverage:.0%}")
+                        # Fase 4: verificación anti-alucinación con acción real
+                        verification_info = verify_phrases_against_whisper(moment, clip_words)
+                        if verification_info.get("failed"):
+                            moment.verification_failed = True
+                            print(
+                                f"   🚩 verification_failed: first Y last phrase "
+                                f"no matchean el audio real del clip"
+                            )
+                        coverage_val = srt_coverage_metric(clip_words, clip_duration)
+                        wps_val = (len(clip_words) / clip_duration) if clip_duration > 0 else 0.0
+                        print(f"   📊 Sub coverage: {coverage_val:.0%} | densidad: {wps_val:.2f} w/s")
 
-                        # Fase B: regenerate copy from actual clip whisper text
-                        from services.processor import (
-                            regenerate_moment_copy,
-                            _clip_text_from_words,
+                        from services.processor import _clip_text_from_words
+                        clip_text_final = _clip_text_from_words(clip_words)
+                    else:
+                        subs_segments = transcript.get("segments")
+                        subs_words = None
+                        subs_offset = start_s
+                        # Sin Whisper: el texto real del clip es el slice del
+                        # transcript YT (para pasada B y juez)
+                        from services.validation import _words_in_range
+                        clip_text_final = _words_in_range(
+                            transcript.get("segments") or [], start_s, end_s
                         )
+
+                    roi_clip_duration = clip_duration
+
+                    # ── Pasada B (Fase 2): copy completo desde el texto real ──
+                    # Corre ANTES de generate_clip para que el viral_overlay
+                    # final (regenerado) sea el que se quema en el video.
+                    if clip_text_final and clip_text_final.strip():
+                        from services.processor import generate_moment_copy_full
                         from services.content_validators import clean_moment
-                        clip_text = _clip_text_from_words(clip_words)
                         category = getattr(moment, 'category', None) or 'business'
-                        regenerate_moment_copy(
+                        _lang = transcript.get("language")
+                        copy_ok = generate_moment_copy_full(
                             moment,
-                            clip_text,
+                            clip_text_final,
                             category=category,
+                            tone=job_tone,
+                            language=_lang,
+                            user_name=user_name or "Creador",
+                            user_title=user_title or "Experto",
                         )
                         moment_dict = moment.model_dump()
                         copy_stats = clean_moment(moment_dict)
-                        if copy_stats.wrong_tweet_count or copy_stats.linkedin_out_of_range:
+                        if copy_ok and (copy_stats.wrong_tweet_count or copy_stats.linkedin_out_of_range):
                             print("   🔄 Copy validation retry (tweet count / LinkedIn length)...")
-                            regenerate_moment_copy(moment, clip_text, category=category)
+                            generate_moment_copy_full(
+                                moment, clip_text_final,
+                                category=category, tone=job_tone, language=_lang,
+                                user_name=user_name or "Creador",
+                                user_title=user_title or "Experto",
+                            )
                             moment_dict = moment.model_dump()
                             clean_moment(moment_dict)
+                        # Sync de vuelta los campos limpiados por clean_moment
                         if moment_dict.get("content_pieces"):
                             cp = moment_dict["content_pieces"]
                             if cp.get("twitter_thread"):
                                 moment.content_pieces.twitter_thread = cp["twitter_thread"]
                             if cp.get("linkedin_post"):
                                 moment.content_pieces.linkedin_post = cp["linkedin_post"]
-                    else:
-                        subs_segments = transcript.get("segments")
-                        subs_words = None
-                        subs_offset = start_s
+                            if cp.get("tiktok_caption"):
+                                moment.content_pieces.tiktok_caption = cp["tiktok_caption"]
+                        if moment_dict.get("viral_overlay"):
+                            moment.viral_overlay = moment_dict["viral_overlay"]
+                        # El overlay que se quema es el final (post-pasada B)
+                        if moment.viral_overlay:
+                            overlay_text = moment.viral_overlay
+
+                        # ── Fase 4: juez independiente sobre el clip final ────
+                        from services.scorer import judge_moment_scores
+                        judge_scores = judge_moment_scores(
+                            clip_text_final,
+                            hook=moment.hook or "",
+                            viral_overlay=moment.viral_overlay or "",
+                            category=category,
+                            clip_duration_sec=roi_clip_duration or 0.0,
+                        )
+                        if judge_scores:
+                            print(
+                                f"   ⚖️ Judge: hook={judge_scores['hook']} "
+                                f"retention={judge_scores['retention']} "
+                                f"share={judge_scores['shareability']}"
+                            )
 
                     # Cache post-snap precut so re-edits align with whisper_words (0-based).
                     raw_cache_path = str(precut_path) if precut_path else seg_path
@@ -777,6 +906,36 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                     print(f"🔗 Clip {moment_index}: YouTube link at {int(moment.start_time)}s → {clip_url}")
             
+            # ── Rescate de copy (two-pass): si la generación del clip falló
+            # antes de la pasada B y el momento quedó sin copy, generarlo
+            # desde el slice del transcript YT para no dejar la card vacía.
+            if (
+                not (moment.content_pieces.twitter_thread or "").strip()
+                and moment.start_time is not None
+                and moment.end_time is not None
+            ):
+                try:
+                    from services.validation import _words_in_range
+                    from services.processor import generate_moment_copy_full
+                    _rescue_text = clip_text_final or _words_in_range(
+                        transcript.get("segments") or [],
+                        float(moment.start_time), float(moment.end_time),
+                    )
+                    if _rescue_text and _rescue_text.strip():
+                        print("   🛟 Copy rescue: generando copy desde transcript YT (pasada B no corrió)")
+                        generate_moment_copy_full(
+                            moment, _rescue_text,
+                            category=getattr(moment, 'category', None) or 'business',
+                            tone=job_tone,
+                            language=transcript.get("language"),
+                            user_name=user_name or "Creador",
+                            user_title=user_title or "Experto",
+                        )
+                        if not clip_text_final:
+                            clip_text_final = _rescue_text
+                except Exception as e_rescue:
+                    print(f"   ⚠️ Copy rescue falló (no fatal): {str(e_rescue)[:100]}")
+
             # Extract scores if available
             scores = moment.scores if hasattr(moment, 'scores') and moment.scores else None
             pillar_raw = moment.pillar_type if hasattr(moment, 'pillar_type') else None
@@ -792,23 +951,62 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             
             # Extract Phase B fields
             sentiment = getattr(moment, 'sentiment_detected', None)
-            roi_time = getattr(moment, 'roi_time_saved', None)
             justifications = None
             if hasattr(moment, 'score_justifications') and moment.score_justifications:
                 justifications = [j.model_dump() if hasattr(j, 'model_dump') else j for j in moment.score_justifications]
-            
+
+            # ── Fase 4: ROI determinístico (reemplaza el número alucinado) ──
+            from services.scorer import deterministic_roi
+            _copy_pieces = sum(
+                1 for piece in (
+                    moment.content_pieces.twitter_thread,
+                    moment.content_pieces.linkedin_post,
+                    getattr(moment.content_pieces, 'tiktok_caption', None)
+                    or (moment.tiktok_package.caption if getattr(moment, 'tiktok_package', None) else None),
+                ) if piece and str(piece).strip()
+            )
+            _roi_duration = roi_clip_duration
+            if _roi_duration is None and moment.start_time is not None and moment.end_time is not None:
+                _roi_duration = float(moment.end_time - moment.start_time)
+            roi_time = deterministic_roi(_roi_duration or 0.0, _copy_pieces)
+            moment.roi_time_saved = roi_time
+
+            # ── Fase 4: scores — el juez (si corrió) es la nota mostrada;
+            # los scores del análisis se guardan como score_llm para calibrar.
+            score_llm_dict = None
+            if scores:
+                score_llm_dict = {
+                    "hook": scores.hook,
+                    "retention": scores.retention,
+                    "shareability": scores.shareability,
+                }
+            display_hook = judge_scores["hook"] if judge_scores else (scores.hook if scores else None)
+            display_retention = judge_scores["retention"] if judge_scores else (scores.retention if scores else None)
+            display_share = judge_scores["shareability"] if judge_scores else (scores.shareability if scores else None)
+
             # Phase 1.4: Binary categories — podcast or business (default).
             # Both categories produce the full content package
             # (Twitter + LinkedIn + TikTok caption). We save whatever the
             # prompt actually filled, no category-based gating.
+            # Fase 5: entertainment es válida si está habilitada por env.
             category = getattr(moment, 'category', None) or 'business'
             category = category.lower().strip()
-            if category not in ('podcast', 'business'):
-                # Legacy values (entertainment / tech / lifestyle) fall back
-                # silently — the business prompt was used anyway in this run.
+            _valid_categories = ('podcast', 'business', 'entertainment') if os.getenv(
+                "ENABLE_ENTERTAINMENT_CATEGORY", ""
+            ).lower() in ("1", "true", "yes") else ('podcast', 'business')
+            if category not in _valid_categories:
+                # Legacy values (tech / lifestyle) fall back silently —
+                # the business prompt was used anyway in this run.
                 category = 'business'
 
             print(f"\n📊 Category: {category.upper()} — saving full content package")
+
+            # Overlay final: pasada B puede haberlo regenerado — releer del
+            # moment (overlay_text solo existe si el path de clip corrió).
+            _overlay_final = getattr(moment, 'viral_overlay', None)
+            if not _overlay_final:
+                _tp = getattr(moment, 'tiktok_package', None)
+                _overlay_final = getattr(_tp, 'overlay_text', None) if _tp else None
 
             # Common kwargs reused for every content_result row
             common_kwargs = dict(
@@ -820,15 +1018,21 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 emotional_trigger=moment.emotional_trigger,
                 moment_index=moment_index,
                 pillar_type=pillar,
-                score_hook=scores.hook if scores else None,
-                score_retention=scores.retention if scores else None,
-                score_shareability=scores.shareability if scores else None,
+                score_hook=display_hook,
+                score_retention=display_retention,
+                score_shareability=display_share,
                 sentiment_detected=sentiment,
                 roi_time_saved=roi_time,
                 score_justifications=justifications,
-                viral_overlay=overlay_text,
+                viral_overlay=_overlay_final,
                 raw_clip_url=raw_clip_url_cache,
                 whisper_words=whisper_words_cache,
+                # Fase 4: scoring calibrado + métricas de calidad
+                score_llm=score_llm_dict,
+                score_judge=judge_scores,
+                verification_failed=getattr(moment, 'verification_failed', None),
+                sub_coverage=coverage_val,
+                words_per_sec=wps_val,
             )
 
             # Twitter thread — always saved (universal)
@@ -951,12 +1155,22 @@ def watch_queue():
 
                 if available_slots > 0:
                     # S1: Poll Supabase for pending jobs
-                    result = supabase.table("jobs") \
-                        .select("id, video_url, user_id") \
-                        .eq("status", "pending") \
-                        .order("created_at") \
-                        .limit(available_slots) \
-                        .execute()
+                    # Fase 5: tone puede no existir si la migración ai_quality
+                    # no corrió — fallback al select viejo.
+                    try:
+                        result = supabase.table("jobs") \
+                            .select("id, video_url, user_id, tone") \
+                            .eq("status", "pending") \
+                            .order("created_at") \
+                            .limit(available_slots) \
+                            .execute()
+                    except Exception:
+                        result = supabase.table("jobs") \
+                            .select("id, video_url, user_id") \
+                            .eq("status", "pending") \
+                            .order("created_at") \
+                            .limit(available_slots) \
+                            .execute()
 
                     if result.data:
                         for job in result.data:
@@ -982,6 +1196,7 @@ def watch_queue():
                                 "id": job["id"],
                                 "videoUrl": job["video_url"],
                                 "userId": job.get("user_id"),
+                                "tone": job.get("tone"),
                             }
 
                             active_jobs.add(job["id"])

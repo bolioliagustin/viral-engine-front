@@ -13,7 +13,12 @@ REQUIRED_ENV_VARS = [
 
 OPTIONAL_ENV_VARS = {
     'FFMPEG_PATH': 'Will use system PATH if not set',
-    'OPENROUTER_MODEL': 'Defaults to google/gemini-2.0-flash-exp:free',
+    'MODEL_ANALYSIS': 'Modelo para selección de momentos (default google/gemini-2.5-pro)',
+    'MODEL_COPY_WRITING': 'Modelo para copy/threads (alias preferido de MODEL_COPY)',
+    'MODEL_COPY': 'Modelo para copy/threads (default google/gemini-2.5-flash)',
+    'MODEL_JUDGE': 'Modelo juez de scoring (default google/gemini-2.5-flash-lite)',
+    'MODEL_CLASSIFIER': 'Modelo clasificador podcast/business (default google/gemini-2.0-flash-001)',
+    'OPENROUTER_MODEL': 'LEGACY — usar MODEL_ANALYSIS. Fallback si MODEL_ANALYSIS no está',
     'GROQ_API_KEY': 'Preferred Whisper provider (faster + better than OpenAI). Get at console.groq.com. Si no está, cae a OpenAI.',
     'SUPADATA_API_KEY': 'REQUIRED on cloud deployments (Render/Railway) — get free key at supadata.ai',
     'R2_ACCOUNT_ID': 'Required for clip uploads to Cloudflare R2',
@@ -63,6 +68,24 @@ def validate_env():
     for var, description in OPTIONAL_ENV_VARS.items():
         status = "✓ Set" if os.getenv(var) else f"○ Not set ({description})"
         print(f"   {var}: {status}")
+
+    # Fase 1: warning si algún modelo es free tier + mostrar resolución efectiva
+    try:
+        from config.model_tiers import get_model, is_free_tier, resolved_models
+        print("\n📦 Modelos LLM resueltos:")
+        for task, model in resolved_models().items():
+            print(f"   {task}: {model}")
+        for task in ("analysis", "copy", "judge", "classifier"):
+            model = get_model(task)
+            if is_free_tier(model):
+                print(
+                    f"\n⚠️  MODEL_{task.upper()} = '{model}' es FREE TIER de OpenRouter.\n"
+                    f"   Rate limits agresivos + peor calidad de análisis.\n"
+                    f"   Recomendado: setear MODEL_{task.upper()} a un modelo pago "
+                    f"(ej. google/gemini-2.5-{'pro' if task == 'analysis' else 'flash'}).\n"
+                )
+    except ImportError:
+        pass
 
     env = os.getenv("ENVIRONMENT", "development").lower()
     if env in ("production", "prod"):

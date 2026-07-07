@@ -43,10 +43,10 @@ export async function apiFetch(
  * Submit a video for processing.
  * Backend will extract userId from the verified JWT — no need to send it.
  */
-export async function submitVideo(videoUrl: string) {
+export async function submitVideo(videoUrl: string, tone?: string) {
     const response = await apiFetch("/process", {
         method: "POST",
-        body: JSON.stringify({ videoUrl }),
+        body: JSON.stringify({ videoUrl, tone }),
     });
 
     if (!response.ok) {

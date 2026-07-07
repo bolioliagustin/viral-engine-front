@@ -1,10 +1,19 @@
 {
-  "_doc": "Golden test set para regresión de calidad. Usado por Fase 2 (prompt podcast), Fase 3 (prompt business) y Fase 4 (eval automático). Cada video tiene una 'expected_category' que el clasificador debería detectar correctamente.",
+  "_doc": "Golden test set para regresión de calidad. Corré `python worker/eval/run_golden_set.py` para evaluar el pipeline de análisis contra los umbrales de 'thresholds'. Cada video tiene una 'expected_category' que el clasificador debería detectar. Los videos con enabled=false son slots pendientes de completar con URLs reales (mix objetivo: 2 podcast ES, 2 business ES, 1 EN, 1 largo >1h).",
+  "thresholds": {
+    "_doc": "Umbrales mínimos — run_golden_set.py sale con exit code 1 si alguno no se cumple (usable en CI antes de deploy).",
+    "category_accuracy_min": 0.66,
+    "duration_pass_rate_min": 0.8,
+    "duration_untruncated_rate_min": 0.7,
+    "verification_pass_rate_min": 0.6,
+    "min_moments_per_video": 1
+  },
   "videos": [
     {
       "id": "business_spanish_01",
       "url": "https://www.youtube.com/watch?v=Lqq78q17jDY",
       "youtube_id": "Lqq78q17jDY",
+      "enabled": true,
       "note": "Podcast/charla de negocios en español — golden set post-Groq (job Lqq78q17jDY)",
       "expected_category": "podcast",
       "subtitle_regression": {
@@ -25,6 +34,8 @@
     {
       "id": "podcast_general_01",
       "url": "https://www.youtube.com/watch?v=XxoVRjTySsM",
+      "youtube_id": "XxoVRjTySsM",
+      "enabled": true,
       "note": "Podcast general — caso de uso prioritario",
       "expected_category": "podcast",
       "test_focus": [
@@ -36,15 +47,65 @@
     {
       "id": "user_recommended_01",
       "url": "https://www.youtube.com/watch?v=MaXgAEI4Vm8",
+      "youtube_id": "MaXgAEI4Vm8",
+      "enabled": true,
       "note": "Recomendación personal del usuario — referencia de calidad target",
       "expected_category": "podcast",
       "test_focus": [
         "Calidad 'publicable sin editar' — benchmark visual del producto final"
       ]
+    },
+    {
+      "id": "business_spanish_02",
+      "url": "",
+      "youtube_id": "",
+      "enabled": false,
+      "note": "PENDIENTE: completar con un monólogo/keynote de negocios en español (10-30 min)",
+      "expected_category": "business",
+      "test_focus": [
+        "Clasificador debe devolver 'business' (un solo orador)",
+        "Momentos con setup+remate completos (sentence snap)"
+      ]
+    },
+    {
+      "id": "business_spanish_03",
+      "url": "",
+      "youtube_id": "",
+      "enabled": false,
+      "note": "PENDIENTE: completar con un tutorial/charla educativa en español",
+      "expected_category": "business",
+      "test_focus": [
+        "High utility: momentos accionables",
+        "ROI determinístico coherente con duración"
+      ]
+    },
+    {
+      "id": "podcast_english_01",
+      "url": "",
+      "youtube_id": "",
+      "enabled": false,
+      "note": "PENDIENTE: completar con un podcast en inglés — valida idioma de salida EN",
+      "expected_category": "podcast",
+      "test_focus": [
+        "Output 100% en inglés (hooks, tweets, overlay)",
+        "Sin mezcla de idiomas ES/EN"
+      ]
+    },
+    {
+      "id": "long_video_01",
+      "url": "",
+      "youtube_id": "",
+      "enabled": false,
+      "note": "PENDIENTE: completar con un video largo (>1h) — valida sobre-generación de candidatos y contexto largo",
+      "expected_category": "podcast",
+      "test_focus": [
+        "12 candidatos → top 5 (ranking, no densidad fija)",
+        "Momentos distribuidos a lo largo del video (no solo el inicio)"
+      ]
     }
   ],
   "scoring_criteria": {
-    "_doc": "Criterios para evaluar manualmente cada output del golden set. Phase 4 lo automatizará parcialmente.",
+    "_doc": "Criterios para evaluar manualmente cada output del golden set. run_golden_set.py automatiza los medibles.",
     "clip_selection": "¿Los 5 clips elegidos son los mejores momentos del video?",
     "clip_timing": "¿El inicio captura el setup? ¿El final corta después de la reacción?",
     "twitter_quality": "¿Cada tweet funciona solo? ¿7 tweets? ¿200-280 chars cada uno?",
@@ -52,6 +113,7 @@
     "tiktok_overlay": "¿4 palabras MAX UPPERCASE? ¿Frena el scroll en <1s?",
     "no_ai_clones": "¿Cero clichés tipo 'en el mundo de hoy', 'descubre cómo'?",
     "no_link_placeholders": "¿Cero '[Link]' / 'Tweet N:' prefixes?",
-    "voice_consistency": "¿El tono se mantiene a lo largo de los 3 outputs (Twitter+LinkedIn+TikTok)?"
+    "voice_consistency": "¿El tono se mantiene a lo largo de los 3 outputs (Twitter+LinkedIn+TikTok)?",
+    "judge_delta": "¿score_judge vs score_llm delta promedio < 2 puntos? (si es mayor, el análisis infla scores)"
   }
 }

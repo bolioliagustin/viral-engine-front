@@ -377,6 +377,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
+  const [tone, setTone] = useState("profesional");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
@@ -557,7 +558,7 @@ function DashboardContent() {
     setError("");
     setSubmitting(true);
     try {
-      const result = await submitVideo(videoUrl);
+      const result = await submitVideo(videoUrl, tone);
       router.push(`/results/${result.jobId}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error al procesar el video";
@@ -787,6 +788,31 @@ function DashboardContent() {
                   required
                   disabled={submitting}
                 />
+                <div>
+                  <p className="text-xs text-slate-400 mb-2">Tono del contenido</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: "profesional", label: "💼 Profesional" },
+                      { id: "casual", label: "😎 Casual" },
+                      { id: "motivador", label: "🔥 Motivador" },
+                      { id: "sarcastico", label: "😏 Sarcástico" },
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setTone(t.id)}
+                        disabled={submitting}
+                        className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                          tone === t.id
+                            ? "bg-purple-600/30 border-purple-500 text-white"
+                            : "bg-slate-800 border-white/10 text-slate-400 hover:border-white/20"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {error && error !== "UPGRADE_REQUIRED" && (
                   <p className="text-red-400 text-sm">{error}</p>
                 )}

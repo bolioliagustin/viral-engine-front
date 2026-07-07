@@ -1,13 +1,18 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 
 
 class ContentPieces(BaseModel):
-    """Generated content for different platforms"""
-    twitter_thread: str
+    """Generated content for different platforms.
+
+    Fase 2 (two-pass): en la pasada A los momentos llegan SIN copy —
+    twitter_thread pasa a Optional. La pasada B (post-Whisper, main.py)
+    llena todos los campos desde el texto real del clip.
+    """
+    twitter_thread: Optional[str] = None
     linkedin_post: Optional[str] = None  # Optional for entertainment category
     tiktok_caption: Optional[str] = None  # For entertainment category
-    short_video_script: Optional[str] = None
+    short_video_script: Optional[str] = None  # DEPRECATED — kept for compat
 
 
 class SurgicalClipping(BaseModel):
@@ -86,7 +91,9 @@ class ViralMoment(BaseModel):
     surgical_clipping: Optional[SurgicalClipping] = None
     tiktok_package: Optional[TikTokPackage] = None  # Universal TikTok strategy
     editing_cues: Optional[List[EditingCue]] = None  # Informational only
-    content_pieces: ContentPieces
+    content_pieces: ContentPieces = Field(default_factory=ContentPieces)
+    # Fase 4: flag de verificación anti-alucinación (first Y last phrase fallaron)
+    verification_failed: Optional[bool] = None
     # Sprint 2: Fidelity & Verification
     verification: Optional[Verification] = None  # Validates AI didn't hallucinate
     

@@ -468,6 +468,270 @@ class TestGoldenSetRegression:
         assert reg["coverage_min"] == 0.9
 
 
+class TestModelTiers:
+    """Fase 1: resolución de modelos por tarea vía env."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_defaults_when_no_env(self):
+        from config.model_tiers import get_model
+        assert get_model("analysis") == "google/gemini-2.5-pro"
+        assert get_model("copy") == "google/gemini-2.5-flash"
+        assert get_model("judge") == "google/gemini-2.5-flash-lite"
+        assert get_model("classifier") == "google/gemini-2.0-flash-001"
+
+    @patch.dict(os.environ, {"MODEL_ANALYSIS": "anthropic/claude-sonnet-4.5"}, clear=True)
+    def test_new_env_takes_precedence(self):
+        from config.model_tiers import get_model
+        assert get_model("analysis") == "anthropic/claude-sonnet-4.5"
+
+    @patch.dict(os.environ, {"MODEL_COPY_WRITING": "google/gemini-3.5-flash"}, clear=True)
+    def test_copy_writing_env_alias(self):
+        from config.model_tiers import get_model
+        assert get_model("copy") == "google/gemini-3.5-flash"
+
+    @patch.dict(os.environ, {"OPENROUTER_MODEL": "google/gemini-2.0-flash-exp:free"}, clear=True)
+    def test_legacy_env_fallback(self):
+        from config.model_tiers import get_model, is_free_tier
+        assert get_model("analysis") == "google/gemini-2.0-flash-exp:free"
+        assert is_free_tier(get_model("analysis"))
+
+    @patch.dict(os.environ, {
+        "MODEL_ANALYSIS": "google/gemini-2.5-pro",
+        "OPENROUTER_MODEL": "google/gemini-2.0-flash-exp:free",
+    }, clear=True)
+    def test_new_env_wins_over_legacy(self):
+        from config.model_tiers import get_model
+        assert get_model("analysis") == "google/gemini-2.5-pro"
+
+    def test_temperatures_low_for_structural(self):
+        from config.model_tiers import get_temperature
+        assert get_temperature("analysis") <= 0.3
+        assert get_temperature("judge") <= 0.3
+        assert get_temperature("classifier") == 0.0
+        assert get_temperature("copy") >= 0.5
+
+    def test_language_instruction(self):
+        from config.model_tiers import output_language_instruction, language_name
+        assert "español" in output_language_instruction("es")
+        assert "English" in output_language_instruction("en-US")
+        assert language_name(None) == "español"
+
+
+class TestMomentSelector:
+    """Fase 2: sobre-generación + ranking de candidatos."""
+
+    def test_target_moment_count(self):
+        from services.moment_selector import target_moment_count
+        assert target_moment_count(60) == 1
+        assert target_moment_count(200) == 3
+        assert target_moment_count(3600) == 5
+
+    def test_candidate_count_overgenerates(self):
+        from services.moment_selector import candidate_count, target_moment_count
+        # video de 30 min → 12 candidatos (cap)
+        assert candidate_count(1800, target_moment_count(1800)) == 12
+        # video de 8 min → 8 candidatos
+        assert candidate_count(480, target_moment_count(480)) == 8
+        # nunca menos que target
+        assert candidate_count(120, target_moment_count(120)) >= 3
+
+    def test_rank_and_prune_keeps_best_in_chrono_order(self):
+        from services.moment_selector import rank_and_prune_candidates
+        result = {
+            "viral_moments": [
+                {"start_time": 10, "scores": {"hook": 5, "retention": 5, "shareability": 5}},
+                {"start_time": 100, "scores": {"hook": 9, "retention": 9, "shareability": 9}},
+                {"start_time": 50, "scores": {"hook": 8, "retention": 8, "shareability": 8}},
+                {"start_time": 200, "scores": {"hook": 2, "retention": 2, "shareability": 2}},
+            ]
+        }
+        pruned = rank_and_prune_candidates(result, target=2)
+        moments = pruned["viral_moments"]
+        assert len(moments) == 2
+        # top 2 por score (100 y 50), en orden cronológico
+        assert moments[0]["start_time"] == 50
+        assert moments[1]["start_time"] == 100
+
+    def test_content_pieces_optional_for_pass_a(self):
+        from models.schemas import ViralMoment
+        m = ViralMoment(
+            start_time=10, end_time=40,
+            hook="test", emotional_trigger="Curiosidad",
+            content_pieces={},
+        )
+        assert m.content_pieces.twitter_thread is None
+
+
+class TestSentenceSnap:
+    """Fase 3: refinamiento de límites a boundaries de oración."""
+
+    @staticmethod
+    def _words(spec):
+        """spec: list of (word, start, end)."""
+        return [{"word": w, "start": s, "end": e} for w, s, e in spec]
+
+    def test_detect_boundaries_punctuation_and_gaps(self):
+        from services.clip_generator import detect_sentence_boundaries
+        words = self._words([
+            ("Hola", 0.0, 0.4), ("mundo.", 0.5, 1.0),
+            ("Segunda", 1.2, 1.6), ("frase", 1.7, 2.1),  # gap 1.0s después
+            ("tercera", 3.1, 3.5),
+        ])
+        bounds = detect_sentence_boundaries(words)
+        assert 1.0 in bounds   # puntuación
+        assert 2.1 in bounds   # gap > 0.6
+
+    def test_tail_trim_incomplete_sentence(self):
+        from services.clip_generator import refine_bounds_to_sentences
+        # Oración completa hasta 24.0, luego fragmento cortado hasta 29.5
+        words = self._words(
+            [("Palabra", 0.0, 0.5)]
+            + [(f"w{i}", 0.5 + i, 1.0 + i) for i in range(1, 23)]
+            + [("final.", 23.5, 24.0)]
+            + [("fragmento", 24.5, 25.0), ("cortado", 25.2, 29.5)]
+        )
+        start, end = refine_bounds_to_sentences(words, clip_duration=30.0)
+        assert start == 0.0
+        assert end < 30.0
+        assert abs(end - 24.4) < 0.01  # boundary 24.0 + end_pad 0.4
+
+    def test_complete_first_sentence_not_dropped(self):
+        from services.clip_generator import refine_bounds_to_sentences
+        # Clip que arranca en inicio de oración (mayúscula) — no dropear head
+        words = self._words([
+            ("Hola.", 0.0, 1.0),
+            ("Segunda", 1.2, 12.0), ("frase", 12.1, 20.0), ("larga.", 20.1, 25.0),
+        ])
+        start, _ = refine_bounds_to_sentences(words, clip_duration=25.0)
+        assert start == 0.0
+
+    def test_mid_sentence_head_dropped(self):
+        from services.clip_generator import refine_bounds_to_sentences
+        # Arranca en minúscula (mitad de oración) con boundary temprano
+        words = self._words([
+            ("que", 0.0, 0.3), ("decía.", 0.4, 1.0),
+            ("Ahora", 1.5, 2.0), ("empieza", 2.1, 10.0),
+            ("lo", 10.1, 15.0), ("bueno.", 15.1, 20.0),
+        ])
+        start, end = refine_bounds_to_sentences(words, clip_duration=20.0)
+        assert start > 1.0  # dropeó el fragmento "que decía."
+        assert end == 20.0
+
+    def test_no_punctuation_no_refine(self):
+        from services.clip_generator import refine_bounds_to_sentences
+        words = self._words([("hola", 0.0, 0.5), ("mundo", 5.0, 20.0)])
+        assert refine_bounds_to_sentences(words, clip_duration=25.0) == (0.0, 25.0)
+
+    def test_max_duration_snaps_to_boundary(self):
+        from services.clip_generator import refine_bounds_to_sentences
+        # 70s de palabras con boundaries cada ~20s — cap a 60 debe caer en boundary
+        words = self._words([
+            ("Uno.", 0.0, 19.0),
+            ("Dos.", 20.0, 39.0),
+            ("Tres.", 40.0, 55.0),
+            ("Cuatro.", 56.0, 70.0),
+        ])
+        start, end = refine_bounds_to_sentences(words, clip_duration=70.0, max_duration=60.0)
+        assert start == 0.0
+        assert end <= 60.0
+        assert abs(end - 55.4) < 0.01  # boundary 55.0 + 0.4
+
+    def test_validate_durations_snaps_to_segment_end(self):
+        from services.validation import validate_durations
+        from types import SimpleNamespace
+        transcript = {"segments": [
+            {"start": 0, "end": 20, "text": "a"},
+            {"start": 20, "end": 45, "text": "b"},
+            {"start": 45, "end": 55, "text": "c"},
+            {"start": 55, "end": 75, "text": "d"},
+        ]}
+        moment = SimpleNamespace(start_time=0, end_time=90, hook="long")
+        kept = validate_durations([moment], max_duration=60, transcript=transcript)
+        assert len(kept) == 1
+        # snap al fin de segmento más cercano <= 60 → 55 (no corte seco a 60)
+        assert kept[0].end_time == 55
+
+    def test_find_phrase_start_in_words(self):
+        from services.validation import find_phrase_start_in_words
+        words = [
+            {"word": "bueno", "start": 0.0, "end": 0.4},
+            {"word": "eh", "start": 0.5, "end": 0.8},
+            {"word": "el", "start": 3.0, "end": 3.2},
+            {"word": "error", "start": 3.3, "end": 3.7},
+            {"word": "más", "start": 3.8, "end": 4.0},
+            {"word": "grande", "start": 4.1, "end": 4.5},
+        ]
+        t = find_phrase_start_in_words(words, "el error más grande")
+        assert t == 3.0
+        assert find_phrase_start_in_words(words, "frase inexistente aquí") is None
+
+
+class TestScorer:
+    """Fase 4: ROI determinístico + verificación."""
+
+    def test_deterministic_roi_formula(self):
+        from services.scorer import deterministic_roi
+        # 8 base + 0.5*30s + 15*3 piezas = 68
+        assert deterministic_roi(30, 3) == 68
+        assert deterministic_roi(0, 0) == 8
+        # monotónico en duración y piezas
+        assert deterministic_roi(60, 3) > deterministic_roi(30, 3)
+        assert deterministic_roi(30, 3) > deterministic_roi(30, 1)
+
+    def test_verify_phrases_returns_dict_with_failed_flag(self):
+        from services.validation import verify_phrases_against_whisper
+        from types import SimpleNamespace
+
+        words = [{"word": w, "start": i, "end": i + 0.5}
+                 for i, w in enumerate(["hola", "a", "todos", "gracias", "por", "venir"])]
+
+        # Ambas frases matchean
+        m_ok = SimpleNamespace(
+            hook="h",
+            verification=SimpleNamespace(
+                first_phrase_in_audio="hola a todos",
+                last_phrase_in_audio="gracias por venir",
+            ),
+        )
+        r = verify_phrases_against_whisper(m_ok, words)
+        assert r["first_ok"] and r["last_ok"] and not r["failed"]
+
+        # Ninguna matchea → failed
+        m_bad = SimpleNamespace(
+            hook="h",
+            verification=SimpleNamespace(
+                first_phrase_in_audio="texto totalmente distinto",
+                last_phrase_in_audio="otra cosa inventada",
+            ),
+        )
+        r = verify_phrases_against_whisper(m_bad, words)
+        assert not r["first_ok"] and not r["last_ok"] and r["failed"]
+
+        # Solo una falla → no failed
+        m_half = SimpleNamespace(
+            hook="h",
+            verification=SimpleNamespace(
+                first_phrase_in_audio="hola a todos",
+                last_phrase_in_audio="otra cosa inventada",
+            ),
+        )
+        r = verify_phrases_against_whisper(m_half, words)
+        assert r["first_ok"] and not r["last_ok"] and not r["failed"]
+
+
+class TestGoldenSetEval:
+    """Fase 6: golden set con thresholds y videos habilitados."""
+
+    def test_golden_set_has_thresholds(self):
+        golden_path = Path(__file__).parent.parent / "eval" / "golden_set.json"
+        data = json.loads(golden_path.read_text(encoding="utf-8"))
+        thresholds = data["thresholds"]
+        assert 0 < thresholds["duration_pass_rate_min"] <= 1
+        assert 0 < thresholds["verification_pass_rate_min"] <= 1
+        enabled = [v for v in data["videos"] if v.get("enabled", True)]
+        assert len(enabled) >= 3
+
+
 class TestWorkerLogging:
     def test_trace_context_in_format(self):
         from config.logging import TraceFormatter, bind_trace, reset_trace, get_trace_context
