@@ -294,6 +294,7 @@ def snap_trim_bounds(
     silence_threshold: float = 2.0,
     start_pad: float = 0.3,
     end_pad: float = 0.5,
+    min_words_after_trim: int = 5,
 ) -> tuple[float, float]:
     """
     Snap clip bounds to speech, trimming leading/trailing silence > threshold.
@@ -308,7 +309,12 @@ def snap_trim_bounds(
 
     trim_start = 0.0
     if first_start > silence_threshold:
-        trim_start = max(0.0, first_start - start_pad)
+        candidate_start = max(0.0, first_start - start_pad)
+        words_after = sum(
+            1 for w in words if float(w.get("end", 0)) > candidate_start
+        )
+        if words_after >= min_words_after_trim:
+            trim_start = candidate_start
 
     trim_end = clip_duration
     trailing_silence = clip_duration - last_end
@@ -320,12 +326,28 @@ def snap_trim_bounds(
     return trim_start, trim_end
 
 
-def shift_words_timeline(words: list[dict], offset_sec: float) -> list[dict]:
-    """Shift word timestamps after trimming clip start."""
+def shift_words_timeline(
+    words: list[dict],
+    offset_sec: float,
+    clip_duration: float | None = None,
+) -> list[dict]:
+    """Shift word timestamps after trimming clip start; drop words outside range."""
     shifted = []
     for w in words:
-        ws = max(0.0, float(w.get("start", 0)) - offset_sec)
-        we = max(ws + 0.04, float(w.get("end", ws + 0.08)) - offset_sec)
+        raw_start = float(w.get("start", 0))
+        raw_end = float(w.get("end", raw_start + 0.08))
+        ws = raw_start - offset_sec
+        we = raw_end - offset_sec
+        if we <= 0:
+            continue
+        if clip_duration is not None and ws >= clip_duration:
+            break
+        ws = max(0.0, ws)
+        we = max(ws + 0.04, we)
+        if clip_duration is not None:
+            we = min(clip_duration + 0.10, we)
+        if we <= ws:
+            we = ws + 0.06
         w2 = dict(w)
         w2["start"] = ws
         w2["end"] = we
@@ -1536,11 +1558,6 @@ def generate_clip(
                     subs_ass_path = ass_path
                     intermediates.append(ass_path)
             except ClipGenerationError as e:
-                if words:
-                    raise ClipGenerationError(
-                        f"Subs fallaron con {len(words)} words "
-                        f"(rango {start_sec}-{end_sec}s): {e}"
-                    ) from e
                 print(f"⚠️ Sin segments para rango {start_sec}-{end_sec}s, sigo sin subs: {e}")
         # Nota: srt_to_ass usa W,H (dimensiones del target) como PlayRes,
         # así que no necesitamos hacer probe del video fuente aquí.

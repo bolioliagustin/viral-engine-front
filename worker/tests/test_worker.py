@@ -345,9 +345,12 @@ class TestSnapTrimAndCoverage:
         from services.clip_generator import snap_trim_bounds
         words = [
             {"word": "hola", "start": 3.0, "end": 3.4},
-            {"word": "mundo", "start": 3.5, "end": 9.5},
+            {"word": "mundo", "start": 3.5, "end": 4.0},
+            {"word": "como", "start": 4.1, "end": 4.5},
+            {"word": "estas", "start": 4.6, "end": 5.0},
+            {"word": "hoy", "start": 5.1, "end": 9.5},
         ]
-        start, end = snap_trim_bounds(words, clip_duration=10.0)
+        start, end = snap_trim_bounds(words, clip_duration=10.0, min_words_after_trim=2)
         assert start == pytest.approx(2.7)
         assert end == 10.0
 
@@ -357,6 +360,52 @@ class TestSnapTrimAndCoverage:
         start, end = snap_trim_bounds(words, clip_duration=10.0)
         assert start == 0.0
         assert end == pytest.approx(3.5)
+
+    def test_shift_words_drops_pre_trim_words(self):
+        from services.clip_generator import shift_words_timeline
+
+        words = [
+            {"word": "antes", "start": 0.5, "end": 1.0},
+            {"word": "corte", "start": 1.2, "end": 1.6},
+            {"word": "despues", "start": 3.0, "end": 3.4},
+        ]
+        shifted = shift_words_timeline(words, offset_sec=2.7, clip_duration=5.0)
+        texts = [w["word"] for w in shifted]
+        assert "antes" not in texts
+        assert "corte" not in texts
+        assert "despues" in texts
+        assert shifted[0]["start"] == pytest.approx(0.3, abs=0.05)
+
+    def test_shift_words_no_pileup_at_zero(self):
+        from services.clip_generator import shift_words_timeline
+
+        words = [
+            {"word": "ghost", "start": 0.2, "end": 0.5},
+            {"word": "real", "start": 3.0, "end": 3.4},
+        ]
+        shifted = shift_words_timeline(words, offset_sec=2.7, clip_duration=5.0)
+        assert len(shifted) == 1
+        assert shifted[0]["word"] == "real"
+
+    def test_snap_shift_word_count_monotonic(self):
+        from services.clip_generator import (
+            snap_trim_bounds,
+            shift_words_timeline,
+            filter_whisper_words,
+        )
+
+        words = [
+            {"word": f"w{i}", "start": 3.0 + i * 0.4, "end": 3.3 + i * 0.4}
+            for i in range(20)
+        ]
+        trim_start, trim_end = snap_trim_bounds(words, clip_duration=15.0)
+        new_duration = trim_end - trim_start
+        shifted = shift_words_timeline(
+            words, trim_start, clip_duration=new_duration
+        )
+        filtered = filter_whisper_words(shifted, new_duration)
+        assert len(filtered) <= len(words)
+        assert len(filtered) > 0
 
     def test_first_srt_chunk_duration_under_2s(self):
         from services.clip_generator import _words_to_srt_entries, first_srt_chunk_duration

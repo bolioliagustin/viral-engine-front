@@ -637,6 +637,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
                         if trim_start > 0.05 or trim_end < clip_duration - 0.05:
                             snap_trim_start = trim_start
+                            words_before_snap = len(clip_words)
                             print(
                                 f"   ✂️ Snap trim: {clip_duration:.1f}s → "
                                 f"{trim_end - trim_start:.1f}s "
@@ -651,8 +652,14 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             )
                             precut_path = snapped_path
                             clip_duration = trim_end - trim_start
-                            clip_words = shift_words_timeline(clip_words, trim_start)
+                            clip_words = shift_words_timeline(
+                                clip_words, trim_start, clip_duration=clip_duration
+                            )
                             clip_words = filter_whisper_words(clip_words, clip_duration)
+                            print(
+                                f"   📊 Snap words: {words_before_snap} → "
+                                f"{len(clip_words)} (after shift+filter)"
+                            )
                             clip_segments_whisper = [
                                 {
                                     **sg,
@@ -716,14 +723,6 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         except Exception as e_cache:
                             print(f"   ⚠️ Cache raw clip falló (no fatal): {e_cache}")
 
-                    if clip_words or clip_segments_whisper:
-                        whisper_words_cache = {
-                            "words": clip_words or [],
-                            "segments": clip_segments_whisper or [],
-                            "duration_sec": clip_duration,
-                            "snap_trim_start": snap_trim_start,
-                        }
-
                     gen_result = generate_clip(
                         video_path=str(precut_path),
                         start_sec=0.0,
@@ -743,10 +742,18 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     clip_url = upload_clip_to_storage(str(clip_output), job_id, moment_index)
                     if clip_url:
                         print(f"✅ Clip subido: {clip_url[:70]}...")
+                        if clip_words or clip_segments_whisper:
+                            whisper_words_cache = {
+                                "words": clip_words or [],
+                                "segments": clip_segments_whisper or [],
+                                "duration_sec": clip_duration,
+                                "snap_trim_start": snap_trim_start,
+                            }
                     else:
                         raise RuntimeError("upload_clip_to_storage devolvió None")
                 except (ClipGenerationError, Exception) as e:
                     print(f"⚠️ Clip {moment_index} falló: {e}")
+                    whisper_words_cache = None
                     if moment.start_time is not None:
                         clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                         print(f"🔗 Fallback a link de YouTube: {clip_url}")

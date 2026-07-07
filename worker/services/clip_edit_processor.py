@@ -330,28 +330,33 @@ def _process_clip_edit_inner(
                 words, segments = None, None
 
         # Duración real del MP4 cacheado (post-snap) — no end_s-start_s del job original.
+        probed_duration = end_s - start_s
         try:
             probed = probe_video(seg_path)
-            clip_duration = float(probed.duration_sec or 0)
+            probed_duration = float(probed.duration_sec or 0) or probed_duration
         except Exception as e_probe:
             print(f"   ⚠️ ffprobe falló ({e_probe}) — uso duración del job")
-            clip_duration = end_s - start_s
+
+        clip_duration = probed_duration
 
         cached_duration = None
         if cached_whisper and isinstance(cached_whisper, dict):
             cached_duration = cached_whisper.get("duration_sec")
-        if cached_duration and abs(float(cached_duration) - clip_duration) > 0.5:
+
+        # Solo acortar a cached_duration si el raw es pre-snap (más largo que whisper).
+        if (
+            cached_duration
+            and probed_duration > float(cached_duration) + 0.5
+        ):
             print(
-                f"   📐 Ajustando duración clip: job={end_s - start_s:.1f}s "
-                f"→ cache={float(cached_duration):.1f}s (whisper alineado)"
+                f"   📐 Raw pre-snap detectado: probed={probed_duration:.1f}s "
+                f"→ whisper={float(cached_duration):.1f}s"
             )
             clip_duration = float(cached_duration)
 
-        probed_duration = clip_duration
         snap_trim_start = 0.0
         if cached_whisper and isinstance(cached_whisper, dict):
             stored_snap = float(cached_whisper.get("snap_trim_start") or 0)
-            # Solo aplicar offset si el raw cache es pre-snap (más largo que whisper).
             if (
                 stored_snap > 0
                 and cached_duration
