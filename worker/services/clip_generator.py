@@ -288,6 +288,41 @@ def apply_word_corrections(
     return result
 
 
+def apply_whisper_brand_corrections(
+    words: list[dict],
+    vocabulary: list[str] | None = None,
+) -> list[dict]:
+    """
+    Corrige malentendidos fonéticos comunes post-Whisper (Claude/Coulouse/Cloud).
+    Solo aplica si el vocabulario confirma el término de marca.
+    """
+    if not words:
+        return []
+    vocab_lower = {v.lower() for v in (vocabulary or [])}
+    has_claude = any("claude" in v for v in vocab_lower)
+
+    result = [dict(w) for w in words]
+    if not has_claude:
+        return result
+
+    for i, w in enumerate(result):
+        raw = (w.get("word") or "").strip()
+        norm = raw.lower().strip(".,!?")
+        if norm in ("coulouse", "cloud", "claud", "clowd"):
+            w["word"] = "Claude"
+        elif norm == "code" and i > 0:
+            prev = (result[i - 1].get("word") or "").strip().lower()
+            if prev in ("cloud", "coulouse", "claud", "clowd"):
+                result[i - 1]["word"] = "Claude"
+        # Bigrama "cloud code" / "coulouse code"
+        if i + 1 < len(result):
+            pair = f"{norm} {(result[i + 1].get('word') or '').strip().lower()}"
+            if pair in ("cloud code", "coulouse code", "claud code"):
+                result[i]["word"] = "Claude"
+                result[i + 1]["word"] = "Code"
+    return result
+
+
 def snap_trim_bounds(
     words: list[dict],
     clip_duration: float,
@@ -397,6 +432,45 @@ def detect_sentence_boundaries(
     return sorted(boundaries)
 
 
+def find_last_complete_sentence_end(words: list[dict]) -> Optional[float]:
+    """
+    Timestamp del fin de la última palabra que termina en puntuación de oración.
+
+    Ignora boundaries de segmentos Whisper — solo cuenta words con punct real.
+  """
+    last_end = None
+    for w in words or []:
+        txt = (w.get("word") or "").strip()
+        if txt and txt[-1] in _SENTENCE_END_CHARS:
+            last_end = float(w.get("end", 0))
+    return last_end
+
+
+def has_incomplete_tail(words: list[dict], tolerance: float = 0.25) -> bool:
+    """
+    True si hay palabras sin puntuación después del último fin de oración
+    completo (cola colgante tipo 'Para entender lo' tras 'pidiendo.').
+    """
+    if not words:
+        return False
+    last_complete = find_last_complete_sentence_end(words)
+    if last_complete is None:
+        return False
+    last_word_end = float(words[-1].get("end", 0))
+    if last_word_end <= last_complete + tolerance:
+        return False
+    trailing = [
+        w for w in words
+        if float(w.get("start", 0)) >= last_complete - 0.05
+    ]
+    unpunctuated_after = [
+        w for w in trailing
+        if float(w.get("start", 0)) > last_complete + 0.05
+        and not (w.get("word") or "").strip().endswith(_SENTENCE_END_CHARS)
+    ]
+    return len(unpunctuated_after) > 0
+
+
 def refine_bounds_to_sentences(
     words: list[dict],
     clip_duration: float,
@@ -469,14 +543,38 @@ def refine_bounds_to_sentences(
                 trim_start = max(0.0, next_word_start - start_pad)
 
     # ── Tail: recortar oración final incompleta ──────────────────────────
-    ends_at_boundary = any(abs(last_word_end - b) <= 0.30 for b in boundaries)
-    if not ends_at_boundary:
-        prior = [b for b in boundaries if trim_start + min_duration <= b < last_word_end]
-        if prior:
-            candidate_end = min(clip_duration, prior[-1] + end_pad)
-            dropped = clip_duration - candidate_end
-            if dropped / clip_duration <= max_tail_drop_ratio:
-                trim_end = candidate_end
+    last_complete_end = find_last_complete_sentence_end(words)
+    incomplete_tail = has_incomplete_tail(words)
+
+    if incomplete_tail and last_complete_end is not None:
+        # Cola colgante: recortar al último punto real aunque el segmento
+        # Whisper diga que el clip "termina bien" (falso positivo ends_at_boundary).
+        candidate_end = min(clip_duration, last_complete_end + end_pad)
+        dropped = clip_duration - candidate_end
+        max_drop = max_tail_drop_ratio
+        if incomplete_tail:
+            # Priorizar calidad: permitir recortar hasta 50% si la cola es basura
+            trailing_words = sum(
+                1 for w in words
+                if float(w.get("start", 0)) > last_complete_end + 0.05
+            )
+            if trailing_words < 5:
+                max_drop = 0.50
+        if dropped / clip_duration <= max_drop and (candidate_end - trim_start) >= min_duration:
+            trim_end = candidate_end
+    else:
+        ends_at_boundary = (
+            last_complete_end is not None
+            and abs(last_word_end - last_complete_end) <= 0.30
+            and not has_incomplete_tail(words)
+        )
+        if not ends_at_boundary:
+            prior = [b for b in boundaries if trim_start + min_duration <= b < last_word_end]
+            if prior:
+                candidate_end = min(clip_duration, prior[-1] + end_pad)
+                dropped = clip_duration - candidate_end
+                if dropped / clip_duration <= max_tail_drop_ratio:
+                    trim_end = candidate_end
 
     # ── Cap por max_duration en boundary de oración ──────────────────────
     if max_duration and (trim_end - trim_start) > max_duration:

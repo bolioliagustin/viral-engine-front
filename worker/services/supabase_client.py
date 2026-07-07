@@ -181,6 +181,8 @@ def save_content_result(
     verification_failed: bool = None,  # Fase 4: first Y last phrase fallaron
     sub_coverage: float = None,  # Fase 4: cobertura de subs 0-1
     words_per_sec: float = None,  # Fase 4: densidad de palabras del clip
+    clip_quality_issues: list = None,  # flags: incomplete_tail, clip_not_rendered, etc.
+    clip_generation_error: str = None,  # error si el MP4 no se generó
 ) -> str:
     """Save content result to Supabase or SQLite"""
     import uuid
@@ -244,6 +246,12 @@ def save_content_result(
         if words_per_sec is not None:
             data["words_per_sec"] = round(float(words_per_sec), 3)
             _quality_keys.append("words_per_sec")
+        if clip_quality_issues:
+            data["clip_quality_issues"] = json.dumps(clip_quality_issues)
+            _quality_keys.append("clip_quality_issues")
+        if clip_generation_error:
+            data["clip_generation_error"] = clip_generation_error[:500]
+            _quality_keys.append("clip_generation_error")
 
         def _insert(payload):
             supabase.table("content_results").insert(payload).execute()

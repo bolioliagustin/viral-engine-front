@@ -200,8 +200,105 @@ def verify_phrases_against_whisper(moment, words: list[dict]) -> dict:
             print(f"⚠️ [{hook}] Whisper last_phrase mismatch: '{last_claim[-40:]}' vs '{actual[-40:]}'")
             result["last_ok"] = False
 
-    result["failed"] = not result["first_ok"] and not result["last_ok"]
+    result["failed"] = (
+        not result["first_ok"]
+        or not result["last_ok"]
+    )
     return result
+
+
+def _fuzzy_window_match(target_words: list[str], norm_words: list[tuple], max_words: int = 8) -> Optional[float]:
+    """Busca target_words en norm_words; devuelve timestamp del match o None."""
+    if not target_words or not norm_words:
+        return None
+    target = target_words[:max_words]
+    n = len(target)
+    if n < 2:
+        return None
+    for i in range(len(norm_words) - n + 1):
+        window = [norm_words[i + j][0] for j in range(n)]
+        matches = sum(1 for a, b in zip(target, window) if a and a == b)
+        if matches >= max(2, int(round(n * 0.6))):
+            return norm_words[i][1]
+    return None
+
+
+def find_hook_start_in_words(
+    words: list[dict],
+    hook: str = "",
+    overlay: str = "",
+    first_phrase: str = "",
+    clip_duration: float = 0.0,
+    search_ratio: float = 0.4,
+) -> Optional[float]:
+    """
+    Busca el inicio del hook en las primeras search_ratio del clip.
+    Prioridad: overlay > hook > first_phrase.
+    """
+    if not words:
+        return None
+    limit = clip_duration * search_ratio if clip_duration > 0 else float(words[-1].get("end", 60)) * search_ratio
+    norm_words = [
+        (_normalize_phrase(w.get("word") or ""), float(w.get("start", 0)))
+        for w in words
+        if float(w.get("start", 0)) <= limit
+    ]
+    for phrase in (overlay, hook, first_phrase):
+        if not phrase or len(phrase.strip()) < 4:
+            continue
+        tokens = _normalize_phrase(phrase).split()
+        # Overlay suele ser corto (2-4 palabras)
+        mw = min(6, max(2, len(tokens)))
+        t = _fuzzy_window_match(tokens, norm_words, max_words=mw)
+        if t is not None:
+            return t
+    return None
+
+
+def hook_keyword_overlap(head_words: list[str], hook: str) -> float:
+    """Fracción de palabras del head que aparecen en el hook (0-1)."""
+    if not head_words or not hook:
+        return 0.0
+    hook_set = set(_normalize_phrase(hook).split())
+    head_set = set(_normalize_phrase(" ".join(head_words)).split())
+    head_set -= {"", "el", "la", "los", "las", "de", "en", "y", "a", "que", "es", "un", "una"}
+    if not head_set:
+        return 1.0
+    return len(head_set & hook_set) / len(head_set)
+
+
+def is_youtube_clip_fallback(clip_url: str | None) -> bool:
+    """True si el clip_url es un deep-link de YouTube (no MP4 en R2)."""
+    if not clip_url:
+        return True
+    u = clip_url.lower()
+    return "youtube.com/watch" in u or "youtu.be/" in u
+
+
+def build_clip_quality_issues(
+    *,
+    verification_info: dict | None = None,
+    incomplete_tail: bool = False,
+    late_hook: bool = False,
+    clip_not_rendered: bool = False,
+    clip_generation_error: str | None = None,
+) -> list[str]:
+    """Lista de flags de calidad para persistir en content_results."""
+    issues: list[str] = []
+    if incomplete_tail:
+        issues.append("incomplete_tail")
+    if late_hook:
+        issues.append("late_hook")
+    if verification_info:
+        if not verification_info.get("first_ok", True):
+            issues.append("whisper_mismatch_first")
+        if not verification_info.get("last_ok", True):
+            issues.append("whisper_mismatch_last")
+    if clip_not_rendered:
+        issues.append("clip_not_rendered")
+    if clip_generation_error:
+        issues.append("clip_generation_failed")
+    return issues
 
 
 def find_phrase_start_in_words(words: list[dict], phrase: str, max_words: int = 6) -> Optional[float]:

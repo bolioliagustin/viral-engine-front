@@ -493,6 +493,7 @@ def analyze_with_openrouter(
                 language=language,
                 client=client,
                 model=model,
+                transcript=transcript,
             )
             analysis_mode = "two_pass"
         except Exception as e:

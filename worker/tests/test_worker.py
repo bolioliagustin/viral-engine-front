@@ -636,6 +636,55 @@ class TestSentenceSnap:
         assert end <= 60.0
         assert abs(end - 55.4) < 0.01  # boundary 55.0 + 0.4
 
+    def test_regression_clip1_incomplete_tail(self):
+        """Job e3e7d54b clip 1: segmento termina en 'pidiendo.' pero words siguen."""
+        from services.clip_generator import refine_bounds_to_sentences, has_incomplete_tail
+        words = self._words([
+            ("absolutamente", 28.0, 28.5), ("todo", 28.5, 28.9),
+            ("le", 29.2, 29.5), ("estamos", 29.5, 30.0), ("pidiendo.", 30.0, 31.46),
+            ("Para", 31.84, 32.0), ("entender", 32.0, 32.04), ("lo", 32.04, 32.1),
+        ])
+        assert has_incomplete_tail(words)
+        _, end = refine_bounds_to_sentences(words, clip_duration=32.0)
+        assert end < 32.0
+        assert abs(end - 31.86) < 0.05  # 31.46 + end_pad 0.4
+
+    def test_find_last_complete_sentence_end(self):
+        from services.clip_generator import find_last_complete_sentence_end
+        words = self._words([
+            ("hola", 0.0, 0.5), ("mundo.", 0.5, 1.0),
+            ("Para", 1.2, 1.5), ("entender", 1.5, 1.8),
+        ])
+        assert abs(find_last_complete_sentence_end(words) - 1.0) < 0.01
+
+    def test_apply_whisper_brand_corrections(self):
+        from services.clip_generator import apply_whisper_brand_corrections
+        words = [{"word": "Coulouse", "start": 0.0, "end": 0.3},
+                 {"word": "es", "start": 0.3, "end": 0.5}]
+        fixed = apply_whisper_brand_corrections(words, ["Claude", "Claude Code"])
+        assert fixed[0]["word"] == "Claude"
+
+    def test_find_hook_start_in_words(self):
+        from services.validation import find_hook_start_in_words
+        words = [
+            {"word": "Prenderlo", "start": 0.0, "end": 0.2},
+            {"word": "de", "start": 0.2, "end": 0.3},
+            {"word": "forma", "start": 0.3, "end": 0.5},
+            {"word": "Claude", "start": 1.6, "end": 2.0},
+            {"word": "es", "start": 2.0, "end": 2.2},
+            {"word": "únicamente", "start": 2.2, "end": 3.0},
+            {"word": "la", "start": 3.0, "end": 3.2},
+            {"word": "mente", "start": 3.2, "end": 4.0},
+        ]
+        t = find_hook_start_in_words(
+            words,
+            hook="Claude es únicamente la mente",
+            overlay="LA IA CON MANOS",
+            clip_duration=20.0,
+        )
+        assert t is not None
+        assert abs(t - 1.6) < 0.01
+
     def test_validate_durations_snaps_to_segment_end(self):
         from services.validation import validate_durations
         from types import SimpleNamespace
@@ -716,7 +765,7 @@ class TestScorer:
             ),
         )
         r = verify_phrases_against_whisper(m_half, words)
-        assert r["first_ok"] and not r["last_ok"] and not r["failed"]
+        assert r["first_ok"] and not r["last_ok"] and r["failed"]
 
 
 class TestGoldenSetEval:
@@ -728,8 +777,9 @@ class TestGoldenSetEval:
         thresholds = data["thresholds"]
         assert 0 < thresholds["duration_pass_rate_min"] <= 1
         assert 0 < thresholds["verification_pass_rate_min"] <= 1
+        assert thresholds.get("judge_llm_delta_max", 0) > 0
         enabled = [v for v in data["videos"] if v.get("enabled", True)]
-        assert len(enabled) >= 3
+        assert len(enabled) >= 4
 
 
 class TestWorkerLogging:

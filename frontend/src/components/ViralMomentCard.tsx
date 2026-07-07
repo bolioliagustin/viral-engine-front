@@ -70,6 +70,11 @@ interface ViralMomentCardProps {
   verificationFailed?: boolean;
   /** Fase 4: cobertura de subs 0-1 persistida por el worker. */
   subCoverage?: number;
+  /** Flags de calidad del clip (incomplete_tail, clip_not_rendered, etc.) */
+  clipQualityIssues?: string[];
+  clipGenerationError?: string;
+  scoreJudge?: { hook: number; retention: number; shareability: number; reasoning?: string };
+  scoreLlm?: { hook: number; retention: number; shareability: number };
 }
 
 // ─── Pillar config ─────────────────────────────────────────────────────────
@@ -194,6 +199,10 @@ export function ViralMomentCard({
   clipDuration: clipDurationProp,
   verificationFailed,
   subCoverage,
+  clipQualityIssues,
+  clipGenerationError,
+  scoreJudge,
+  scoreLlm,
 }: ViralMomentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -233,6 +242,14 @@ export function ViralMomentCard({
     3
   ).toFixed(1);
   const duration = clipDurationProp ?? endTime - startTime;
+  const hasIncompleteTail = clipQualityIssues?.includes("incomplete_tail");
+  const scoreDelta =
+    scoreJudge && scoreLlm
+      ? Math.abs(
+          (scoreJudge.hook + scoreJudge.retention + scoreJudge.shareability) / 3 -
+            (scoreLlm.hook + scoreLlm.retention + scoreLlm.shareability) / 3
+        )
+      : null;
   const pillar = pillarType ? PILLAR_CONFIG[pillarType.toLowerCase()] : null;
   const subtitleCoverage = computeSubtitleCoverage(whisperWords ?? null, duration);
   const subsComplete = isSubtitleCoverageComplete(subtitleCoverage);
@@ -336,6 +353,30 @@ export function ViralMomentCard({
                     ⚠ Verificar corte
                   </Badge>
                 )}
+                {hasIncompleteTail && (
+                  <Badge
+                    className="bg-orange-500/15 text-orange-300 border-orange-500/30 text-[10px] px-2 py-0.5 font-semibold border"
+                    title="El clip termina a mitad de una frase"
+                  >
+                    Corte incompleto
+                  </Badge>
+                )}
+                {isYouTubeUrl && (
+                  <Badge
+                    className="bg-slate-500/15 text-slate-300 border-slate-500/30 text-[10px] px-2 py-0.5 font-semibold border"
+                    title={clipGenerationError || "No se generó el MP4 — solo link a YouTube"}
+                  >
+                    Sin video
+                  </Badge>
+                )}
+                {scoreJudge && scoreDelta !== null && scoreDelta > 3 && (
+                  <Badge
+                    className="bg-blue-500/15 text-blue-300 border-blue-500/30 text-[10px] px-2 py-0.5 font-semibold border"
+                    title="Score calibrado por juez independiente (menor que el preliminar del análisis)"
+                  >
+                    Score calibrado
+                  </Badge>
+                )}
                 {subCoverage !== undefined && subCoverage !== null && subCoverage < 0.85 && (
                   <Badge
                     className="bg-amber-500/15 text-amber-300 border-amber-500/30 text-[10px] px-2 py-0.5 font-semibold border"
@@ -393,6 +434,14 @@ export function ViralMomentCard({
                 <ScoreRing score={scores.retention} label="Reten." />
                 <ScoreRing score={scores.shareability} label="Viral." />
               </div>
+              {scoreJudge?.reasoning && (
+                <p
+                  className="text-[10px] text-slate-500 leading-snug max-w-[200px] line-clamp-3"
+                  title={scoreJudge.reasoning}
+                >
+                  {scoreJudge.reasoning}
+                </p>
+              )}
             </div>
           </div>
         </CardHeader>

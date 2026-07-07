@@ -139,12 +139,22 @@ def evaluate_video(video: dict, *, with_copy: bool = False) -> dict:
     result["moments_truncated"] = truncated
 
     # ── Verificación first/last phrase contra transcript ─────────────────
+    last_phrase_punct = 0
+    last_phrase_total = 0
     for m in valid:
         if not getattr(m, "verification", None):
             continue
         result["verification_total"] += 1
         if validate_against_transcript(m, transcript):
             result["verification_pass"] += 1
+        last = getattr(m.verification, "last_phrase_in_audio", "") or ""
+        if last.strip():
+            last_phrase_total += 1
+            if last.strip()[-1] in ".?!…":
+                last_phrase_punct += 1
+    result["last_phrase_punct_rate"] = (
+        last_phrase_punct / last_phrase_total if last_phrase_total else None
+    )
 
     # ── Opcional: pasada B + validators + juez ───────────────────────────
     if with_copy and valid:
@@ -269,6 +279,21 @@ def main() -> int:
             failures.append(
                 f"min_moments_per_video={min_moments} < {thresholds['min_moments_per_video']}"
             )
+    if args.copy:
+        deltas = [r.get("judge_delta_avg") for r in ok_results if r.get("judge_delta_avg") is not None]
+        if deltas and thresholds.get("judge_llm_delta_max") is not None:
+            avg_delta = statistics.mean(deltas)
+            if avg_delta > thresholds["judge_llm_delta_max"]:
+                failures.append(
+                    f"judge_llm_delta_avg={avg_delta:.2f} > {thresholds['judge_llm_delta_max']}"
+                )
+    punct_rates = [r.get("last_phrase_punct_rate") for r in ok_results if r.get("last_phrase_punct_rate") is not None]
+    if punct_rates and thresholds.get("last_phrase_punct_rate_min") is not None:
+        avg_punct = statistics.mean(punct_rates)
+        if avg_punct < thresholds["last_phrase_punct_rate_min"]:
+            failures.append(
+                f"last_phrase_punct_rate={avg_punct:.2f} < {thresholds['last_phrase_punct_rate_min']}"
+            )
 
     summary["failures"] = failures
     summary["passed"] = not failures
@@ -285,6 +310,11 @@ def main() -> int:
         print(f"   Duration pass rate:     {fmt(duration_pass_rate) if duration_pass_rate is not None else 'n/a'}")
         print(f"   Untruncated rate:       {fmt(untruncated_rate) if untruncated_rate is not None else 'n/a'}")
         print(f"   Verification pass rate: {fmt(verification_pass_rate) if verification_pass_rate is not None else 'n/a'}")
+        punct_avg = statistics.mean(
+            [r["last_phrase_punct_rate"] for r in ok_results if r.get("last_phrase_punct_rate") is not None]
+        ) if ok_results else None
+        if punct_avg is not None:
+            print(f"   Last phrase punct rate: {fmt(punct_avg)}")
         print(f"   Min moments/video:      {min_moments}")
         if args.copy:
             deltas = [r.get("judge_delta_avg") for r in ok_results if r.get("judge_delta_avg") is not None]

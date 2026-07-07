@@ -6,7 +6,9 @@
     "duration_pass_rate_min": 0.8,
     "duration_untruncated_rate_min": 0.7,
     "verification_pass_rate_min": 0.6,
-    "min_moments_per_video": 1
+    "min_moments_per_video": 1,
+    "last_phrase_punct_rate_min": 0.5,
+    "judge_llm_delta_max": 3.0
   },
   "videos": [
     {
@@ -53,6 +55,19 @@
       "expected_category": "podcast",
       "test_focus": [
         "Calidad 'publicable sin editar' — benchmark visual del producto final"
+      ]
+    },
+    {
+      "id": "claude_hacks_regression_01",
+      "url": "https://www.youtube.com/watch?v=KXKzgeHOr7A",
+      "youtube_id": "KXKzgeHOr7A",
+      "enabled": true,
+      "note": "Regresión job e3e7d54b — clips cortaban a mitad de frase, hook con relleno, momentos 4-5 sin MP4",
+      "expected_category": "business",
+      "test_focus": [
+        "last_phrase_in_audio debe terminar en .?!",
+        "Momentos sin overlap >50%",
+        "Delta juez-vs-LLM < 3 pts con --copy"
       ]
     },
     {

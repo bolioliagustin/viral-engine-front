@@ -37,6 +37,9 @@ interface Result {
   sub_coverage?: number;
   words_per_sec?: number;
   score_judge?: string | { hook: number; retention: number; shareability: number; reasoning?: string };
+  score_llm?: string | { hook: number; retention: number; shareability: number };
+  clip_quality_issues?: string | string[];
+  clip_generation_error?: string;
 }
 
 
@@ -258,6 +261,31 @@ export default function ResultsPage() {
                     console.error("Failed to parse justifications:", e);
                   }
 
+                  const parseJsonField = <T,>(raw: unknown): T | undefined => {
+                    if (!raw) return undefined;
+                    if (typeof raw === "object") return raw as T;
+                    try {
+                      return JSON.parse(raw as string) as T;
+                    } catch {
+                      return undefined;
+                    }
+                  };
+
+                  const scoreJudge = parseJsonField<{
+                    hook: number;
+                    retention: number;
+                    shareability: number;
+                    reasoning?: string;
+                  }>(firstResult.score_judge);
+                  const scoreLlm = parseJsonField<{
+                    hook: number;
+                    retention: number;
+                    shareability: number;
+                  }>(firstResult.score_llm);
+                  const clipQualityIssues = parseJsonField<string[]>(
+                    firstResult.clip_quality_issues
+                  );
+
                   return (
                     <motion.div
                       key={momentIndex}
@@ -273,9 +301,9 @@ export default function ResultsPage() {
                         startTime={firstResult.start_time}
                         endTime={firstResult.end_time}
                         scores={{
-                          hook: firstResult.score_hook,
-                          retention: firstResult.score_retention,
-                          shareability: firstResult.score_shareability,
+                          hook: firstResult.score_hook ?? 0,
+                          retention: firstResult.score_retention ?? 0,
+                          shareability: firstResult.score_shareability ?? 0,
                         }}
                         justifications={justifications}
                         twitterContent={twitterContent}
@@ -291,6 +319,10 @@ export default function ResultsPage() {
                         clipDuration={clipDuration}
                         verificationFailed={firstResult.verification_failed === true}
                         subCoverage={firstResult.sub_coverage}
+                        clipQualityIssues={clipQualityIssues}
+                        clipGenerationError={firstResult.clip_generation_error}
+                        scoreJudge={scoreJudge}
+                        scoreLlm={scoreLlm}
                       />
                     </motion.div>
                   );

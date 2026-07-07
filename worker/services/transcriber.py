@@ -11,6 +11,7 @@ Ambos soportan word-level timestamps (timestamp_granularities=["word"])
 y el parámetro `prompt` para mejorar accuracy con contexto.
 """
 import os
+import re
 from openai import OpenAI
 from typing import Dict, List
 
@@ -29,6 +30,66 @@ def _openai_client() -> 'OpenAI | None':
     if not api_key:
         return None
     return OpenAI(api_key=api_key)
+
+
+# Términos de marca frecuentemente mal transcritos por Whisper
+_BRAND_PHONETIC_CORRECTIONS = {
+    "claude": ["coulouse", "cloud", "claud", "clowd"],
+    "claude code": ["cloud code", "claud code", "coulouse code"],
+}
+
+
+def build_whisper_vocabulary(
+    video_title: str = "",
+    hook: str = "",
+    yt_slice: str = "",
+    extra_terms: list[str] | None = None,
+) -> list[str]:
+    """
+    Extrae términos propios para el prompt de Whisper y correcciones post-hoc.
+    """
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def _add(term: str):
+        t = (term or "").strip()
+        if not t or len(t) < 2:
+            return
+        key = t.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        terms.append(t)
+
+    for src in (video_title, hook, yt_slice):
+        if not src:
+            continue
+        # Frases compuestas capitalizadas (Claude Code, Cloudflare, etc.)
+        for m in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", src):
+            _add(m.group(0))
+        for m in re.finditer(r"\b[A-Z][a-z]{2,}\b", src):
+            _add(m.group(0))
+
+    for term in extra_terms or []:
+        _add(term)
+
+    # Siempre incluir marcas IA comunes si aparecen en contexto
+    combined = f"{video_title} {hook} {yt_slice}".lower()
+    if "claude" in combined:
+        _add("Claude")
+        _add("Claude Code")
+
+    return terms[:20]
+
+
+def format_whisper_vocabulary_prompt(vocabulary: list[str], max_chars: int = 200) -> str:
+    """Fragmento de prompt con vocabulario para Whisper."""
+    if not vocabulary:
+        return ""
+    vocab_str = ", ".join(vocabulary[:15])
+    if len(vocab_str) > max_chars:
+        vocab_str = vocab_str[: max_chars - 3] + "..."
+    return f"Vocabulario del video (transcribir exactamente): {vocab_str}."
 
 
 def transcribe_with_whisper_openrouter(

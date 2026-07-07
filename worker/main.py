@@ -465,6 +465,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             wps_val = None              # words per second
             judge_scores = None         # scores del juez independiente
             roi_clip_duration = None    # duración usada para el ROI determinístico
+            clip_quality_issues = []    # flags de calidad (incomplete_tail, etc.)
+            clip_generation_error = None
+            clip_rendered_ok = False
 
             # Generate clip (Fase 1.6 — orden invertido):
             #   1. PRIMARY: usar muxed_video_path (partial download ya hecha upfront)
@@ -498,28 +501,39 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         seg_path = None
                         # ── BACKUP 1: RapidAPI / stream partial (prod default) ────
                         if _prefer_rapidapi_download() or partial_download_failed:
-                            try:
-                                print(f"   📥 Descargando clip vía RapidAPI streams...")
-                                seg_path = download_clip_via_stream_urls(
-                                    youtube_url=video_url,
-                                    start_sec=start_s,
-                                    end_sec=end_s,
-                                    video_duration=video_duration,
-                                    video_id=video_id,
-                                    temp_id=f"{video_id}_m{moment_index}",
-                                    force_rapidapi=True,
-                                )
-                                src_path = seg_path
-                                src_start = 0.0
-                                src_end = end_s - start_s
-                                src_offset = start_s
-                            except Exception as e_stream:
-                                print(f"   ⚠️ RapidAPI per-clip falló: {e_stream}")
+                            _clip_retries = int(os.getenv("CLIP_GEN_RETRIES", "1"))
+                            last_stream_err = None
+                            for _attempt in range(_clip_retries + 1):
+                                try:
+                                    if _attempt > 0:
+                                        wait = 2 ** _attempt
+                                        print(f"   🔄 Retry descarga clip ({_attempt}/{_clip_retries}) en {wait}s...")
+                                        time.sleep(wait)
+                                    print(f"   📥 Descargando clip vía RapidAPI streams...")
+                                    seg_path = download_clip_via_stream_urls(
+                                        youtube_url=video_url,
+                                        start_sec=start_s,
+                                        end_sec=end_s,
+                                        video_duration=video_duration,
+                                        video_id=video_id,
+                                        temp_id=f"{video_id}_m{moment_index}",
+                                        force_rapidapi=True,
+                                    )
+                                    src_path = seg_path
+                                    src_start = 0.0
+                                    src_end = end_s - start_s
+                                    src_offset = start_s
+                                    last_stream_err = None
+                                    break
+                                except Exception as e_stream:
+                                    last_stream_err = e_stream
+                                    print(f"   ⚠️ RapidAPI per-clip falló: {e_stream}")
+                            if last_stream_err and not seg_path:
                                 if not _should_use_ytdlp_for_clips():
                                     raise RuntimeError(
                                         f"Sin video para clip {moment_index} — "
-                                        f"RapidAPI falló y yt-dlp deshabilitado en producción: {e_stream}"
-                                    ) from e_stream
+                                        f"RapidAPI falló y yt-dlp deshabilitado en producción: {last_stream_err}"
+                                    ) from last_stream_err
 
                         # ── BACKUP 2: yt-dlp per-clip (solo dev, sin RapidAPI) ──
                         if not seg_path and _should_use_ytdlp_for_clips():
@@ -585,6 +599,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     clip_words = None
                     clip_segments_whisper = None
                     clip_audio_path = None
+                    whisper_vocab: list[str] = []
                     try:
                         from services.transcriber import transcribe_with_whisper_openrouter
                         clip_audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
@@ -602,8 +617,21 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             sg_end = float(sg.get("end", 0))
                             if sg_end >= start_s and sg_start <= end_s:
                                 ctx_texts.append(sg.get("text", "").strip())
+                        yt_slice = " ".join(ctx_texts).strip()
                         if ctx_texts:
-                            prompt_parts.append(" ".join(ctx_texts).strip())
+                            prompt_parts.append(yt_slice)
+                        from services.transcriber import (
+                            build_whisper_vocabulary,
+                            format_whisper_vocabulary_prompt,
+                        )
+                        whisper_vocab = build_whisper_vocabulary(
+                            video_title=video_title,
+                            hook=moment.hook or "",
+                            yt_slice=yt_slice,
+                        )
+                        vocab_prompt = format_whisper_vocabulary_prompt(whisper_vocab)
+                        if vocab_prompt:
+                            prompt_parts.insert(0, vocab_prompt)
                         if prompt_parts:
                             whisper_prompt = ". ".join(prompt_parts)
                             if len(whisper_prompt) > 800:
@@ -623,6 +651,8 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         raw_words = clip_tr.get("words") or []
                         raw_segments = clip_tr.get("segments") or []
                         clip_words = filter_whisper_words(raw_words, clip_duration)
+                        from services.clip_generator import apply_whisper_brand_corrections
+                        clip_words = apply_whisper_brand_corrections(clip_words, whisper_vocab)
 
                         clip_segments_whisper = []
                         for sg in raw_segments:
@@ -664,13 +694,21 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         subs_words = clip_words
                         subs_offset = 0.0
                         snap_trim_start = 0.0
+                        incomplete_tail = False
+                        late_hook = False
 
                         # Fase A: snap trim silencio + refinamiento a oración
                         from services.validation import (
                             verify_phrases_against_whisper,
                             find_phrase_start_in_words,
+                            find_hook_start_in_words,
+                            hook_keyword_overlap,
                         )
-                        from services.clip_generator import refine_bounds_to_sentences
+                        from services.clip_generator import (
+                            refine_bounds_to_sentences,
+                            has_incomplete_tail,
+                            detect_sentence_boundaries,
+                        )
                         trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
 
                         # Fase 3: límites a boundaries de oración (puntuación +
@@ -687,25 +725,66 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
                             trim_end = s_end
 
-                        # Fase 3: ancla de verificación — si la primera frase
-                        # prometida aparece desplazada dentro del clip, ajustar
-                        # el inicio al match real en vez de solo loguearlo.
+                        # Hook anchor: overlay > hook > first_phrase (después de sentence snap)
+                        _overlay = getattr(moment, "viral_overlay", None) or ""
                         _first_phrase = getattr(
                             getattr(moment, "verification", None),
                             "first_phrase_in_audio", None,
                         )
-                        if _first_phrase:
+                        hook_anchor = find_hook_start_in_words(
+                            clip_words,
+                            hook=moment.hook or "",
+                            overlay=_overlay,
+                            first_phrase=_first_phrase or "",
+                            clip_duration=clip_duration,
+                        )
+                        if hook_anchor is not None:
+                            new_start = max(0.0, hook_anchor - 0.2)
+                            if (
+                                0.5 <= hook_anchor <= clip_duration * 0.4
+                                and (trim_end - new_start) >= 8.0
+                                and new_start > trim_start
+                            ):
+                                print(
+                                    f"   🎯 Hook anchor: {hook_anchor:.2f}s — "
+                                    f"inicio {trim_start:.2f} → {new_start:.2f}"
+                                )
+                                trim_start = new_start
+                        elif moment.hook and len(clip_words) >= 3:
+                            head_tokens = [
+                                (w.get("word") or "").strip()
+                                for w in clip_words[:3]
+                            ]
+                            if hook_keyword_overlap(head_tokens, moment.hook) < 0.2:
+                                bounds = detect_sentence_boundaries(
+                                    clip_words, clip_segments_whisper
+                                )
+                                alt = [b for b in bounds if 2.0 < b <= clip_duration * 0.35]
+                                if alt:
+                                    remaining = [
+                                        w for w in clip_words
+                                        if float(w.get("start", 0)) > alt[0]
+                                    ]
+                                    if remaining and (trim_end - float(remaining[0]["start"])) >= 8.0:
+                                        new_start = max(0.0, float(remaining[0]["start"]) - 0.15)
+                                        print(
+                                            f"   🧹 Head filler trim: {trim_start:.2f} → {new_start:.2f}"
+                                        )
+                                        trim_start = new_start
+
+                        # First-phrase anchor (fallback si hook anchor no corrió)
+                        if _first_phrase and trim_start < 0.5:
                             anchor_t = find_phrase_start_in_words(clip_words, _first_phrase)
                             if (
                                 anchor_t is not None
-                                and anchor_t - trim_start > 1.5
+                                and anchor_t - trim_start > 0.8
                                 and anchor_t < clip_duration * 0.5
                                 and (trim_end - anchor_t) >= 8.0
                             ):
                                 print(
-                                    f"   ⚓ First-phrase anchor: frase encontrada en "
-                                    f"{anchor_t:.2f}s — ajustando inicio "
-                                    f"({trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f})"
+                                    f"   ⚓ First-phrase anchor: frase en "
+                                    f"{anchor_t:.2f}s — inicio "
+                                    f"{trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f}"
                                 )
                                 trim_start = max(0.0, anchor_t - 0.35)
 
@@ -750,14 +829,26 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             subs_words = clip_words
                             subs_segments = clip_segments_whisper
 
+                        # Post-snap: cola incompleta
+                        incomplete_tail = has_incomplete_tail(clip_words)
+                        late_hook = snap_trim_start > 3.0
+
                         # Fase 4: verificación anti-alucinación con acción real
                         verification_info = verify_phrases_against_whisper(moment, clip_words)
-                        if verification_info.get("failed"):
+                        if (
+                            verification_info.get("failed")
+                            or incomplete_tail
+                            or late_hook
+                        ):
                             moment.verification_failed = True
-                            print(
-                                f"   🚩 verification_failed: first Y last phrase "
-                                f"no matchean el audio real del clip"
-                            )
+                            reasons = []
+                            if verification_info.get("failed"):
+                                reasons.append("phrase mismatch")
+                            if incomplete_tail:
+                                reasons.append("incomplete tail")
+                            if late_hook:
+                                reasons.append("late hook")
+                            print(f"   🚩 verification_failed: {', '.join(reasons)}")
                         coverage_val = srt_coverage_metric(clip_words, clip_duration)
                         wps_val = (len(clip_words) / clip_duration) if clip_duration > 0 else 0.0
                         print(f"   📊 Sub coverage: {coverage_val:.0%} | densidad: {wps_val:.2f} w/s")
@@ -871,6 +962,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     clip_url = upload_clip_to_storage(str(clip_output), job_id, moment_index)
                     if clip_url:
                         print(f"✅ Clip subido: {clip_url[:70]}...")
+                        clip_rendered_ok = True
                         if clip_words or clip_segments_whisper:
                             whisper_words_cache = {
                                 "words": clip_words or [],
@@ -881,6 +973,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     else:
                         raise RuntimeError("upload_clip_to_storage devolvió None")
                 except (ClipGenerationError, Exception) as e:
+                    clip_generation_error = str(e)[:500]
                     print(f"⚠️ Clip {moment_index} falló: {e}")
                     whisper_words_cache = None
                     if moment.start_time is not None:
@@ -906,13 +999,31 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                     print(f"🔗 Clip {moment_index}: YouTube link at {int(moment.start_time)}s → {clip_url}")
             
-            # ── Rescate de copy (two-pass): si la generación del clip falló
-            # antes de la pasada B y el momento quedó sin copy, generarlo
-            # desde el slice del transcript YT para no dejar la card vacía.
+            # ── Rescate de copy: solo si no hay copy Y el clip no se renderizó;
+            # no enmascarar fallos con scores del análisis como finales.
+            from services.validation import is_youtube_clip_fallback, build_clip_quality_issues
+            if not clip_rendered_ok and is_youtube_clip_fallback(clip_url):
+                clip_quality_issues = build_clip_quality_issues(
+                    verification_info=verification_info,
+                    incomplete_tail=locals().get("incomplete_tail", False),
+                    late_hook=locals().get("late_hook", False),
+                    clip_not_rendered=True,
+                    clip_generation_error=clip_generation_error,
+                )
+            elif clip_rendered_ok or verification_info:
+                clip_quality_issues = build_clip_quality_issues(
+                    verification_info=verification_info,
+                    incomplete_tail=locals().get("incomplete_tail", False),
+                    late_hook=locals().get("late_hook", False),
+                    clip_not_rendered=False,
+                    clip_generation_error=None,
+                )
+
             if (
                 not (moment.content_pieces.twitter_thread or "").strip()
                 and moment.start_time is not None
                 and moment.end_time is not None
+                and not clip_rendered_ok
             ):
                 try:
                     from services.validation import _words_in_range
@@ -980,9 +1091,14 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     "retention": scores.retention,
                     "shareability": scores.shareability,
                 }
-            display_hook = judge_scores["hook"] if judge_scores else (scores.hook if scores else None)
-            display_retention = judge_scores["retention"] if judge_scores else (scores.retention if scores else None)
-            display_share = judge_scores["shareability"] if judge_scores else (scores.shareability if scores else None)
+            display_hook = judge_scores["hook"] if judge_scores else None
+            display_retention = judge_scores["retention"] if judge_scores else None
+            display_share = judge_scores["shareability"] if judge_scores else None
+            # Sin clip renderizado: no mostrar scores LLM inflados como finales
+            if clip_rendered_ok and not judge_scores and scores:
+                display_hook = scores.hook
+                display_retention = scores.retention
+                display_share = scores.shareability
 
             # Phase 1.4: Binary categories — podcast or business (default).
             # Both categories produce the full content package
@@ -1033,6 +1149,8 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 verification_failed=getattr(moment, 'verification_failed', None),
                 sub_coverage=coverage_val,
                 words_per_sec=wps_val,
+                clip_quality_issues=clip_quality_issues or None,
+                clip_generation_error=clip_generation_error,
             )
 
             # Twitter thread — always saved (universal)

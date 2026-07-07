@@ -80,8 +80,9 @@ REGLAS DE TIMING (CRÍTICAS):
 
 VERIFICACIÓN ANTI-ALUCINACIÓN (OBLIGATORIA por momento):
 - first_phrase_in_audio: las primeras 5-8 palabras EXACTAS que se dicen en el clip (copiadas de la transcripción).
-- last_phrase_in_audio: las últimas 5-8 palabras EXACTAS del clip.
-- Si no puedes citar las frases exactas, NO incluyas ese momento.
+- last_phrase_in_audio: las últimas 5-8 palabras EXACTAS del clip. DEBE terminar en . ? o ! (oración completa).
+- El end_time debe caer al final de un segmento de transcripción con oración completa, NO a mitad de frase.
+- Si no puedes citar las frases exactas con cierre de oración, NO incluyas ese momento.
 
 SCORES PRELIMINARES (1-10, sé honesto — la mayoría de los momentos son 5-7):
 - hook: ¿los primeros 3 segundos frenan el scroll?
@@ -117,7 +118,30 @@ FORMATO JSON DE SALIDA (SOLO JSON, sin markdown):
 RECORDATORIO: genera {num_candidates} candidatos, ordenados del mejor al peor. SIN copy. SIN short_video_script. SOLO selección."""
 
 
-def rank_and_prune_candidates(result_dict: dict, target: int) -> dict:
+def _segment_boundary_penalty(moment: dict, transcript: dict | None) -> float:
+    """Penaliza momentos cuyo end_time cae a mitad de segmento sin punct."""
+    if not transcript:
+        return 0.0
+    end_t = float(moment.get("end_time") or 0)
+    segments = transcript.get("segments") or []
+    for sg in segments:
+        sg_start = float(sg.get("start", 0))
+        sg_end = float(sg.get("end", sg_start))
+        if sg_start < end_t <= sg_end + 0.5:
+            txt = (sg.get("text") or "").strip()
+            if txt and txt[-1] not in ".?!…":
+                return 3.0  # penalización fuerte
+            if abs(end_t - sg_end) > 2.0:
+                return 1.5  # end lejos del fin de segmento
+            return 0.0
+    return 0.5
+
+
+def rank_and_prune_candidates(
+    result_dict: dict,
+    target: int,
+    transcript: dict | None = None,
+) -> dict:
     """
     Rankea candidatos por score preliminar (suma hook+retention+shareability)
     y conserva los top `target`. Mantiene orden cronológico en el output final
@@ -132,15 +156,17 @@ def rank_and_prune_candidates(result_dict: dict, target: int) -> dict:
         if isinstance(s, list) and s and isinstance(s[0], dict):
             s = s[0]
         if not isinstance(s, dict):
-            return 0.0
-        try:
-            return (
-                float(s.get("hook", 0))
-                + float(s.get("retention", 0))
-                + float(s.get("shareability", 0))
-            )
-        except (TypeError, ValueError):
-            return 0.0
+            base = 0.0
+        else:
+            try:
+                base = (
+                    float(s.get("hook", 0))
+                    + float(s.get("retention", 0))
+                    + float(s.get("shareability", 0))
+                )
+            except (TypeError, ValueError):
+                base = 0.0
+        return base - _segment_boundary_penalty(m, transcript)
 
     ranked = sorted(moments, key=_score, reverse=True)[:target]
     dropped = len(moments) - len(ranked)
@@ -160,6 +186,7 @@ def select_moments(
     client,
     model: str,
     max_retries: int = 3,
+    transcript: dict | None = None,
 ) -> dict:
     """
     Ejecuta la pasada A: selección de momentos con sobre-generación + ranking.
@@ -253,7 +280,7 @@ def select_moments(
     if not isinstance(moments, list) or not moments:
         raise ValueError("Pasada A no devolvió viral_moments")
 
-    result_dict = rank_and_prune_candidates(result_dict, target)
+    result_dict = rank_and_prune_candidates(result_dict, target, transcript=transcript)
 
     # Garantizar content_pieces vacío (el schema lo requiere; pasada B lo llena)
     for m in result_dict["viral_moments"]:
