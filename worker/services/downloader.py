@@ -1139,6 +1139,58 @@ def extract_segment_copy(
     return str(out)
 
 
+def _resolve_ffmpeg_bin() -> str:
+    if FFMPEG_LOCATION:
+        p = Path(FFMPEG_LOCATION)
+        if p.is_file():
+            return str(p)
+        if p.is_dir():
+            candidate = p / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+            return str(candidate if candidate.exists() else p / "ffmpeg")
+    return shutil.which("ffmpeg") or "ffmpeg"
+
+
+def _mux_av_streams(video_path: str, audio_path: str, output_path: str) -> None:
+    ffmpeg_bin = _resolve_ffmpeg_bin()
+    mux_r = subprocess.run(
+        [ffmpeg_bin, "-y", "-loglevel", "warning",
+         "-i", video_path, "-i", audio_path, "-c", "copy",
+         "-movflags", "+faststart", output_path],
+        capture_output=True, text=True, timeout=300,
+    )
+    if mux_r.returncode != 0:
+        raise RuntimeError(f"ffmpeg mux falló: {mux_r.stderr[-300:]}")
+
+
+def _video_has_decodable_frame_at(video_path: str, at_sec: float) -> bool:
+    """True si hay al menos un frame de video decodificable en at_sec."""
+    ffmpeg_bin = _resolve_ffmpeg_bin()
+    cmd = [
+        ffmpeg_bin, "-y", "-loglevel", "error",
+        "-ss", f"{max(0.0, at_sec):.3f}",
+        "-i", video_path,
+        "-frames:v", "1",
+        "-f", "null", "-",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return False
+    return result.returncode == 0
+
+
+def validate_muxed_has_video_through(muxed_path: str, min_end_sec: float) -> bool:
+    """
+    Verifica que el mux tenga video real hasta min_end_sec.
+
+    En streams DASH/fMP4, truncar video por ratio de bytes NO equivale al
+    mismo ratio de tiempo — el audio completo puede durar 114s mientras el
+    video truncado solo cubre ~15s.
+    """
+    check_at = max(1.0, float(min_end_sec) - 2.0)
+    return _video_has_decodable_frame_at(muxed_path, check_at)
+
+
 def download_video_for_clips(
     video_url: str,
     audio_url: str,
@@ -1148,6 +1200,7 @@ def download_video_for_clips(
     buffer_sec: float = 15.0,
     *,
     resolve_proxy: str | None = None,
+    force_full_video: bool = False,
 ) -> tuple[str, str]:
     """
     Descarga video+audio desde byte 0 hasta el byte correspondiente a
@@ -1186,11 +1239,13 @@ def download_video_for_clips(
     if vid_total <= 0 or aud_total <= 0:
         raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
 
-    vid_end_byte = int(ratio * vid_total)
-    # ⚠️ Audio: descargar SIEMPRE completo. El m4a tiene el moov atom al final,
-    # si lo truncamos por byte-range el container queda inválido y ffmpeg no
-    # puede leer el header. Es solo unos pocos MB de más, vale la pena.
+    # Audio: siempre completo (moov al final del m4a).
+    # Video: por defecto truncamos por ratio; si force_full_video, bajamos todo
+    # el stream (necesario cuando el ratio en bytes no cubre el tiempo del clip).
+    vid_end_byte = vid_total if force_full_video else int(ratio * vid_total)
     aud_end_byte = aud_total
+    if force_full_video:
+        print(f"   📦 Video: descarga completa ({vid_total // (1 << 20)}MB)")
 
     vid_path = DOWNLOADS_DIR / f"{video_id}_pvid.mp4"
     aud_path = DOWNLOADS_DIR / f"{video_id}_paud.m4a"
@@ -1224,6 +1279,62 @@ def download_video_for_clips(
 
     print(f"   ⏱️ Descarga parcial completada en {time.time() - t0:.1f}s")
     return str(vid_path), str(aud_path)
+
+
+def prepare_muxed_video_from_streams(
+    video_url: str,
+    audio_url: str,
+    max_end_sec: float,
+    video_duration: float,
+    video_id: str,
+    buffer_sec: float = 15.0,
+    *,
+    resolve_proxy: str | None = None,
+) -> str:
+    """
+    Descarga video+audio, muxea y valida que haya frames de video hasta max_end.
+
+    Si el truncado por ratio deja el video corto (típico en DASH), reintenta con
+    el stream de video completo.
+    """
+    effective_end = min(max_end_sec + buffer_sec, video_duration)
+    muxed_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
+
+    def _download_mux(full_video: bool) -> None:
+        pvid, paud = download_video_for_clips(
+            video_url=video_url,
+            audio_url=audio_url,
+            max_end_sec=max_end_sec,
+            video_duration=video_duration,
+            video_id=video_id,
+            buffer_sec=buffer_sec,
+            resolve_proxy=resolve_proxy,
+            force_full_video=full_video,
+        )
+        try:
+            _mux_av_streams(pvid, paud, muxed_path)
+        finally:
+            for pp in (pvid, paud):
+                try:
+                    Path(pp).unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+    _download_mux(full_video=False)
+    if validate_muxed_has_video_through(muxed_path, effective_end):
+        return muxed_path
+
+    print(
+        f"   ⚠️ Mux sin video hasta ~{effective_end:.0f}s "
+        f"(truncado DASH) — re-descargando stream de video completo..."
+    )
+    _download_mux(full_video=True)
+    if not validate_muxed_has_video_through(muxed_path, effective_end):
+        raise RuntimeError(
+            f"Mux sin video decodificable hasta {effective_end:.0f}s "
+            f"tras descarga completa del stream"
+        )
+    return muxed_path
 
 
 def download_clip_segment(
@@ -1392,7 +1503,7 @@ def download_clip_via_stream_urls(
 
     effective_duration = max(float(video_duration), end_sec + 30)
     print(f"   📥 RapidAPI/stream partial per-clip ({int(start_sec)}-{int(end_sec)}s)...")
-    pvid, paud = download_video_for_clips(
+    muxed = prepare_muxed_video_from_streams(
         video_url=stream_urls["video_url"],
         audio_url=stream_urls["audio_url"],
         max_end_sec=end_sec,
@@ -1401,41 +1512,19 @@ def download_clip_via_stream_urls(
         resolve_proxy=stream_urls.get("resolve_proxy"),
     )
 
-    ffmpeg_bin = "ffmpeg"
-    if FFMPEG_LOCATION:
-        p = Path(FFMPEG_LOCATION)
-        if p.is_file():
-            ffmpeg_bin = str(p)
-        elif p.is_dir():
-            candidate = p / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-            ffmpeg_bin = str(candidate if candidate.exists() else p / "ffmpeg")
-
-    muxed = DOWNLOADS_DIR / f"{tid}_muxed.mp4"
-    mux_r = subprocess.run(
-        [ffmpeg_bin, "-y", "-loglevel", "warning",
-         "-i", pvid, "-i", paud, "-c", "copy",
-         "-movflags", "+faststart", str(muxed)],
-        capture_output=True, text=True, timeout=300,
-    )
-    for pp in (pvid, paud):
-        try:
-            Path(pp).unlink(missing_ok=True)
-        except Exception:
-            pass
-    if mux_r.returncode != 0:
-        raise RuntimeError(f"mux per-clip falló: {mux_r.stderr[-300:]}")
+    ffmpeg_bin = _resolve_ffmpeg_bin()
 
     seg = DOWNLOADS_DIR / f"{tid}_seg.mp4"
     cut_r = subprocess.run(
         [ffmpeg_bin, "-y", "-loglevel", "warning",
          "-ss", str(start_sec), "-to", str(end_sec),
-         "-i", str(muxed), "-c", "copy",
+         "-i", muxed, "-c", "copy",
          "-avoid_negative_ts", "make_zero",
          "-movflags", "+faststart", str(seg)],
         capture_output=True, text=True, timeout=180,
     )
     try:
-        muxed.unlink(missing_ok=True)
+        Path(muxed).unlink(missing_ok=True)
     except Exception:
         pass
     if cut_r.returncode != 0:

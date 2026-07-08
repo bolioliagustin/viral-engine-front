@@ -41,7 +41,6 @@ from services.downloader import (
     get_stream_urls,
     download_clip_ytdlp,
     download_clip_via_stream_urls,
-    download_video_for_clips,
     is_ytdlp_drm_error,
     cleanup_all,
 )
@@ -439,14 +438,13 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # reintentar el yt-dlp roto y caer al partial download per-clip.
         if stream_urls and not muxed_video_path:
             try:
-                import subprocess as _sp, shutil as _sh
-                _ffmpeg = _sh.which("ffmpeg") or "ffmpeg"
+                from services.downloader import prepare_muxed_video_from_streams
                 max_end = max(
                     float(m.end_time) for m in result.viral_moments
                     if m.end_time is not None
                 )
                 print(f"\n📥 Partial download del video (1 sola vez, max_end={max_end:.0f}s)...")
-                pvid, paud = download_video_for_clips(
+                muxed_video_path = prepare_muxed_video_from_streams(
                     video_url=stream_urls["video_url"],
                     audio_url=stream_urls["audio_url"],
                     max_end_sec=max_end,
@@ -454,18 +452,6 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     video_id=video_id,
                     resolve_proxy=stream_urls.get("resolve_proxy"),
                 )
-                muxed_video_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
-                mux_r = _sp.run(
-                    [_ffmpeg, "-y", "-loglevel", "warning",
-                     "-i", pvid, "-i", paud, "-c", "copy",
-                     "-movflags", "+faststart", muxed_video_path],
-                    capture_output=True, text=True, timeout=300
-                )
-                for pp in [pvid, paud]:
-                    try: Path(pp).unlink(missing_ok=True)
-                    except Exception: pass
-                if mux_r.returncode != 0:
-                    raise RuntimeError(mux_r.stderr[-300:])
                 size_mb = Path(muxed_video_path).stat().st_size // (1 << 20)
                 print(f"✅ Video listo para todos los clips: {size_mb}MB")
             except Exception as e_partial:
@@ -840,35 +826,43 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                 f"(start={trim_start:.2f}, end={trim_end:.2f})"
                             )
                             snapped_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_snapped.mp4"
-                            cut_clip(
-                                video_path=str(precut_path),
-                                start_sec=trim_start,
-                                end_sec=trim_end,
-                                output_path=str(snapped_path),
-                            )
-                            precut_path = snapped_path
-                            clip_duration = trim_end - trim_start
-                            clip_words = shift_words_timeline(
-                                clip_words, trim_start, clip_duration=clip_duration
-                            )
-                            clip_words = fix_ghost_leading_words(clip_words)
-                            clip_words = filter_whisper_words(clip_words, clip_duration)
-                            print(
-                                f"   📊 Snap words: {words_before_snap} → "
-                                f"{len(clip_words)} (after shift+filter)"
-                            )
-                            clip_segments_whisper = [
-                                {
-                                    **sg,
-                                    "start": max(0.0, float(sg["start"]) - trim_start),
-                                    "end": max(0.0, float(sg["end"]) - trim_start),
-                                }
-                                for sg in clip_segments_whisper
-                                if float(sg.get("end", 0)) > trim_start
-                                and float(sg.get("start", 0)) < trim_end
-                            ]
-                            subs_words = clip_words
-                            subs_segments = clip_segments_whisper
+                            try:
+                                cut_clip(
+                                    video_path=str(precut_path),
+                                    start_sec=trim_start,
+                                    end_sec=trim_end,
+                                    output_path=str(snapped_path),
+                                )
+                                precut_path = snapped_path
+                                clip_duration = trim_end - trim_start
+                                clip_words = shift_words_timeline(
+                                    clip_words, trim_start, clip_duration=clip_duration
+                                )
+                                clip_words = fix_ghost_leading_words(clip_words)
+                                clip_words = filter_whisper_words(clip_words, clip_duration)
+                                print(
+                                    f"   📊 Snap words: {words_before_snap} → "
+                                    f"{len(clip_words)} (after shift+filter)"
+                                )
+                                clip_segments_whisper = [
+                                    {
+                                        **sg,
+                                        "start": max(0.0, float(sg["start"]) - trim_start),
+                                        "end": max(0.0, float(sg["end"]) - trim_start),
+                                    }
+                                    for sg in clip_segments_whisper
+                                    if float(sg.get("end", 0)) > trim_start
+                                    and float(sg.get("start", 0)) < trim_end
+                                ]
+                                subs_words = clip_words
+                                subs_segments = clip_segments_whisper
+                            except ClipGenerationError as e_snap:
+                                print(f"   ⚠️ Snap trim falló ({e_snap}) — continuando sin snap")
+                                snap_trim_start = 0.0
+                                try:
+                                    snapped_path.unlink(missing_ok=True)
+                                except Exception:
+                                    pass
 
                         # Post-snap: cola incompleta (omitir si sentence snap ya recortó tail)
                         incomplete_tail = has_incomplete_tail(

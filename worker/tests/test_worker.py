@@ -202,6 +202,22 @@ class TestDownloadStrategy:
 class TestDrmDetection:
     """Tests for yt-dlp DRM / PO Token error detection."""
 
+    def test_validate_muxed_checks_frame_at_timestamp(self):
+        from services.downloader import validate_muxed_has_video_through
+
+        with patch(
+            "services.downloader._video_has_decodable_frame_at",
+            return_value=True,
+        ) as mock_frame:
+            assert validate_muxed_has_video_through("/fake.mp4", 99.0) is True
+            mock_frame.assert_called_once_with("/fake.mp4", 97.0)
+
+        with patch(
+            "services.downloader._video_has_decodable_frame_at",
+            return_value=False,
+        ):
+            assert validate_muxed_has_video_through("/fake.mp4", 20.0) is False
+
     def test_detects_drm_error(self):
         from services.downloader import is_ytdlp_drm_error, is_ytdlp_bot_error
         assert is_ytdlp_drm_error(Exception("This video is DRM protected"))
