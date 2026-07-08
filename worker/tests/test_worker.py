@@ -308,6 +308,13 @@ class TestDownloadStrategySelector:
         assert should_use_stream_urls_fallback(100, 1000) is True
         assert should_use_stream_urls_fallback(500, 1000) is False
 
+    def test_sync_retry_only_on_low_coverage(self):
+        from main import _should_sync_retry_download
+        assert _should_sync_retry_download(0.85) is True
+        assert _should_sync_retry_download(0.89) is True
+        assert _should_sync_retry_download(0.90) is False
+        assert _should_sync_retry_download(1.0) is False
+
     def test_download_clip_ytdlp_applies_keyframe_margin(self):
         from services.downloader import download_clip_ytdlp, ClipDownloadResult
         from unittest.mock import patch, MagicMock

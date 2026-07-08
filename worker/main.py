@@ -207,6 +207,14 @@ def _strict_sync_validation() -> bool:
     return os.getenv("STRICT_SYNC_VALIDATION", "true").lower() not in ("0", "false", "no")
 
 
+def _should_sync_retry_download(coverage_val: float) -> bool:
+    """Re-descargar solo si Whisper tiene baja cobertura (desfase real de video).
+
+    phrase mismatch indica análisis/cache stale, no un clip mal descargado.
+    """
+    return coverage_val < 0.9
+
+
 def _select_download_strategy(video_duration: float, viral_moments) -> str:
     """Selector automático de estrategia de descarga (sync-safe + rápido)."""
     override = (os.getenv("DOWNLOAD_STRATEGY") or "auto").strip().lower()
@@ -331,7 +339,8 @@ def _resolve_moment_video_source(
             print(f"   ⚠️ Apify per-clip falló: {e_apify}")
 
     if (
-        should_use_stream_urls_fallback(start_s, video_duration)
+        sync_attempt == 0
+        and should_use_stream_urls_fallback(start_s, video_duration)
         and (_prefer_rapidapi_download() or partial_download_failed)
     ):
         _clip_retries = int(os.getenv("CLIP_GEN_RETRIES", "1"))
@@ -720,7 +729,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         if sync_attempt > 0:
                             print(
                                 f"   🔄 Reintento sync {sync_attempt}/{sync_retries} "
-                                f"para clip {moment_index}..."
+                                f"para clip {moment_index} (baja cobertura Whisper)..."
                             )
                             clip_paths_cache.pop(moment_index, None)
 
@@ -1037,16 +1046,13 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             wps_val = (len(clip_words) / clip_duration) if clip_duration > 0 else 0.0
                             print(f"   📊 Sub coverage: {coverage_val:.0%} | densidad: {wps_val:.2f} w/s")
 
-                            if strict_sync and (
-                                verification_info.get("failed")
-                                or coverage_val < 0.9
-                            ):
+                            if strict_sync and _should_sync_retry_download(coverage_val):
                                 if sync_attempt < sync_retries:
                                     raise _SyncRetryNeeded(
-                                        "phrase/coverage mismatch — re-download"
+                                        f"cobertura Whisper {coverage_val:.0%} — re-download"
                                     )
                                 raise ClipGenerationError(
-                                    "Sync validation failed after retries"
+                                    "Sync validation failed after retries (baja cobertura)"
                                 )
 
                             from services.processor import _clip_text_from_words

@@ -68,9 +68,22 @@ Al iniciar (`python main.py` o Docker):
 | `WEBSHARE_PROXY_FILE` | Sí en VPS | Proxies residenciales YouTube |
 | `USE_RAPIDAPI_DOWNLOAD` | Recomendada | URLs de stream cuando yt-dlp falla |
 | `RAPIDAPI_KEY` | Si USE_RAPIDAPI | API yt-api en RapidAPI |
+| `COOKIES_FILE` | No | Opcional — refuerzo anti-bot, no obligatorio en prod |
 | `MAX_WORKERS` | No (default 2–3) | Jobs paralelos |
 
-Archivos solo en el VPS (no en Git): `.env`, `proxies.txt`
+Archivos solo en el VPS (no en Git): `.env`, `proxies.txt`, `cookies.txt` (opcional)
+
+### Cookies de YouTube (opcional en producción)
+
+**No tenés que renovar cookies manualmente** para que el producto funcione publicado. La cadena principal es:
+
+1. **Proxies Webshare** (20 IPs residenciales) — yt-dlp con `player_client=android` descarga sin cookies en la mayoría de los casos
+2. **RapidAPI** — obtiene URLs de stream directas; no usa cookies
+3. **Per-clip paralelo** — cada clip es una descarga chica (~2–10 MB), no el video entero
+
+`cookies.txt` es un **refuerzo opcional** cuando varios proxies reciben “Sign in to confirm you're not a bot” a la vez. Si expiran, el worker sigue intentando con otros proxies y RapidAPI; algunos clips pueden fallar y caer a deep-link, pero el job no se cuelga.
+
+Renovación manual (solo si querés maximizar tasa de éxito yt-dlp): exportar cookies del navegador con extensión tipo “Get cookies.txt LOCALLY” y copiar al VPS. No hay flujo automático hoy; en prod la rotación de proxies suele ser suficiente.
 
 ---
 
@@ -225,7 +238,7 @@ flowchart TD
 5. Stream partial solo si clip está en primer 20% del video
 6. Deep-link YouTube
 
-**Validación anti-desfase:** `verify_phrases_after_snap` + cobertura subs ≥90%. Si falla y `STRICT_SYNC_VALIDATION=true`, reintenta hasta `CLIP_SYNC_RETRIES` veces antes del deep-link.
+**Validación anti-desfase:** `verify_phrases_after_snap` marca `verification_failed` si hay phrase mismatch (cache de análisis stale), cola incompleta o hook tardío. **Re-descarga** solo si la cobertura Whisper es &lt;90% (`STRICT_SYNC_VALIDATION=true`, hasta `CLIP_SYNC_RETRIES`). Phrase mismatch con cobertura alta **no** re-descarga — re-descargar no arregla análisis viejo.
 
 **Variables de entorno:**
 
