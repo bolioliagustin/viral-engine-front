@@ -14,7 +14,8 @@ import os
 
 from openai import OpenAI
 
-from config.model_tiers import get_model, get_temperature
+from config.model_tiers import get_model
+from config.llm_chat import build_chat_kwargs, log_llm_usage
 
 
 # ─── ROI determinístico ──────────────────────────────────────────────────────
@@ -100,16 +101,18 @@ Puntúa contra la rúbrica. Responde SOLO JSON."""
 
     try:
         response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _JUDGE_RUBRIC},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=get_temperature("judge"),
-            max_tokens=400,
-            response_format={"type": "json_object"},
-            timeout=30,
+            **build_chat_kwargs(
+                "judge",
+                model,
+                [
+                    {"role": "system", "content": _JUDGE_RUBRIC},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+                timeout=30,
+            )
         )
+        log_llm_usage("judge", model, response)
         raw = response.choices[0].message.content if response.choices else None
         if not raw or not raw.strip():
             return None

@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional
+import ast
 
 
 class ContentPieces(BaseModel):
@@ -44,6 +45,64 @@ class ViralScores(BaseModel):
     hook: int  # 1-10
     retention: int  # 1-10
     shareability: int  # 1-10
+
+    @staticmethod
+    def _coerce_score(value, default: int = 7) -> int:
+        if value is None:
+            return default
+        try:
+            return max(1, min(10, int(round(float(value)))))
+        except (TypeError, ValueError):
+            return default
+
+    @model_validator(mode="before")
+    @classmethod
+    def fill_missing_metrics(cls, data):
+        """Gemini a veces omite shareability (u otros) — no debe tumbar el job."""
+        if data is None:
+            return {"hook": 7, "retention": 7, "shareability": 7}
+        if isinstance(data, str):
+            try:
+                data = ast.literal_eval(data)
+            except (ValueError, SyntaxError):
+                try:
+                    import json
+                    data = json.loads(data)
+                except (json.JSONDecodeError, TypeError):
+                    data = {}
+        if not isinstance(data, dict):
+            return {"hook": 7, "retention": 7, "shareability": 7}
+
+        hook = data.get("hook")
+        retention = data.get("retention")
+        shareability = data.get("shareability")
+
+        hook_i = cls._coerce_score(hook, default=7) if hook is not None else None
+        retention_i = cls._coerce_score(retention, default=7) if retention is not None else None
+        shareability_i = (
+            cls._coerce_score(shareability, default=7) if shareability is not None else None
+        )
+
+        if shareability_i is None:
+            if hook_i is not None and retention_i is not None:
+                shareability_i = max(1, min(10, round((hook_i + retention_i) / 2)))
+            elif retention_i is not None:
+                shareability_i = retention_i
+            elif hook_i is not None:
+                shareability_i = hook_i
+            else:
+                shareability_i = 7
+
+        if hook_i is None:
+            hook_i = shareability_i
+        if retention_i is None:
+            retention_i = shareability_i
+
+        return {
+            "hook": hook_i,
+            "retention": retention_i,
+            "shareability": shareability_i,
+        }
 
 
 class ScoreJustification(BaseModel):

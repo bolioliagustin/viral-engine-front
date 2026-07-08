@@ -1,35 +1,35 @@
 """
-Model tiers por tarea (Fase 1 — Plan calidad IA).
+Model tiers por tarea (Plan calidad IA — julio 2026).
 
 Cada tarea del pipeline usa un modelo distinto, configurable por env:
 
   - MODEL_ANALYSIS   → selección de momentos (pasada A).
-                       Default: google/gemini-2.5-pro
+                       Default: google/gemini-3.5-flash
   - MODEL_COPY_WRITING / MODEL_COPY → threads/posts/captions (pasada B).
-                       Default: google/gemini-2.5-flash
+                       Default: google/gemini-3.5-flash
   - MODEL_JUDGE      → scoring independiente del clip final.
+                       Default: openai/gpt-5.4-nano (cross-family)
+  - MODEL_CLASSIFIER → clasificador podcast/business.
                        Default: google/gemini-2.5-flash-lite
-  - MODEL_CLASSIFIER → clasificador binario podcast/business.
-                       Default: google/gemini-2.0-flash-001
+                       (reemplaza gemini-2.0-flash-001, apagado jun 2026)
 
-Compat: si las envs nuevas no están seteadas, caemos a las legacy
-(OPENROUTER_MODEL / OPENROUTER_COPY_MODEL / OPENROUTER_CLASSIFIER_MODEL)
-y recién después al default 2026.
+Compat: env legacy OPENROUTER_MODEL / OPENROUTER_COPY_MODEL /
+OPENROUTER_CLASSIFIER_MODEL siguen como fallback.
 
-Temperature por tarea: output estructural (selección, juez, clasificador)
-usa temperature baja; solo el copy creativo mantiene 0.6+.
+Gemini 3.x / GPT-5.x: temperature omitida (default proveedor); reasoning
+effort vía OpenRouter extra_body. Ver config/llm_chat.py.
 """
 import os
+import re
 
-# Defaults actualizados (2026). Se pueden pisar por env.
+# Defaults post-recomendación (jul 2026). Validar con golden set antes de prod.
 DEFAULT_MODELS = {
-    "analysis": "google/gemini-2.5-pro",
-    "copy": "google/gemini-2.5-flash",
-    "judge": "google/gemini-2.5-flash-lite",
-    "classifier": "google/gemini-2.0-flash-001",
+    "analysis": "google/gemini-3.5-flash",
+    "copy": "google/gemini-3.5-flash",
+    "judge": "openai/gpt-5.4-nano",
+    "classifier": "google/gemini-2.5-flash-lite",
 }
 
-# Orden de resolución: env nueva → env legacy → default.
 _ENV_CHAIN = {
     "analysis": ("MODEL_ANALYSIS", "OPENROUTER_MODEL"),
     "copy": ("MODEL_COPY_WRITING", "MODEL_COPY", "OPENROUTER_COPY_MODEL", "OPENROUTER_MODEL"),
@@ -37,7 +37,7 @@ _ENV_CHAIN = {
     "classifier": ("MODEL_CLASSIFIER", "OPENROUTER_CLASSIFIER_MODEL"),
 }
 
-# Temperature por tarea: estructural bajo, creativo medio.
+# Temperature para familia Gemini 2.x / legacy. Gemini 3.x: omitir (None).
 TASK_TEMPERATURES = {
     "analysis": 0.3,
     "copy": 0.65,
@@ -45,7 +45,22 @@ TASK_TEMPERATURES = {
     "classifier": 0.0,
 }
 
-# Nombres legibles de idioma para la instrucción de salida del prompt.
+# max_tokens por tarea (analysis elevado para thinking tokens en Gemini 3.x).
+TASK_MAX_TOKENS = {
+    "classifier": 5,
+    "analysis": 16000,
+    "copy": 4000,
+    "judge": 400,
+}
+
+# reasoning.effort en OpenRouter (solo modelos que razonan por defecto).
+REASONING_EFFORT_BY_TASK = {
+    "classifier": "minimal",
+    "analysis": "low",
+    "copy": "minimal",
+    "judge": "none",
+}
+
 _LANGUAGE_NAMES = {
     "es": "español",
     "en": "English",
@@ -55,6 +70,13 @@ _LANGUAGE_NAMES = {
     "it": "italiano",
     "ca": "català",
 }
+
+_GEMINI3_RE = re.compile(r"gemini[- ]?3[\.\-]", re.I)
+_GPT5_RE = re.compile(r"gpt[- ]?5", re.I)
+_REASONING_CAPABLE_RE = re.compile(
+    r"gemini[- ]?3[\.\-]|gpt[- ]?5|o[134](-mini)?",
+    re.I,
+)
 
 
 def get_model(task: str) -> str:
@@ -74,14 +96,60 @@ def resolved_models() -> dict[str, str]:
     return {task: get_model(task) for task in DEFAULT_MODELS}
 
 
-def get_temperature(task: str) -> float:
-    """Temperature recomendada para la tarea."""
+def is_gemini3_family(model: str) -> bool:
+    """True si el modelo es de la familia Gemini 3.x (Google recomienda no fijar temperature)."""
+    return bool(_GEMINI3_RE.search(model or ""))
+
+
+def model_supports_reasoning_config(model: str) -> bool:
+    """True si debemos enviar reasoning.effort vía OpenRouter."""
+    return bool(_REASONING_CAPABLE_RE.search(model or ""))
+
+
+def get_temperature(task: str, model: str | None = None) -> float | None:
+    """
+    Temperature para la llamada. None = omitir (Gemini 3.x usa default del proveedor).
+    """
+    resolved = model or get_model(task)
+    if is_gemini3_family(resolved):
+        return None
     return TASK_TEMPERATURES.get(task, 0.3)
+
+
+def get_max_tokens(task: str, model: str | None = None) -> int:
+    """Límite de tokens de salida (+ thinking cuando aplica)."""
+    base = TASK_MAX_TOKENS.get(task, 4000)
+    # Pasada A legacy en moment_selector usaba 8000; unificado a 16000.
+    return base
+
+
+def get_reasoning_effort(task: str, model: str | None = None) -> str | None:
+    """
+    effort para extra_body.reasoning en OpenRouter, o None si no aplica.
+
+    Override por env: MODEL_{TASK}_REASONING=low|minimal|none|...
+    """
+    resolved = model or get_model(task)
+    if not model_supports_reasoning_config(resolved):
+        return None
+
+    env_key = f"MODEL_{task.upper()}_REASONING"
+    override = os.getenv(env_key)
+    if override and override.strip():
+        return override.strip().lower()
+
+    return REASONING_EFFORT_BY_TASK.get(task)
 
 
 def is_free_tier(model: str) -> bool:
     """True si el modelo es free tier de OpenRouter (rate limits + peor calidad)."""
     return ":free" in (model or "").lower()
+
+
+def is_deprecated_model(model: str) -> bool:
+    """Warn al arranque si el modelo apunta a familia 2.0 (apagada jun 2026)."""
+    m = (model or "").lower()
+    return "gemini-2.0-flash" in m or "gemini-2.0-flash-lite" in m
 
 
 def language_name(lang_code: str | None) -> str:

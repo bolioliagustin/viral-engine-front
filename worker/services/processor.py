@@ -5,11 +5,8 @@ from openai import OpenAI
 from pathlib import Path
 from typing import Optional
 from models.schemas import AnalysisResult
-from config.model_tiers import (
-    get_model,
-    get_temperature,
-    output_language_instruction,
-)
+from config.model_tiers import get_model, output_language_instruction
+from config.llm_chat import build_chat_kwargs, log_llm_usage
 
 
 def get_video_category(video_info: dict, client=None, transcript_excerpt: str = None) -> str:
@@ -91,15 +88,17 @@ Descripción: {description}
 {categories_block}"""
 
         response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Clasificador de contenido. Respondes con una sola palabra (la categoría)."},
-                {"role": "user", "content": classification_prompt}
-            ],
-            max_tokens=5,
-            temperature=get_temperature("classifier"),
-            timeout=10,  # Phase 1.4: bumped from 3s — was failing too often
+            **build_chat_kwargs(
+                "classifier",
+                model,
+                [
+                    {"role": "system", "content": "Clasificador de contenido. Respondes con una sola palabra (la categoría)."},
+                    {"role": "user", "content": classification_prompt},
+                ],
+                timeout=10,
+            )
         )
+        log_llm_usage("classifier", model, response)
 
         content = response.choices[0].message.content
         if not content:
@@ -547,13 +546,14 @@ VIDEO INFO:
         for attempt in range(max_retries + 1):
             try:
                 response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    # Fase 1: output estructural — temperature baja (era 0.7)
-                    temperature=get_temperature("analysis"),
-                    max_tokens=16000,
-                    response_format={"type": "json_object"}
+                    **build_chat_kwargs(
+                        "analysis",
+                        model,
+                        messages,
+                        response_format={"type": "json_object"},
+                    )
                 )
+                log_llm_usage("analysis", model, response)
 
                 # Defensive: Gemini Pro occasionally returns choices[0].message.content = None
                 # (safety filter trip, rate limit, or upstream timeout). Treat as failure
@@ -641,6 +641,22 @@ VIDEO INFO:
         for _m in result_dict.get('viral_moments', []):
             if not isinstance(_m, dict):
                 continue
+            _scores = _m.get('scores')
+            if isinstance(_scores, dict) and _scores.get('shareability') is None:
+                hook = _scores.get('hook')
+                retention = _scores.get('retention')
+                if hook is not None and retention is not None:
+                    _scores['shareability'] = round((int(hook) + int(retention)) / 2)
+                elif retention is not None:
+                    _scores['shareability'] = int(retention)
+                elif hook is not None:
+                    _scores['shareability'] = int(hook)
+                else:
+                    _scores['shareability'] = 7
+                print(
+                    f"   ⚠️ scores.shareability faltante — "
+                    f"inferido como {_scores['shareability']}"
+                )
             _sc = _m.get('surgical_clipping')
             if isinstance(_sc, dict):
                 # Migrate timestamps only if the canonical fields are missing.
@@ -820,16 +836,18 @@ Responde SOLO JSON:
 
     try:
         response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Copywriter viral senior. Respondes solo JSON válido."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=get_temperature("copy"),
-            max_tokens=4000,
-            response_format={"type": "json_object"},
-            timeout=60,
+            **build_chat_kwargs(
+                "copy",
+                model,
+                [
+                    {"role": "system", "content": "Copywriter viral senior. Respondes solo JSON válido."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                timeout=60,
+            )
         )
+        log_llm_usage("copy", model, response)
         raw = response.choices[0].message.content if response.choices else None
         if not raw or not raw.strip():
             print("   ⚠️ Pasada B: LLM devolvió vacío")
@@ -908,16 +926,18 @@ Responde SOLO JSON:
 
     try:
         response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Copywriter viral. Respondes solo JSON válido."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=get_temperature("copy"),
-            max_tokens=4000,
-            response_format={"type": "json_object"},
-            timeout=45,
+            **build_chat_kwargs(
+                "copy",
+                model,
+                [
+                    {"role": "system", "content": "Copywriter viral. Respondes solo JSON válido."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                timeout=45,
+            )
         )
+        log_llm_usage("copy", model, response)
         raw = response.choices[0].message.content if response.choices else None
         if not raw or not raw.strip():
             print("   ⚠️ Copy regen: LLM devolvió vacío")

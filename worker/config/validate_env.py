@@ -13,11 +13,15 @@ REQUIRED_ENV_VARS = [
 
 OPTIONAL_ENV_VARS = {
     'FFMPEG_PATH': 'Will use system PATH if not set',
-    'MODEL_ANALYSIS': 'Modelo para selección de momentos (default google/gemini-2.5-pro)',
-    'MODEL_COPY_WRITING': 'Modelo para copy/threads (alias preferido de MODEL_COPY)',
-    'MODEL_COPY': 'Modelo para copy/threads (default google/gemini-2.5-flash)',
-    'MODEL_JUDGE': 'Modelo juez de scoring (default google/gemini-2.5-flash-lite)',
-    'MODEL_CLASSIFIER': 'Modelo clasificador podcast/business (default google/gemini-2.0-flash-001)',
+    'MODEL_ANALYSIS': 'Modelo Pasada A (default google/gemini-3.5-flash)',
+    'MODEL_COPY_WRITING': 'Modelo Pasada B copy (alias preferido de MODEL_COPY)',
+    'MODEL_COPY': 'Modelo Pasada B copy (default google/gemini-3.5-flash)',
+    'MODEL_JUDGE': 'Modelo juez (default openai/gpt-5.4-nano)',
+    'MODEL_CLASSIFIER': 'Clasificador (default google/gemini-2.5-flash-lite)',
+    'MODEL_ANALYSIS_REASONING': 'OpenRouter reasoning effort para analysis (default low)',
+    'MODEL_COPY_REASONING': 'OpenRouter reasoning effort para copy (default minimal)',
+    'MODEL_JUDGE_REASONING': 'OpenRouter reasoning effort para judge (default none)',
+    'LOG_LLM_USAGE': 'Log response.usage por llamada LLM (default true)',
     'OPENROUTER_MODEL': 'LEGACY — usar MODEL_ANALYSIS. Fallback si MODEL_ANALYSIS no está',
     'GROQ_API_KEY': 'Preferred Whisper provider (faster + better than OpenAI). Get at console.groq.com. Si no está, cae a OpenAI.',
     'SUPADATA_API_KEY': 'REQUIRED on cloud deployments (Render/Railway) — get free key at supadata.ai',
@@ -73,12 +77,17 @@ def validate_env():
 
     # Fase 1: warning si algún modelo es free tier + mostrar resolución efectiva
     try:
-        from config.model_tiers import get_model, is_free_tier, resolved_models
+        from config.model_tiers import get_model, is_free_tier, is_deprecated_model, resolved_models
         print("\n📦 Modelos LLM resueltos:")
         for task, model in resolved_models().items():
             print(f"   {task}: {model}")
         for task in ("analysis", "copy", "judge", "classifier"):
             model = get_model(task)
+            if is_deprecated_model(model):
+                print(
+                    f"\n⚠️  MODEL_{task.upper()} = '{model}' apunta a Gemini 2.0 (apagado jun 2026).\n"
+                    f"   Migrar a gemini-2.5-flash-lite (classifier) o gemini-3.5-flash (analysis/copy).\n"
+                )
             if is_free_tier(model):
                 print(
                     f"\n⚠️  MODEL_{task.upper()} = '{model}' es FREE TIER de OpenRouter.\n"

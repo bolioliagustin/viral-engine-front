@@ -305,16 +305,23 @@ Cuando el usuario edita un clip en el frontend (`EditClipDrawer`):
 
 ### Modelos por tarea (`config/model_tiers.py`)
 
-| Tarea | Env var | Default | Temperature |
-|-------|---------|---------|-------------|
-| Selección de momentos | `MODEL_ANALYSIS` | `google/gemini-2.5-pro` | 0.3 |
-| Copy (threads/posts) | `MODEL_COPY` | `google/gemini-2.5-flash` | 0.65 |
-| Juez de scoring | `MODEL_JUDGE` | `google/gemini-2.5-flash-lite` | 0.1 |
-| Clasificador | `MODEL_CLASSIFIER` | `google/gemini-2.0-flash-001` | 0.0 |
+Documentación detallada: [`docs/INFORME_LLMS.md`](../docs/INFORME_LLMS.md) y [`docs/RECOMENDACION_MODELOS_LLM.md`](../docs/RECOMENDACION_MODELOS_LLM.md).
+
+| Tarea | Env var | Default (jul 2026) | Reasoning (OpenRouter) |
+|-------|---------|-------------------|------------------------|
+| Selección de momentos | `MODEL_ANALYSIS` | `google/gemini-3.5-flash` | `low` |
+| Copy (threads/posts) | `MODEL_COPY` | `google/gemini-3.5-flash` | `minimal` |
+| Juez de scoring | `MODEL_JUDGE` | `openai/gpt-5.4-nano` | `none` |
+| Clasificador | `MODEL_CLASSIFIER` | `google/gemini-2.5-flash-lite` | — |
+
+Gemini 3.x: temperature omitida (default proveedor). Llamadas centralizadas en
+`config/llm_chat.py` con logging de `response.usage` (`LOG_LLM_USAGE`).
 
 Compat: `OPENROUTER_MODEL` / `OPENROUTER_COPY_MODEL` / `OPENROUTER_CLASSIFIER_MODEL`
 siguen funcionando como fallback. El worker warnea al arrancar si algún
-modelo es `:free`.
+modelo es `:free` o apunta a Gemini 2.0 (apagado jun 2026).
+
+`PROMPT_VERSION` en `analysis_cache.py`: bump a `v4` tras migración de modelos.
 
 ### Dos pasadas (`TWO_PASS_ANALYSIS=true`, default)
 

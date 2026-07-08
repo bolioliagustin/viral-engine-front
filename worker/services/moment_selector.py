@@ -14,7 +14,8 @@ import json
 import os
 import time
 
-from config.model_tiers import get_temperature, output_language_instruction
+from config.model_tiers import output_language_instruction
+from config.llm_chat import build_chat_kwargs, log_llm_usage
 
 
 def target_moment_count(duration_sec: float) -> int:
@@ -233,12 +234,14 @@ def select_moments(
     for attempt in range(max_retries + 1):
         try:
             response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=get_temperature("analysis"),
-                max_tokens=8000,
-                response_format={"type": "json_object"},
+                **build_chat_kwargs(
+                    "analysis",
+                    model,
+                    messages,
+                    response_format={"type": "json_object"},
+                )
             )
+            log_llm_usage("analysis", model, response)
             raw = response.choices[0].message.content if response.choices else None
             if not raw or not raw.strip():
                 finish = response.choices[0].finish_reason if response.choices else "no_choices"

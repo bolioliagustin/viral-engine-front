@@ -2,6 +2,8 @@
 
 Documento de referencia sobre los modelos de inteligencia artificial usados en el **YouTube Viral Content Engine**. Su objetivo es describir qué hace cada modelo, qué se espera de él y con qué características cuenta cada tarea, para poder en el futuro realizar un análisis exhaustivo y elegir la combinación óptima (calidad + economía).
 
+**Documento complementario (recomendación de migración jul 2026):** [`RECOMENDACION_MODELOS_LLM.md`](RECOMENDACION_MODELOS_LLM.md)
+
 Este informe cubre **solo la capa de IA**. No incluye costos en USD ni infraestructura de despliegue (ver canvas `costos-y-llms` para eso).
 
 **Fuentes de verdad en código:** `worker/config/model_tiers.py`, `worker/services/processor.py`, `worker/services/moment_selector.py`, `worker/services/scorer.py`, `worker/services/transcriber.py`, `worker/WORKER.md`.
@@ -673,14 +675,15 @@ Existen **tres capas** de configuración de modelos. Los valores efectivos en pr
 
 | Capa | Analysis | Copy | Judge | Classifier |
 |------|----------|------|-------|------------|
-| **Defaults en código** (`model_tiers.py`) | `gemini-2.5-pro` | `gemini-2.5-flash` | `gemini-2.5-flash-lite` | `gemini-2.0-flash-001` |
-| **`.env.example`** | `gemini-3.5-flash` | `gemini-3.5-flash` | `gemini-2.5-flash` | `gemini-2.5-flash` |
+| **Defaults en código** (`model_tiers.py`, jul 2026) | `gemini-3.5-flash` | `gemini-3.5-flash` | `gpt-5.4-nano` | `gemini-2.5-flash-lite` |
+| **`.env.example`** | `gemini-3.5-flash` | `gemini-3.5-flash` | `gpt-5.4-nano` | `gemini-2.5-flash-lite` |
 | **Producción VPS** | Desconocido desde repo | Desconocido | Desconocido | Desconocido |
 
 ### Notas importantes
 
-- **`.env.example` sugiere modelos más nuevos/baratos** que los defaults del código para analysis y copy. Si producción no setea env vars, corre con los defaults de `model_tiers.py`.
+- **Migración jul 2026:** ver [`RECOMENDACION_MODELOS_LLM.md`](RECOMENDACION_MODELOS_LLM.md). Código y `.env.example` alineados; validar en VPS y con golden set antes de dar por cerrada la migración.
 - **Modelos `:free`** en OpenRouter: el worker advierte al arranque (`is_free_tier()`). No recomendados para producción.
+- **Gemini 2.0 apagado (jun 2026):** `validate_env.py` advierte si algún modelo apunta a `gemini-2.0-flash*`.
 - **`TWO_PASS_ANALYSIS`**: default `true`. Solo desactivar para debugging o comparación con mega-prompt legacy.
 - **`ENABLE_ENTERTAINMENT_CATEGORY`**: default `false`. Activar solo cuando Pasada A esté estable con categoría entertainment.
 

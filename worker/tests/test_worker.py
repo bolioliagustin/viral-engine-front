@@ -202,6 +202,20 @@ class TestDownloadStrategy:
 class TestDrmDetection:
     """Tests for yt-dlp DRM / PO Token error detection."""
 
+    def test_viral_scores_fills_missing_shareability(self):
+        from models.schemas import ViralScores
+
+        scores = ViralScores.model_validate({"hook": 9, "retention": 8})
+        assert scores.hook == 9
+        assert scores.retention == 8
+        assert scores.shareability == 8  # round((9+8)/2) en Python = 8
+
+    def test_viral_scores_parses_string_dict(self):
+        from models.schemas import ViralScores
+
+        scores = ViralScores.model_validate("{'hook': 6, 'retention': 7}")
+        assert scores.shareability == 6  # round((6+7)/2)
+
     def test_validate_muxed_checks_frame_at_timestamp(self):
         from services.downloader import validate_muxed_has_video_through
 
@@ -595,10 +609,10 @@ class TestModelTiers:
     @patch.dict(os.environ, {}, clear=True)
     def test_defaults_when_no_env(self):
         from config.model_tiers import get_model
-        assert get_model("analysis") == "google/gemini-2.5-pro"
-        assert get_model("copy") == "google/gemini-2.5-flash"
-        assert get_model("judge") == "google/gemini-2.5-flash-lite"
-        assert get_model("classifier") == "google/gemini-2.0-flash-001"
+        assert get_model("analysis") == "google/gemini-3.5-flash"
+        assert get_model("copy") == "google/gemini-3.5-flash"
+        assert get_model("judge") == "openai/gpt-5.4-nano"
+        assert get_model("classifier") == "google/gemini-2.5-flash-lite"
 
     @patch.dict(os.environ, {"MODEL_ANALYSIS": "anthropic/claude-sonnet-4.5"}, clear=True)
     def test_new_env_takes_precedence(self):
@@ -626,10 +640,36 @@ class TestModelTiers:
 
     def test_temperatures_low_for_structural(self):
         from config.model_tiers import get_temperature
-        assert get_temperature("analysis") <= 0.3
-        assert get_temperature("judge") <= 0.3
-        assert get_temperature("classifier") == 0.0
-        assert get_temperature("copy") >= 0.5
+        # Gemini 2.x legacy: temperature fija
+        assert get_temperature("analysis", "google/gemini-2.5-pro") <= 0.3
+        assert get_temperature("judge", "google/gemini-2.5-flash-lite") <= 0.3
+        assert get_temperature("classifier", "google/gemini-2.5-flash-lite") == 0.0
+        assert get_temperature("copy", "google/gemini-2.5-flash") >= 0.5
+        # Gemini 3.x: omitir temperature
+        assert get_temperature("analysis", "google/gemini-3.5-flash") is None
+
+    def test_reasoning_effort_gemini3(self):
+        from config.model_tiers import get_reasoning_effort
+        assert get_reasoning_effort("analysis", "google/gemini-3.5-flash") == "low"
+        assert get_reasoning_effort("copy", "google/gemini-3.5-flash") == "minimal"
+        assert get_reasoning_effort("judge", "openai/gpt-5.4-nano") == "none"
+        assert get_reasoning_effort("classifier", "google/gemini-2.5-flash-lite") is None
+
+    def test_build_chat_kwargs_reasoning(self):
+        from config.llm_chat import build_chat_kwargs
+        kw = build_chat_kwargs(
+            "analysis",
+            "google/gemini-3.5-flash",
+            [{"role": "user", "content": "hi"}],
+        )
+        assert kw["max_tokens"] == 16000
+        assert "temperature" not in kw
+        assert kw["extra_body"]["reasoning"]["effort"] == "low"
+
+    def test_deprecated_model_detection(self):
+        from config.model_tiers import is_deprecated_model
+        assert is_deprecated_model("google/gemini-2.0-flash-001")
+        assert not is_deprecated_model("google/gemini-2.5-flash-lite")
 
     def test_language_instruction(self):
         from config.model_tiers import output_language_instruction, language_name

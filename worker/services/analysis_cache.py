@@ -17,8 +17,8 @@ from services.supabase_client import get_supabase
 # ⚠️ Bumpear cuando cambien los prompts (get_dynamic_prompt, schema, etc).
 # Forzá invalidación global del cache. Ejemplo de bump: "v1" → "v2".
 # v2: pipeline two-pass (pasada A selección sin copy) + model tiers (Fase 1-2)
-# v3: clip quality pipeline (sentence snap, hook anchor, whisper vocabulary)
-PROMPT_VERSION = "v3"
+# v4: migración modelos jul 2026 (gemini-3.5-flash analysis/copy, gpt-5.4-nano judge, flash-lite classifier)
+PROMPT_VERSION = "v4"
 
 
 # ─── Analysis cache (resultado completo del análisis) ───────────────────────
