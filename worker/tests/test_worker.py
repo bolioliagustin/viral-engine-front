@@ -214,19 +214,41 @@ class TestDrmDetection:
 
 
 class TestStreamUrlStrategy:
-    """Tests for RapidAPI-first stream URL resolution."""
+    """Tests for stream URL resolution order."""
 
     @patch.dict(os.environ, {
         "ENVIRONMENT": "production",
         "RAPIDAPI_KEY": "test-key",
-    }, clear=False)
+    }, clear=True)
     @patch("services.downloader.get_stream_urls_rapidapi")
-    def test_production_uses_rapidapi_first(self, mock_rapid):
+    def test_production_without_proxies_uses_rapidapi(self, mock_rapid):
         from services.downloader import get_stream_urls
         mock_rapid.return_value = {"video_url": "v", "audio_url": "a", "video_id": "x"}
         result = get_stream_urls("https://youtube.com/watch?v=abc12345678")
         mock_rapid.assert_called_once()
         assert result["video_url"] == "v"
+
+    @patch.dict(os.environ, {
+        "ENVIRONMENT": "production",
+        "RAPIDAPI_KEY": "test-key",
+        "WEBSHARE_PROXY_URL": "http://user:pass@1.2.3.4:6754",
+    }, clear=True)
+    @patch("services.downloader._get_stream_urls_ytdlp")
+    @patch("services.downloader.get_stream_urls_rapidapi")
+    def test_production_with_proxies_prefers_ytdlp(self, mock_rapid, mock_ytdlp):
+        from services.downloader import get_stream_urls
+        mock_ytdlp.return_value = {"video_url": "v", "audio_url": "a", "video_id": "x"}
+        result = get_stream_urls("https://youtube.com/watch?v=abc12345678")
+        mock_ytdlp.assert_called_once()
+        mock_rapid.assert_not_called()
+        assert result["video_url"] == "v"
+
+
+class TestGooglevideoSticky:
+    def test_is_googlevideo_url(self):
+        from services.downloader import _is_googlevideo_url
+        assert _is_googlevideo_url("https://rr3---sn-abc.googlevideo.com/videoplayback?...")
+        assert not _is_googlevideo_url("https://cdn.example.com/video.mp4")
 
 
 class TestSubtitleSync:

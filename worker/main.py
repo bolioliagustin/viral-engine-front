@@ -546,7 +546,6 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                         video_duration=video_duration,
                                         video_id=video_id,
                                         temp_id=f"{video_id}_m{moment_index}",
-                                        force_rapidapi=True,
                                     )
                                     src_path = seg_path
                                     src_start = 0.0
@@ -591,7 +590,6 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                         video_duration=video_duration,
                                         video_id=video_id,
                                         temp_id=f"{video_id}_m{moment_index}",
-                                        force_rapidapi=True,
                                     )
                                     src_path = seg_path
                                     src_start = 0.0

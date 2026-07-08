@@ -314,12 +314,12 @@ def _parse_content_range(header: str | None) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _probe_stream_size(url: str, label: str = "stream") -> int:
+def _probe_stream_info(url: str, label: str = "stream") -> tuple[int, str | None, str]:
     """
-    Obtiene Content-Length probando HEAD y GET bytes=0-0 con varias estrategias.
+    Obtiene Content-Length y el proxy/estrategia que funcionó.
 
-    googlevideo bloquea HEAD desde datacenters (403) pero a menudo responde a
-    GET con headers de browser o Content-Range en un probe de 1 byte.
+    Las URLs de googlevideo (p. ej. vía RapidAPI) deben descargarse con la
+    MISMA IP que pasó el probe — round-robin entre proxies distintos → 403.
     """
     proxies = _get_proxy_list()
     strategies: list[tuple[str, str | None, bool]] = [
@@ -353,7 +353,7 @@ def _probe_stream_size(url: str, label: str = "stream") -> int:
                 if size > 0:
                     if name != "direct-yt":
                         print(f"   📦 {label} size via {name} (HEAD): {size // (1 << 20)}MB")
-                    return size
+                    return size, proxy_url, name
             except Exception as head_err:
                 last_err = head_err
 
@@ -364,7 +364,7 @@ def _probe_stream_size(url: str, label: str = "stream") -> int:
                     size = int(resp.headers.get("Content-Length", 0))
             if size > 0:
                 print(f"   📦 {label} size via {name} (GET probe): {size // (1 << 20)}MB")
-                return size
+                return size, proxy_url, name
             raise RuntimeError("Content-Length inválido o no informado")
         except Exception as e:
             last_err = e
@@ -385,33 +385,36 @@ def _probe_stream_size(url: str, label: str = "stream") -> int:
     )
 
 
+def _probe_stream_size(url: str, label: str = "stream") -> int:
+    size, _, _ = _probe_stream_info(url, label)
+    return size
+
+
+def _is_googlevideo_url(url: str) -> bool:
+    return "googlevideo.com" in url or "googleusercontent.com" in url
+
+
 def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "",
-                        end_byte: int = None, known_total: int | None = None) -> None:
+                        end_byte: int = None, known_total: int | None = None,
+                        sticky_proxy: str | None = None,
+                        sticky_via: str = "") -> None:
     """
     Descarga un archivo usando HTTP Range requests en paralelo.
 
-    PROXY ROTATION (Fase 1.6 v4):
-    Si hay múltiples proxies configurados (WEBSHARE_PROXY_FILE / WEBSHARE_PROXY_LIST),
-    cada chunk se enruta por un proxy distinto vía round-robin. Esto:
-      - Multiplica el throughput total (cada proxy contribuye su bandwidth)
-      - Da fault tolerance: si un proxy IP está rate-limiteado por googlevideo
-        para una URL específica, los otros chunks pueden completar
-      - En el retry, cada chunk prueba con el SIGUIENTE proxy de la lista
-        (no insiste con el mismo que falló)
+    googlevideo / RapidAPI: URLs firmadas deben descargarse con la MISMA IP
+    que pasó el probe (sticky_proxy). Round-robin entre proxies → 403.
 
     end_byte: si se pasa, descarga solo hasta ese byte (descarga parcial).
               Si None, descarga el archivo completo.
     """
     proxies = _get_proxy_list()
     n_proxies = len(proxies) if proxies else 0
+    use_sticky = _is_googlevideo_url(url) or sticky_proxy is not None
 
     def _make_opener(proxy_url: str | None):
         if proxy_url:
             return build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
         return None
-
-    # Chunks: solo proxies cuando hay pool (directo da 403 en googlevideo desde VPS).
-    chunk_openers = [_make_opener(p) for p in proxies] if n_proxies > 0 else [None]
 
     def _open_with(opener, req, timeout=30):
         if opener:
@@ -419,11 +422,35 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
         return urlopen(req, timeout=timeout)
 
     total = known_total or 0
-    if total <= 0:
+    if use_sticky and sticky_proxy is None:
+        total, sticky_proxy, sticky_via = _probe_stream_info(url, label=label or "stream")
+    elif total <= 0:
         total = _probe_stream_size(url, label=label or "stream")
 
-    if n_proxies > 0:
-        print(f"   🌐 {label}: pool de {n_proxies} proxies (+ directo) disponibles")
+    if total <= 0:
+        raise RuntimeError(f"{label}: no se pudo determinar Content-Length")
+
+    if use_sticky:
+        if sticky_via:
+            print(f"   🔒 {label}: descarga sticky via {sticky_via}")
+        # Fallback chain: proxy que funcionó en probe → resto del pool → directo
+        sticky_candidates: list[str | None] = []
+        if sticky_proxy:
+            sticky_candidates.append(sticky_proxy)
+        sticky_candidates.extend(p for p in proxies if p != sticky_proxy)
+        sticky_candidates.append(None)
+        chunk_openers = [_make_opener(p) for p in sticky_candidates]
+        proxy_label = f" sticky ({sticky_via or 'googlevideo'})"
+    elif n_proxies > 0:
+        chunk_openers = [_make_opener(p) for p in proxies]
+        proxy_label = (
+            f" cada uno via proxy distinto (round-robin sobre {n_proxies})"
+            if n_proxies > 1 else ""
+        )
+        print(f"   🌐 {label}: pool de {n_proxies} proxies disponibles")
+    else:
+        chunk_openers = [None]
+        proxy_label = ""
 
     # Limitar al end_byte pedido (descarga parcial desde byte 0)
     effective_end = (min(end_byte, total - 1) if end_byte is not None else total - 1)
@@ -445,22 +472,22 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
     tmp_dir.mkdir()
 
     size_label = f"{effective_total // (1<<20)}MB" + (f" de {total // (1<<20)}MB" if end_byte else "")
-    proxy_label = (
-        f" cada uno via proxy distinto (round-robin sobre {n_proxies})"
-        if n_proxies > 1 else ""
-    )
     print(f"   ⬇️ {label}: {size_label} en {len(ranges)} chunks paralelos{proxy_label}")
     t0 = time.time()
+
+    max_attempts = 3 if use_sticky else 3
 
     def fetch(i: int, s: int, e: int) -> Path:
         tmp = tmp_dir / f"chunk_{i:04d}"
         last_err = None
-        for attempt in range(3):
-            # Round-robin sobre proxies (cada chunk = proxy distinto).
-            opener_idx = (i + attempt) % len(chunk_openers)
+        for attempt in range(max_attempts):
+            if use_sticky:
+                opener_idx = min(attempt, len(chunk_openers) - 1)
+            else:
+                opener_idx = (i + attempt) % len(chunk_openers)
             opener = chunk_openers[opener_idx]
             try:
-                hdrs = {**_GOOGLEVIDEO_HEADERS, "Range": f"bytes={s}-{e}"}
+                hdrs = {**_YT_MEDIA_HEADERS, "Range": f"bytes={s}-{e}"}
                 rq = Request(url, headers=hdrs)
                 with _open_with(opener, rq, 180) as r, open(tmp, "wb") as f:
                     shutil.copyfileobj(r, f, 1 << 20)
@@ -469,11 +496,10 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
                 return tmp
             except Exception as ex:
                 last_err = ex
-                # Solo logueamos en retries (no spam en éxito al primer intento)
                 if attempt > 0:
-                    print(f"   ↻ {label} chunk {i}: retry {attempt+1}/3 (proxy idx {opener_idx}): {str(ex)[:80]}")
+                    print(f"   ↻ {label} chunk {i}: retry {attempt+1}/{max_attempts} (opener {opener_idx}): {str(ex)[:80]}")
                 time.sleep(1 + attempt)
-        raise RuntimeError(f"chunk {i} failed after 3 attempts: {last_err}")
+        raise RuntimeError(f"chunk {i} failed after {max_attempts} attempts: {last_err}")
 
     # Cap at 8 threads — beyond that, the network bottleneck dominates and
     # extra threads only add context-switch overhead + memory pressure.
@@ -1035,8 +1061,8 @@ def download_video_for_clips(
 
     print(f"   📐 Descargando 0s–{effective_end:.0f}s ({ratio * 100:.0f}% del video)")
 
-    vid_total = _get_stream_content_length(video_url, label="video")
-    aud_total = _get_stream_content_length(audio_url, label="audio")
+    vid_total, vid_proxy, vid_via = _probe_stream_info(video_url, label="video")
+    aud_total, aud_proxy, aud_via = _probe_stream_info(audio_url, label="audio")
 
     if vid_total <= 0 or aud_total <= 0:
         raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
@@ -1058,11 +1084,11 @@ def download_video_for_clips(
     with ThreadPoolExecutor(max_workers=2) as ex:
         fv = ex.submit(
             _parallel_download, video_url, vid_path, 8, "video",
-            vid_end_byte, vid_total,
+            vid_end_byte, vid_total, vid_proxy, vid_via,
         )
         fa = ex.submit(
             _parallel_download, audio_url, aud_path, audio_chunks, "audio",
-            aud_end_byte, aud_total,
+            aud_end_byte, aud_total, aud_proxy, aud_via,
         )
         fv.result()
         fa.result()
@@ -1375,20 +1401,36 @@ def get_stream_urls(video_url: str, video_id: str = None, *, force_rapidapi: boo
     """
     Obtiene URLs de stream de video+audio sin descargar el archivo completo.
 
-    En producción con RAPIDAPI_KEY usa RapidAPI directo (evita DRM de yt-dlp).
-    Forzar RapidAPI con USE_RAPIDAPI_DOWNLOAD=true o force_rapidapi=True.
+    Con proxies residenciales: yt-dlp primero (misma IP resuelve+descarga).
+    RapidAPI como fallback cuando yt-dlp falla o force_rapidapi=True.
 
     Retorna {"video_url": str, "audio_url": str, "video_id": str}.
     """
     env = os.getenv("ENVIRONMENT", "development").lower()
     rapidapi_key = os.getenv("RAPIDAPI_KEY")
+    has_proxies = bool(_get_proxy_list())
     use_rapidapi_first = (
         force_rapidapi
-        or os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes")
-        or (env in ("production", "prod") and bool(rapidapi_key))
+        or (
+            not has_proxies
+            and (
+                os.getenv("USE_RAPIDAPI_DOWNLOAD", "").lower() in ("1", "true", "yes")
+                or (env in ("production", "prod") and bool(rapidapi_key))
+            )
+        )
     )
 
-    if use_rapidapi_first:
+    if not force_rapidapi and has_proxies:
+        try:
+            print("ℹ️ Resolviendo stream URLs vía yt-dlp + proxy (misma IP para descarga)")
+            return _get_stream_urls_ytdlp(video_url, video_id)
+        except Exception as e:
+            if is_ytdlp_drm_error(e):
+                print(f"⚠️ yt-dlp stream URLs bloqueado (DRM/PO Token) — fallback RapidAPI")
+            else:
+                print(f"⚠️ yt-dlp stream URLs falló ({type(e).__name__}: {str(e)[:120]}) — fallback RapidAPI")
+
+    if use_rapidapi_first or force_rapidapi:
         if not rapidapi_key:
             raise RuntimeError(
                 "RAPIDAPI_KEY no configurada — requerida en producción para bypass DRM"
