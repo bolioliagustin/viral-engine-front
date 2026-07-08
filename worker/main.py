@@ -170,15 +170,29 @@ def _resolve_video_duration(video_info: dict, transcript: dict, viral_moments) -
     return 7200.0
 
 
+def _has_proxies() -> bool:
+    """True si hay proxies residenciales configurados (Webshare)."""
+    from services.downloader import _get_proxy_list
+    return len(_get_proxy_list()) > 0
+
+
 def _should_try_full_ytdlp_download(video_duration: float) -> bool:
-    """En VPS con RapidAPI o videos largos, saltar yt-dlp full (OOM/bandwidth)."""
-    if _prefer_rapidapi_download():
-        return False
+    """yt-dlp full primero cuando hay proxy residencial (misma IP resuelve+descarga).
+
+    Las URLs de googlevideo están atadas a la IP que las resolvió. RapidAPI
+    las resuelve con SU IP → descargar desde el worker/proxy da 403. yt-dlp
+    vía proxy residencial resuelve Y descarga por la misma IP, así que es el
+    camino fiable en producción. RapidAPI queda como fallback.
+    """
     if video_duration > FULL_YTDLP_MAX_DURATION_SEC:
         print(
             f"ℹ️ Video >{FULL_YTDLP_MAX_DURATION_SEC // 60}min "
             f"({video_duration:.0f}s) — omitiendo yt-dlp full, usando partial download"
         )
+        return False
+    if _has_proxies():
+        return True
+    if _prefer_rapidapi_download():
         return False
     return True
 
@@ -193,21 +207,33 @@ def _prefer_rapidapi_download() -> bool:
 
 
 def _should_use_ytdlp_for_clips() -> bool:
-    """yt-dlp per-clip está roto en DRM — nunca en prod ni si hay RapidAPI."""
+    """yt-dlp per-clip: fiable con proxy residencial (misma IP resuelve+descarga)."""
+    if os.getenv("YTDLP_CLIP_FALLBACK", "").lower() in ("1", "true", "yes"):
+        return True
+    if _has_proxies():
+        return True
     if _prefer_rapidapi_download():
         return False
     return True
 
 
 def _log_download_config() -> None:
+    from services.downloader import _get_proxy_list
     rapid = os.getenv("RAPIDAPI_KEY")
+    n_proxies = len(_get_proxy_list())
     print(
         f"🔧 Download config: ENV={os.getenv('ENVIRONMENT', 'development')} | "
         f"USE_RAPIDAPI={os.getenv('USE_RAPIDAPI_DOWNLOAD', 'false')} | "
         f"RAPIDAPI_KEY={'SET' if rapid else '❌ MISSING'} | "
+        f"proxies={n_proxies} | "
         f"prefer_rapidapi={_prefer_rapidapi_download()} | "
         f"yt_dlp_clips={_should_use_ytdlp_for_clips()}"
     )
+    if _prefer_rapidapi_download() and n_proxies == 0:
+        print(
+            "⚠️ Sin proxies residenciales — descargas googlevideo desde datacenter "
+            "suelen fallar con 403. Configura WEBSHARE_PROXY_FILE en Render."
+        )
 
 
 def process_job(job_data: dict) -> None:
@@ -365,9 +391,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # Flag para que si la partial falla en el upfront, no la reintentamos
         # per-clip (cada intento puede comer hasta 8 min del watchdog).
         partial_download_failed = False
-        ytdlp_blocked = _prefer_rapidapi_download()  # prod: nunca yt-dlp
+        # yt-dlp solo queda bloqueado si no hay proxy residencial para el bypass
+        ytdlp_blocked = _prefer_rapidapi_download() and not _has_proxies()
 
-        # ── PRIMARY: yt-dlp full download (solo videos cortos, sin USE_RAPIDAPI) ─
+        # ── PRIMARY: yt-dlp full download (videos ≤1h; en prod requiere proxy) ─
         if _should_try_full_ytdlp_download(video_duration):
             try:
                 print("🎬 Intentando descarga full vía yt-dlp (audio+video merged)...")
@@ -447,6 +474,8 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # save_content_result() is only for actual content pieces (twitter, tiktok, etc.)
 
         
+        clips_rendered_count = 0
+
         # Process each viral moment
         for i, moment in enumerate(result.viral_moments):
             check_timeout()
@@ -963,6 +992,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     if clip_url:
                         print(f"✅ Clip subido: {clip_url[:70]}...")
                         clip_rendered_ok = True
+                        clips_rendered_count += 1
                         if clip_words or clip_segments_whisper:
                             whisper_words_cache = {
                                 "words": clip_words or [],
@@ -1184,8 +1214,16 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # Update status to completed
         update_job_progress(job_id, current_step="completed", progress_percentage=100)
         update_job_status(job_id, "completed")
-        print(f"\n✅ Job {job_id} completed successfully!")
-        print(f"   Generated content for {len(result.viral_moments)} viral moments")
+        total_moments = len(result.viral_moments)
+        if clips_rendered_count == 0:
+            print(f"\n⚠️ Job {job_id} completado SIN clips MP4 ({total_moments} momentos → fallback YouTube)")
+            print(
+                "   Descarga falló (403 googlevideo). Revisa en Render: "
+                "WEBSHARE_PROXY_FILE, RAPIDAPI_KEY, o activa YTDLP_CLIP_FALLBACK=true"
+            )
+        else:
+            print(f"\n✅ Job {job_id} completed successfully!")
+            print(f"   {clips_rendered_count}/{total_moments} clips MP4 + content for {total_moments} moments")
         # Deduct credits (Sprint 3)
         user_id = job_data.get("userId")
         if user_id and supabase:

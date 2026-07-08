@@ -166,10 +166,28 @@ class TestResolveVideoDuration:
 class TestDownloadStrategy:
     """Tests for yt-dlp full vs partial download gating."""
 
-    @patch.dict(os.environ, {"USE_RAPIDAPI_DOWNLOAD": "true"}, clear=False)
-    def test_skips_full_when_rapidapi_forced(self):
+    @patch.dict(os.environ, {"USE_RAPIDAPI_DOWNLOAD": "true"}, clear=True)
+    def test_skips_full_when_rapidapi_forced_without_proxies(self):
         from main import _should_try_full_ytdlp_download
         assert _should_try_full_ytdlp_download(600) is False
+
+    @patch.dict(os.environ, {
+        "USE_RAPIDAPI_DOWNLOAD": "true",
+        "WEBSHARE_PROXY_URL": "http://user:pass@1.2.3.4:6754",
+    }, clear=True)
+    def test_allows_full_in_production_with_proxies(self):
+        # Con proxy residencial, yt-dlp resuelve+descarga por la misma IP:
+        # es el camino fiable incluso cuando RapidAPI está habilitado.
+        from main import _should_try_full_ytdlp_download
+        assert _should_try_full_ytdlp_download(600) is True
+
+    @patch.dict(os.environ, {
+        "USE_RAPIDAPI_DOWNLOAD": "true",
+        "WEBSHARE_PROXY_URL": "http://user:pass@1.2.3.4:6754",
+    }, clear=True)
+    def test_skips_full_for_long_videos_even_with_proxies(self):
+        from main import _should_try_full_ytdlp_download
+        assert _should_try_full_ytdlp_download(4000) is False
 
     @patch.dict(os.environ, {}, clear=True)
     def test_skips_full_for_long_videos(self):
@@ -273,19 +291,46 @@ class TestRapidApiPreference:
     @patch.dict(os.environ, {
         "ENVIRONMENT": "production",
         "RAPIDAPI_KEY": "test-key",
-    }, clear=False)
-    def test_production_skips_ytdlp_clips(self):
+    }, clear=True)
+    def test_production_skips_ytdlp_clips_without_proxies(self):
         from main import _should_use_ytdlp_for_clips, _prefer_rapidapi_download
         assert _prefer_rapidapi_download() is True
         assert _should_use_ytdlp_for_clips() is False
+
+    @patch.dict(os.environ, {
+        "ENVIRONMENT": "production",
+        "RAPIDAPI_KEY": "test-key",
+        "WEBSHARE_PROXY_URL": "http://user:pass@1.2.3.4:6754",
+    }, clear=True)
+    def test_production_allows_ytdlp_clips_with_proxies(self):
+        from main import _should_use_ytdlp_for_clips
+        assert _should_use_ytdlp_for_clips() is True
 
     @patch.dict(os.environ, {}, clear=True)
     def test_dev_allows_ytdlp_clips_without_rapidapi(self):
         from main import _should_use_ytdlp_for_clips
         assert _should_use_ytdlp_for_clips() is True
 
+    @patch.dict(os.environ, {
+        "ENVIRONMENT": "production",
+        "RAPIDAPI_KEY": "test-key",
+        "YTDLP_CLIP_FALLBACK": "true",
+    }, clear=True)
+    def test_ytdlp_clip_fallback_in_production(self):
+        from main import _should_use_ytdlp_for_clips
+        assert _should_use_ytdlp_for_clips() is True
 
-class TestStructuredLogging:
+
+class TestStreamProbe:
+    """Tests for googlevideo Content-Length probing."""
+
+    def test_parse_content_range(self):
+        from services.downloader import _parse_content_range
+        assert _parse_content_range("bytes 0-0/12345678") == 12345678
+        assert _parse_content_range("bytes 0-999/5000") == 5000
+        assert _parse_content_range(None) is None
+        assert _parse_content_range("invalid") is None
+
     """Tests for S6 logging configuration."""
 
     def test_logger_creation(self):

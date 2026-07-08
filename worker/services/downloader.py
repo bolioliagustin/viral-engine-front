@@ -297,6 +297,93 @@ _GOOGLEVIDEO_HEADERS = {
     "Accept-Encoding": "identity",
 }
 
+_YT_MEDIA_HEADERS = {
+    **_GOOGLEVIDEO_HEADERS,
+    "Sec-Fetch-Mode": "no-cors",
+    "Sec-Fetch-Site": "cross-site",
+    "Sec-Fetch-Dest": "video",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def _parse_content_range(header: str | None) -> int | None:
+    """Parse Content-Range: bytes 0-0/12345 → 12345."""
+    if not header:
+        return None
+    m = re.search(r"/(\d+)\s*$", header.strip())
+    return int(m.group(1)) if m else None
+
+
+def _probe_stream_size(url: str, label: str = "stream") -> int:
+    """
+    Obtiene Content-Length probando HEAD y GET bytes=0-0 con varias estrategias.
+
+    googlevideo bloquea HEAD desde datacenters (403) pero a menudo responde a
+    GET con headers de browser o Content-Range en un probe de 1 byte.
+    """
+    proxies = _get_proxy_list()
+    strategies: list[tuple[str, str | None, bool]] = [
+        ("direct-yt", None, True),
+        ("direct", None, False),
+    ]
+    for i, p in enumerate(proxies):
+        name = f"proxy[{i + 1}/{len(proxies)}]" if len(proxies) > 1 else "proxy"
+        strategies.append((name, p, True))
+
+    plain_headers = {
+        "User-Agent": _DEFAULT_UA,
+        "Accept-Encoding": "identity",
+    }
+    last_err: Exception | None = None
+    errors: list[str] = []
+
+    for name, proxy_url, use_yt_headers in strategies:
+        try:
+            if proxy_url:
+                opener = build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
+                _open = lambda r, t=30: opener.open(r, timeout=t)
+            else:
+                _open = lambda r, t=30: urlopen(r, timeout=t)
+
+            base_hdrs = _YT_MEDIA_HEADERS if use_yt_headers else plain_headers
+
+            try:
+                with _open(Request(url, method="HEAD", headers=dict(base_hdrs)), 30) as resp:
+                    size = int(resp.headers.get("Content-Length", 0))
+                if size > 0:
+                    if name != "direct-yt":
+                        print(f"   📦 {label} size via {name} (HEAD): {size // (1 << 20)}MB")
+                    return size
+            except Exception as head_err:
+                last_err = head_err
+
+            get_hdrs = {**base_hdrs, "Range": "bytes=0-0"}
+            with _open(Request(url, headers=get_hdrs), 30) as resp:
+                size = _parse_content_range(resp.headers.get("Content-Range"))
+                if not size:
+                    size = int(resp.headers.get("Content-Length", 0))
+            if size > 0:
+                print(f"   📦 {label} size via {name} (GET probe): {size // (1 << 20)}MB")
+                return size
+            raise RuntimeError("Content-Length inválido o no informado")
+        except Exception as e:
+            last_err = e
+            errors.append(f"{name}: {str(e)[:40]}")
+            if name == "direct-yt" and proxies:
+                print(f"   ⚠️ {label}: probe direct falló ({str(e)[:50]}), probando proxies...")
+            continue
+
+    proxy_info = (
+        f"{len(proxies)} proxies configurados"
+        if proxies
+        else "sin proxies — configura WEBSHARE_PROXY_FILE o WEBSHARE_PROXY_URL"
+    )
+    raise RuntimeError(
+        f"No se pudo obtener tamaño de {label}: {last_err} "
+        f"({proxy_info}; intentos: {', '.join(errors[:4])}"
+        f"{'...' if len(errors) > 4 else ''})"
+    )
+
 
 def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "",
                         end_byte: int = None, known_total: int | None = None) -> None:
@@ -332,25 +419,8 @@ def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str
         return urlopen(req, timeout=timeout)
 
     total = known_total or 0
-    last_head_err: Exception | None = None
     if total <= 0:
-        head_headers = {**_GOOGLEVIDEO_HEADERS}
-        req = Request(url, method="HEAD", headers=head_headers)
-        head_openers = [None] + [_make_opener(p) for p in proxies] if n_proxies > 0 else [None]
-        for hi, head_opener in enumerate(head_openers):
-            try:
-                with _open_with(head_opener, req, 30) as r:
-                    total = int(r.headers.get("Content-Length", 0))
-                if hi == 0 and n_proxies > 0:
-                    print(f"   ✅ {label}: HEAD OK vía directo")
-                break
-            except Exception as e:
-                last_head_err = e
-                if hi == 0 and n_proxies > 0:
-                    print(f"   ⚠️ {label}: HEAD direct falló ({str(e)[:50]}), probando proxies...")
-                continue
-    if total <= 0:
-        raise RuntimeError(f"{label}: no se pudo determinar Content-Length ({last_head_err})")
+        total = _probe_stream_size(url, label=label or "stream")
 
     if n_proxies > 0:
         print(f"   🌐 {label}: pool de {n_proxies} proxies (+ directo) disponibles")
@@ -896,39 +966,8 @@ def download_clip_ytdlp(
 
 
 def _get_stream_content_length(url: str, label: str = "stream") -> int:
-    """
-    Obtiene Content-Length de una URL de googlevideo probando directo y
-    cada proxy configurado (mismo patrón que _download_with_progress).
-    """
-    proxies = _get_proxy_list()
-    strategies: list[tuple[str, object]] = [("direct", urlopen)]
-    for i, p in enumerate(proxies):
-        opener = build_opener(ProxyHandler({"http": p, "https": p}))
-        name = f"proxy[{i + 1}/{len(proxies)}]" if len(proxies) > 1 else "proxy"
-        strategies.append((name, opener.open))
-
-    head_headers = {
-        "User-Agent": _DEFAULT_UA,
-        "Referer": "https://www.youtube.com/",
-        "Origin": "https://www.youtube.com",
-    }
-    last_err: Exception | None = None
-    for name, open_fn in strategies:
-        try:
-            req = Request(url, method="HEAD", headers=head_headers)
-            with open_fn(req, timeout=30) as resp:
-                size = int(resp.headers.get("Content-Length", 0))
-            if size > 0:
-                if name != "direct":
-                    print(f"   📦 {label} size via {name}: {size // (1 << 20)}MB")
-                return size
-            raise RuntimeError("Content-Length inválido o no informado")
-        except Exception as e:
-            last_err = e
-            if name == "direct" and proxies:
-                print(f"   ⚠️ {label} HEAD direct falló ({str(e)[:60]}), probando proxies...")
-            continue
-    raise RuntimeError(f"No se pudo obtener tamaño de {label}: {last_err}")
+    """Obtiene Content-Length de googlevideo (HEAD + GET probe + proxies)."""
+    return _probe_stream_size(url, label=label)
 
 
 def extract_segment_copy(
@@ -1069,9 +1108,7 @@ def download_clip_segment(
         _open = lambda r, t=30: urlopen(r, timeout=t)
 
     def _get_size(url: str) -> int:
-        req = Request(url, method="HEAD", headers={"User-Agent": _DEFAULT_UA})
-        with _open(req, 30) as r:
-            return int(r.headers.get("Content-Length", 0))
+        return _probe_stream_size(url, label="stream-seg")
 
     def _byte_range(size: int, t_start: float, t_end: float) -> tuple[int, int]:
         """Convierte rango de tiempo a rango de bytes (heurístico CBR)."""
