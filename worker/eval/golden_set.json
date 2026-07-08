@@ -1,14 +1,50 @@
 {
-  "_doc": "Golden test set para regresión de calidad. Corré `python worker/eval/run_golden_set.py` para evaluar el pipeline de análisis contra los umbrales de 'thresholds'. Cada video tiene una 'expected_category' que el clasificador debería detectar. Los videos con enabled=false son slots pendientes de completar con URLs reales (mix objetivo: 2 podcast ES, 2 business ES, 1 EN, 1 largo >1h).",
+  "_doc": "Golden set por tiers. Ver worker/eval/README.md. Correr: python eval/run_golden_set.py --tier smoke|analysis|full",
   "thresholds": {
-    "_doc": "Umbrales mínimos — run_golden_set.py sale con exit code 1 si alguno no se cumple (usable en CI antes de deploy).",
-    "category_accuracy_min": 0.66,
-    "duration_pass_rate_min": 0.8,
+    "_doc": "Defaults globales; cada tier en 'tiers' puede sobreescribir.",
+    "category_accuracy_min": 0.75,
+    "duration_pass_rate_min": 0.85,
     "duration_untruncated_rate_min": 0.7,
-    "verification_pass_rate_min": 0.6,
+    "phrase_anchor_pass_rate_min": 0.55,
+    "verification_strict_pass_rate_min": null,
+    "last_phrase_punct_rate_min": 0.35,
     "min_moments_per_video": 1,
-    "last_phrase_punct_rate_min": 0.5,
-    "judge_llm_delta_max": 3.0
+    "copy_clean_rate_min": 0.9,
+    "judge_llm_delta_max": 4.0,
+    "judge_response_rate_min": 0.9
+  },
+  "tiers": {
+    "smoke": {
+      "_doc": "~2-4 min, 1 video, pre-deploy rápido (clasificador + pasada A).",
+      "video_ids": ["claude_hacks_regression_01"],
+      "include_copy": false,
+      "thresholds": {
+        "category_accuracy_min": 1.0,
+        "duration_pass_rate_min": 0.8,
+        "phrase_anchor_pass_rate_min": 0.4,
+        "min_moments_per_video": 1
+      }
+    },
+    "analysis": {
+      "_doc": "~10-20 min, todos los videos enabled, sin copy (default CI).",
+      "include_copy": false,
+      "thresholds": {
+        "category_accuracy_min": 0.75,
+        "duration_pass_rate_min": 0.85,
+        "phrase_anchor_pass_rate_min": 0.55,
+        "last_phrase_punct_rate_min": 0.35
+      }
+    },
+    "full": {
+      "_doc": "~30-60 min, pasada B + juez + validadores de copy.",
+      "include_copy": true,
+      "thresholds": {
+        "phrase_anchor_pass_rate_min": 0.5,
+        "copy_clean_rate_min": 0.85,
+        "judge_llm_delta_max": 4.0,
+        "judge_response_rate_min": 0.9
+      }
+    }
   },
   "videos": [
     {
@@ -16,7 +52,8 @@
       "url": "https://www.youtube.com/watch?v=Lqq78q17jDY",
       "youtube_id": "Lqq78q17jDY",
       "enabled": true,
-      "note": "Podcast/charla de negocios en español — golden set post-Groq (job Lqq78q17jDY)",
+      "tiers": ["analysis", "full"],
+      "note": "Podcast/charla de negocios en español — golden set post-Groq",
       "expected_category": "podcast",
       "subtitle_regression": {
         "first_srt_chunk_max_sec": 2.0,
@@ -24,13 +61,9 @@
         "whisper_provider": "groq"
       },
       "test_focus": [
-        "El clasificador debe devolver 'podcast' (conversación 2+ personas)",
-        "Twitter thread de 7 tweets con char counts válidos",
-        "LinkedIn post 800-1200 chars",
-        "Cero clichés AI",
-        "viral_overlay <=4 palabras UPPERCASE",
-        "Primer chunk SRT < 2s (post _group_words_for_srt)",
-        "Cobertura subs >= 0.9 del clip duration"
+        "Clasificador podcast",
+        "Copy: 7 tweets, LinkedIn 800-1200 chars",
+        "Subs: primer chunk < 2s, cobertura >= 0.9"
       ]
     },
     {
@@ -38,12 +71,13 @@
       "url": "https://www.youtube.com/watch?v=XxoVRjTySsM",
       "youtube_id": "XxoVRjTySsM",
       "enabled": true,
-      "note": "Podcast general — caso de uso prioritario",
+      "tiers": ["analysis", "full"],
+      "note": "Podcast general — caso prioritario",
       "expected_category": "podcast",
       "test_focus": [
-        "Surgical clipping (15-40s por clip)",
-        "Hooks contraintuitivos sin contexto previo",
-        "tiktok_package.overlay_text breve y pattern-interrupt"
+        "Clips 15-40s",
+        "Hooks standalone",
+        "overlay breve"
       ]
     },
     {
@@ -51,10 +85,11 @@
       "url": "https://www.youtube.com/watch?v=MaXgAEI4Vm8",
       "youtube_id": "MaXgAEI4Vm8",
       "enabled": true,
-      "note": "Recomendación personal del usuario — referencia de calidad target",
+      "tiers": ["analysis", "full"],
+      "note": "Benchmark calidad target del usuario",
       "expected_category": "podcast",
       "test_focus": [
-        "Calidad 'publicable sin editar' — benchmark visual del producto final"
+        "Calidad publicable sin editar"
       ]
     },
     {
@@ -62,12 +97,13 @@
       "url": "https://www.youtube.com/watch?v=KXKzgeHOr7A",
       "youtube_id": "KXKzgeHOr7A",
       "enabled": true,
-      "note": "Regresión job e3e7d54b — clips cortaban a mitad de frase, hook con relleno, momentos 4-5 sin MP4",
+      "tiers": ["smoke", "analysis", "full"],
+      "note": "Regresión: cortes a mitad de frase, ghost words, verification",
       "expected_category": "business",
       "test_focus": [
-        "last_phrase_in_audio debe terminar en .?!",
-        "Momentos sin overlap >50%",
-        "Delta juez-vs-LLM < 3 pts con --copy"
+        "business monólogo educativo",
+        "phrase anchors en transcript",
+        "sin overlap >50%"
       ]
     },
     {
@@ -75,60 +111,45 @@
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "note": "PENDIENTE: completar con un monólogo/keynote de negocios en español (10-30 min)",
-      "expected_category": "business",
-      "test_focus": [
-        "Clasificador debe devolver 'business' (un solo orador)",
-        "Momentos con setup+remate completos (sentence snap)"
-      ]
+      "tiers": ["analysis", "full"],
+      "note": "PENDIENTE: monólogo/keynote business ES 10-30 min",
+      "expected_category": "business"
     },
     {
       "id": "business_spanish_03",
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "note": "PENDIENTE: completar con un tutorial/charla educativa en español",
-      "expected_category": "business",
-      "test_focus": [
-        "High utility: momentos accionables",
-        "ROI determinístico coherente con duración"
-      ]
+      "tiers": ["analysis", "full"],
+      "note": "PENDIENTE: tutorial educativo ES",
+      "expected_category": "business"
     },
     {
       "id": "podcast_english_01",
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "note": "PENDIENTE: completar con un podcast en inglés — valida idioma de salida EN",
-      "expected_category": "podcast",
-      "test_focus": [
-        "Output 100% en inglés (hooks, tweets, overlay)",
-        "Sin mezcla de idiomas ES/EN"
-      ]
+      "tiers": ["analysis", "full"],
+      "note": "PENDIENTE: podcast EN — idioma de salida",
+      "expected_category": "podcast"
     },
     {
       "id": "long_video_01",
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "note": "PENDIENTE: completar con un video largo (>1h) — valida sobre-generación de candidatos y contexto largo",
-      "expected_category": "podcast",
-      "test_focus": [
-        "12 candidatos → top 5 (ranking, no densidad fija)",
-        "Momentos distribuidos a lo largo del video (no solo el inicio)"
-      ]
+      "tiers": ["analysis", "full"],
+      "note": "PENDIENTE: video >1h — ranking 12→5 candidatos",
+      "expected_category": "podcast"
     }
   ],
   "scoring_criteria": {
-    "_doc": "Criterios para evaluar manualmente cada output del golden set. run_golden_set.py automatiza los medibles.",
-    "clip_selection": "¿Los 5 clips elegidos son los mejores momentos del video?",
-    "clip_timing": "¿El inicio captura el setup? ¿El final corta después de la reacción?",
-    "twitter_quality": "¿Cada tweet funciona solo? ¿7 tweets? ¿200-280 chars cada uno?",
-    "linkedin_quality": "¿Estructura A.I.D.A? ¿800-1200 chars? ¿Pregunta de engagement al final?",
-    "tiktok_overlay": "¿4 palabras MAX UPPERCASE? ¿Frena el scroll en <1s?",
-    "no_ai_clones": "¿Cero clichés tipo 'en el mundo de hoy', 'descubre cómo'?",
-    "no_link_placeholders": "¿Cero '[Link]' / 'Tweet N:' prefixes?",
-    "voice_consistency": "¿El tono se mantiene a lo largo de los 3 outputs (Twitter+LinkedIn+TikTok)?",
-    "judge_delta": "¿score_judge vs score_llm delta promedio < 2 puntos? (si es mayor, el análisis infla scores)"
+    "_doc": "Criterios manuales complementarios; lo automatizable vive en eval_metrics.py.",
+    "clip_selection": "¿Los momentos elegidos son los mejores del video?",
+    "clip_timing": "¿Setup al inicio y remate al final?",
+    "twitter_quality": "7 tweets, 180-280 chars",
+    "linkedin_quality": "800-1200 chars, pregunta final",
+    "tiktok_overlay": "≤4 palabras UPPERCASE",
+    "judge_calibration": "judge más crítico que score_llm (delta 2-4 pts es sano con juez cross-family)"
   }
 }

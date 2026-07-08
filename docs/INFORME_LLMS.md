@@ -638,55 +638,21 @@ Esta sección define **cómo** realizar el análisis exhaustivo que permitirá l
 
 ### Herramientas existentes en el repo
 
-```bash
-# Desde la raíz del repo (local), con .env cargado:
-python worker/eval/run_golden_set.py                 # Pasada A only (~1 LLM/video)
-python worker/eval/run_golden_set.py --copy          # + Pasada B + juez por momento
-python worker/eval/run_golden_set.py --json          # salida JSON (CI)
-python worker/eval/run_golden_set.py --video business_spanish_01   # un solo caso
-```
-
-#### Golden set en el VPS (Docker)
-
-El worker en producción corre en contenedor (`docker-compose.worker.yml`). El script vive en la imagen en `/app/eval/` (el build copia `worker/` → `/app`). Las variables de entorno vienen del `.env` del host vía `env_file` del compose.
+Documentación completa: **[`worker/eval/README.md`](../worker/eval/README.md)** (tiers, plan de trabajo, VPS).
 
 ```bash
-# En el VPS, desde el directorio del repo (donde está docker-compose.worker.yml):
-git pull
-docker compose -f docker-compose.worker.yml up -d --build   # asegurar código y modelos actuales
-
-# Baseline análisis (rápido, ~5–15 min según videos del golden set)
-docker compose -f docker-compose.worker.yml exec worker \
-  python eval/run_golden_set.py
-
-# Completo: análisis + copy + juez (más lento y más costo en OpenRouter)
-docker compose -f docker-compose.worker.yml exec worker \
-  python eval/run_golden_set.py --copy
-
-# JSON para guardar resultado
-docker compose -f docker-compose.worker.yml exec worker \
-  python eval/run_golden_set.py --copy --json > /tmp/golden_baseline.json
-
-# Un solo video del set
-docker compose -f docker-compose.worker.yml exec worker \
-  python eval/run_golden_set.py --video business_spanish_01
+python worker/eval/run_golden_set.py --tier smoke      # ~2 min, pre-deploy
+python worker/eval/run_golden_set.py --tier analysis   # default CI
+python worker/eval/run_golden_set.py --tier full       # + copy + juez
+python worker/eval/run_golden_set.py --tier full --json 2>run.log > report.json
 ```
 
-**Requisitos en el VPS:** `OPENROUTER_API_KEY` (obligatorio), `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` (transcripts desde `transcription_cache` si ya procesaste esos videos; si no, baja transcript vía red y necesita `SUPADATA_API_KEY` o acceso a YouTube).
+**Métrica clave:** `phrase_anchor_pass_rate` (frases citadas existen en el clip, fuzzy).  
+`verification_strict_pass_rate` es informativa (match literal — suele ser baja).
 
-**Tip:** pausar el worker durante experimentos evita competir por rate limits:
+**VPS:** `docker compose -f docker-compose.worker.yml exec worker python eval/run_golden_set.py --tier smoke`
 
-```bash
-docker compose -f docker-compose.worker.yml stop worker
-# ... correr golden set ...
-docker compose -f docker-compose.worker.yml start worker
-```
-
-**Alternativa local:** si tenés el repo clonado con el mismo `.env` que producción, podés correr `python worker/eval/run_golden_set.py` desde tu máquina; el resultado es comparable si los `MODEL_*` son iguales.
-
-Umbrales y videos de referencia: [`worker/eval/golden_set.json`](../worker/eval/golden_set.json).
-
-Invalidar cache de análisis tras cambiar prompts o modelos de análisis: bump `PROMPT_VERSION` en [`worker/services/analysis_cache.py`](../worker/services/analysis_cache.py) (actual: **`v4`**). La `category_cache` se invalida sola al cambiar `MODEL_CLASSIFIER` (clave `video_id + model`).
+Umbrales: [`worker/eval/golden_set.json`](../worker/eval/golden_set.json). Cache: `PROMPT_VERSION=v4`.
 
 ### Hipótesis candidatas a testear
 

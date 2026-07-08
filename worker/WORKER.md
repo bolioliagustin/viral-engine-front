@@ -371,9 +371,12 @@ legacy y su copy queda como borrador que la pasada B pisa.
 
 ```bash
 python worker/eval/run_golden_set.py           # análisis-only
-python worker/eval/run_golden_set.py --copy    # + pasada B + juez
+python worker/eval/run_golden_set.py --tier full   # + pasada B + juez
+python worker/eval/run_golden_set.py --tier smoke  # pre-deploy (~1 video)
 python worker/eval/run_golden_set.py --json    # output para CI
 ```
+
+Ver **`worker/eval/README.md`** para tiers, plan de trabajo y comandos VPS.
 
 Corre el golden set (`worker/eval/golden_set.json`) y sale con exit code 1 si
 alguna métrica queda bajo los `thresholds` — usable antes de deploy.

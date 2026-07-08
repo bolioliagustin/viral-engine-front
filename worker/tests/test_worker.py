@@ -948,17 +948,45 @@ class TestScorer:
 
 
 class TestGoldenSetEval:
-    """Fase 6: golden set con thresholds y videos habilitados."""
+    """Fase 6: golden set con tiers y métricas."""
 
-    def test_golden_set_has_thresholds(self):
+    def test_golden_set_has_tiers_and_thresholds(self):
         golden_path = Path(__file__).parent.parent / "eval" / "golden_set.json"
         data = json.loads(golden_path.read_text(encoding="utf-8"))
-        thresholds = data["thresholds"]
+        assert "tiers" in data
+        assert "smoke" in data["tiers"]
+        assert "analysis" in data["tiers"]
+        assert "full" in data["tiers"]
+        thresholds = data["tiers"]["analysis"]["thresholds"]
         assert 0 < thresholds["duration_pass_rate_min"] <= 1
-        assert 0 < thresholds["verification_pass_rate_min"] <= 1
-        assert thresholds.get("judge_llm_delta_max", 0) > 0
+        assert 0 < thresholds["phrase_anchor_pass_rate_min"] <= 1
+        assert data["tiers"]["full"]["thresholds"]["judge_llm_delta_max"] > 0
         enabled = [v for v in data["videos"] if v.get("enabled", True)]
         assert len(enabled) >= 4
+        smoke_ids = data["tiers"]["smoke"]["video_ids"]
+        assert "claude_hacks_regression_01" in smoke_ids
+
+    def test_eval_metrics_smoke_tier_filter(self):
+        eval_dir = Path(__file__).parent.parent / "eval"
+        sys.path.insert(0, str(eval_dir))
+        from eval_metrics import filter_videos_for_tier, resolve_tier_config
+
+        golden_path = eval_dir / "golden_set.json"
+        data = json.loads(golden_path.read_text(encoding="utf-8"))
+        cfg = resolve_tier_config(data, "smoke")
+        videos = filter_videos_for_tier(data["videos"], "smoke", cfg.get("video_ids"))
+        assert len(videos) == 1
+        assert videos[0]["id"] == "claude_hacks_regression_01"
+
+    def test_phrase_anchor_in_clip(self):
+        from services.validation import phrase_anchor_in_clip
+
+        clip = "la diferencia entre claude y claude code es que uno piensa y el otro ejecuta"
+        assert phrase_anchor_in_clip(
+            "diferencia entre claude y claude code",
+            clip,
+        )
+        assert not phrase_anchor_in_clip("xyz foobar quantum", clip)
 
 
 class TestWorkerLogging:

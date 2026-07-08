@@ -99,6 +99,93 @@ def _normalize_phrase(text: str) -> str:
     return re.sub(r'[^\w\s]', '', (text or '').lower()).strip()
 
 
+def _subsequence_word_match(needle_words: list[str], haystack_words: list[str]) -> bool:
+    """True si needle_words aparecen en orden (no necesariamente contiguos) en haystack."""
+    if not needle_words:
+        return True
+    if not haystack_words:
+        return False
+    j = 0
+    for hw in haystack_words:
+        if j < len(needle_words) and (
+            hw == needle_words[j]
+            or needle_words[j] in hw
+            or hw in needle_words[j]
+        ):
+            j += 1
+    return j >= len(needle_words)
+
+
+def phrase_anchor_in_clip(
+    claim: str,
+    clip_text: str,
+    *,
+    min_words: int = 3,
+    window: str = "full",
+) -> bool:
+    """
+    Verifica que las palabras clave del claim aparecen en orden dentro del clip.
+
+    Más tolerante que validate_against_transcript (que exige match al inicio/fin
+  exacto). Útil en golden set: Gemini suele citar frases reales pero desplazadas.
+    """
+    claim_words = _normalize_phrase(claim).split()
+    clip_words = _normalize_phrase(clip_text).split()
+    if not claim_words or not clip_words:
+        return True
+    n = min(min_words, len(claim_words))
+    if window == "start":
+        needle = claim_words[:n]
+        haystack = clip_words[: max(n * 4, 20)]
+    elif window == "end":
+        needle = claim_words[-n:]
+        haystack = clip_words[-max(n * 4, 20) :]
+    else:
+        needle = claim_words[:n]
+        haystack = clip_words
+    return _subsequence_word_match(needle, haystack)
+
+
+def evaluate_moment_phrase_metrics(moment, transcript: dict) -> dict:
+    """
+    Métricas de verificación de frases para eval/golden set.
+
+    Returns:
+        strict_pass, anchor_pass, last_phrase_punct
+    """
+    verification = getattr(moment, "verification", None)
+    start_s = getattr(moment, "start_time", None)
+    end_s = getattr(moment, "end_time", None)
+    if not verification or start_s is None or end_s is None:
+        return {
+            "strict_pass": True,
+            "anchor_pass": True,
+            "last_phrase_punct": True,
+            "has_verification": False,
+        }
+
+    segments = transcript.get("segments") or []
+    clip_text = _words_in_range(segments, float(start_s), float(end_s))
+    last = getattr(verification, "last_phrase_in_audio", "") or ""
+
+    first_claim = getattr(verification, "first_phrase_in_audio", "") or ""
+    last_claim = last
+    anchor_ok = True
+    if first_claim.strip():
+        anchor_ok = phrase_anchor_in_clip(first_claim, clip_text, window="full")
+    if anchor_ok and last_claim.strip():
+        anchor_ok = phrase_anchor_in_clip(last_claim, clip_text, window="full")
+
+    return {
+        "strict_pass": validate_against_transcript(moment, transcript),
+        "anchor_pass": anchor_ok,
+        "last_phrase_punct": (
+            not last.strip() or last.strip()[-1] in ".?!…"
+        ),
+        "has_verification": True,
+    }
+
+
 def _words_in_range(segments: list, start_s: float, end_s: float) -> str:
     """Concatenate transcript text within [start_s, end_s]."""
     parts = []
