@@ -583,11 +583,11 @@ Cuando el copy se generaba en la misma pasada que la selección de momentos (meg
 ```mermaid
 sequenceDiagram
     participant T as Transcript
-    participant C as Classifier
-    participant A as Analysis_Pro
+    participant C as Classifier_2.5_flash_lite
+    participant A as Analysis_3.5_flash
     participant W as Whisper_Groq
-    participant B as Copy_Flash
-    participant J as Judge_Lite
+    participant B as Copy_3.5_flash
+    participant J as Judge_gpt5_nano
 
     T->>C: excerpt 1500 chars
     C-->>T: podcast o business
@@ -603,10 +603,11 @@ sequenceDiagram
     end
 ```
 
-| Pasada | Modelo tier | Responsabilidad |
-|--------|-------------|-----------------|
-| **A** | Pro (razonamiento) | Selección de momentos, timestamps, scores preliminares |
-| **B** | Flash (creatividad) | Copy desde audio real post-Whisper |
+| Pasada | Modelo tier (default jul 2026) | Responsabilidad |
+|--------|--------------------------------|-----------------|
+| **A** | Gemini 3.5 Flash (reasoning low) | Selección de momentos, timestamps, scores preliminares |
+| **B** | Gemini 3.5 Flash (reasoning minimal) | Copy desde audio real post-Whisper |
+| **Juez** | GPT-5.4 nano (reasoning none) | Scoring independiente cross-family |
 
 ### Implicación para optimización
 
@@ -631,36 +632,70 @@ Esta sección define **cómo** realizar el análisis exhaustivo que permitirá l
 |-----------|-------------|-------------|
 | **Calidad** | Output cumple criterios de la ficha | Golden set + métricas por tarea |
 | **Latencia** | Tiempo de respuesta y tiempo total del job | Logs del worker |
-| **Costo** | Tokens/minutos consumidos | Dashboard del proveedor (hoy no hay tracking en código) |
+| **Costo** | Tokens/minutos consumidos | `log_llm_usage()` en cada llamada chat (`LOG_LLM_USAGE`) |
 | **Estabilidad JSON** | Respuestas parseables sin repair | Tasa de fallos en producción |
 | **Idioma** | Calidad en español (prioritario) | Videos de prueba en ES |
 
 ### Herramientas existentes en el repo
 
 ```bash
-# Baseline: solo Pasada A (análisis)
-python worker/eval/run_golden_set.py
-
-# Completo: Pasada A + B + juez
-python worker/eval/run_golden_set.py --copy
-
-# Output JSON para CI
-python worker/eval/run_golden_set.py --json
+# Desde la raíz del repo (local), con .env cargado:
+python worker/eval/run_golden_set.py                 # Pasada A only (~1 LLM/video)
+python worker/eval/run_golden_set.py --copy          # + Pasada B + juez por momento
+python worker/eval/run_golden_set.py --json          # salida JSON (CI)
+python worker/eval/run_golden_set.py --video business_spanish_01   # un solo caso
 ```
+
+#### Golden set en el VPS (Docker)
+
+El worker en producción corre en contenedor (`docker-compose.worker.yml`). El script vive en la imagen en `/app/eval/` (el build copia `worker/` → `/app`). Las variables de entorno vienen del `.env` del host vía `env_file` del compose.
+
+```bash
+# En el VPS, desde el directorio del repo (donde está docker-compose.worker.yml):
+git pull
+docker compose -f docker-compose.worker.yml up -d --build   # asegurar código y modelos actuales
+
+# Baseline análisis (rápido, ~5–15 min según videos del golden set)
+docker compose -f docker-compose.worker.yml exec worker \
+  python eval/run_golden_set.py
+
+# Completo: análisis + copy + juez (más lento y más costo en OpenRouter)
+docker compose -f docker-compose.worker.yml exec worker \
+  python eval/run_golden_set.py --copy
+
+# JSON para guardar resultado
+docker compose -f docker-compose.worker.yml exec worker \
+  python eval/run_golden_set.py --copy --json > /tmp/golden_baseline.json
+
+# Un solo video del set
+docker compose -f docker-compose.worker.yml exec worker \
+  python eval/run_golden_set.py --video business_spanish_01
+```
+
+**Requisitos en el VPS:** `OPENROUTER_API_KEY` (obligatorio), `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` (transcripts desde `transcription_cache` si ya procesaste esos videos; si no, baja transcript vía red y necesita `SUPADATA_API_KEY` o acceso a YouTube).
+
+**Tip:** pausar el worker durante experimentos evita competir por rate limits:
+
+```bash
+docker compose -f docker-compose.worker.yml stop worker
+# ... correr golden set ...
+docker compose -f docker-compose.worker.yml start worker
+```
+
+**Alternativa local:** si tenés el repo clonado con el mismo `.env` que producción, podés correr `python worker/eval/run_golden_set.py` desde tu máquina; el resultado es comparable si los `MODEL_*` son iguales.
 
 Umbrales y videos de referencia: [`worker/eval/golden_set.json`](../worker/eval/golden_set.json).
 
-Invalidar cache de análisis tras cambiar prompts: bump `PROMPT_VERSION` en [`worker/services/analysis_cache.py`](../worker/services/analysis_cache.py) (actual: `v3`).
+Invalidar cache de análisis tras cambiar prompts o modelos de análisis: bump `PROMPT_VERSION` en [`worker/services/analysis_cache.py`](../worker/services/analysis_cache.py) (actual: **`v4`**). La `category_cache` se invalida sola al cambiar `MODEL_CLASSIFIER` (clave `video_id + model`).
 
 ### Hipótesis candidatas a testear
 
 | Tarea | Hipótesis | Riesgo si falla |
 |-------|-----------|-----------------|
-| Analysis | `gemini-2.5-flash` o `gemini-3.5-flash` basta vs `gemini-2.5-pro` | Timestamps incorrectos, momentos débiles |
-| Copy | Modelo más barato mantiene validación de 7 tweets + LinkedIn | Más retries, copy genérico |
-| Judge | Eliminar juez; usar solo `score_llm` | Scores inflados, mala guía al usuario |
-| Judge | Modelo más capaz mejora correlación humana | Costo marginal bajo ya hoy |
-| Classifier | Solo keywords, sin LLM | Categoría incorrecta en edge cases |
+| Analysis | `gemini-3.5-flash` (actual) vs `gemini-2.5-pro` / futuro `3.5-pro` | Timestamps incorrectos, momentos débiles |
+| Copy | `gemini-3.5-flash` vs `gpt-5.4-mini` (A/B golden `--copy`) | Más retries, copy genérico |
+| Judge | `gpt-5.4-nano` vs juez Gemini legacy | Menor independencia del scoring |
+| Classifier | Solo keywords vs `2.5-flash-lite` | Categoría incorrecta en edge cases |
 | Whisper | Solo Groq, sin fallback OpenAI | Jobs fallan si Groq cae |
 
 ### Proceso recomendado (no cambiar todo a la vez)
@@ -669,7 +704,7 @@ Invalidar cache de análisis tras cambiar prompts: bump `PROMPT_VERSION` en [`wo
 2. **Una variable por experimento:** cambiar solo `MODEL_ANALYSIS`, medir, revertir o mantener.
 3. **Registrar métricas:** por cada experimento, anotar pass rate de validación, `verification_failed`, delta juez vs LLM, latencia.
 4. **Priorizar por impacto:** Analysis y Copy primero (críticos + mayor costo). Classifier y Judge al final.
-5. **Implementar tracking (futuro):** loggear `response.usage` de OpenRouter y minutos de Whisper para costo real por job.
+5. **Monitorear costo real:** `log_llm_usage` ya está implementado; agregar por job en dashboard es mejora futura.
 
 ### Métricas de producción ya persistidas
 
@@ -716,19 +751,18 @@ Existen **tres capas** de configuración de modelos. Los valores efectivos en pr
 
 ## Próximos pasos — Checklist para análisis exhaustivo
 
-Usar esta lista cuando se quiera decidir qué modelo usar en cada tarea:
-
-- [ ] Documentar modelos efectivos en producción (leer `.env` del VPS o logs de arranque de `validate_env.py`).
+- [ ] Documentar modelos efectivos en producción (logs de arranque de `validate_env.py` o `.env` VPS).
 - [ ] Correr `run_golden_set.py` con config actual → guardar baseline de métricas.
 - [ ] Correr `run_golden_set.py --copy` → baseline completo con copy y juez.
-- [ ] Experimentar `MODEL_ANALYSIS` (Flash vs Pro) → comparar timestamps y `verification_failed`.
-- [ ] Experimentar `MODEL_COPY` → comparar pass rate de validación y calidad percibida.
-- [ ] Evaluar si `MODEL_JUDGE` aporta valor vs solo `score_llm` (correlación humana).
+- [ ] Experimentar `MODEL_ANALYSIS` (3.5-flash vs 2.5-pro / futuro 3.5-pro) → timestamps y `verification_failed`.
+- [ ] Experimentar `MODEL_COPY_WRITING` (3.5-flash vs gpt-5.4-mini) → pass rate de validación.
+- [ ] Evaluar correlación `MODEL_JUDGE` (gpt-5.4-nano) vs evaluación humana.
 - [ ] Confirmar que Classifier LLM mejora vs solo keywords en golden set.
-- [ ] Medir paridad Groq vs OpenAI Whisper en 10 clips de prueba.
-- [ ] Implementar logging de `response.usage` para costo real por job (recomendación técnica).
-- [ ] Decidir configuración final y actualizar `.env.example` para alinear con producción.
+- [ ] Medir paridad Groq vs OpenAI Whisper en clips de prueba.
+- [x] Logging de `response.usage` por llamada chat (`log_llm_usage`, `LOG_LLM_USAGE`).
+- [x] Defaults y `.env.example` alineados (jul 2026); `PROMPT_VERSION=v4`.
+- [ ] Decidir configuración final tras golden set y fijar en `.env` del VPS.
 
 ---
 
-*Última revisión basada en el código del worker — julio 2026.*
+*Última revisión: migración modelos jul 2026 — alineado con `model_tiers.py`, `llm_chat.py`, `PROMPT_VERSION=v4`.*
