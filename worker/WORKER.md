@@ -192,48 +192,61 @@ Validadores de contenido + cache en analysis_cache
 
 **Ideal:** 5 momentos de 15–60s, scores ≥ 7, copy listo para publicar.
 
-### Step 4: Descarga de video (cascada)
+### Step 4: Descarga de video (estrategias híbridas)
 
-**Módulo:** [`services/downloader.py`](services/downloader.py)
+**Módulo:** [`services/downloader.py`](services/downloader.py), selector en [`main.py`](main.py)
 
-YouTube bloquea IPs de datacenter. Por eso en VPS se usan **proxies residenciales Webshare**.
+El Step 4 elige automáticamente una de tres estrategias (`DOWNLOAD_STRATEGY=auto` por defecto):
+
+| Estrategia | Cuándo | Método |
+|------------|--------|--------|
+| `full_ytdlp` | Video ≤30 min, sin RapidAPI forzado, proxies OK | Descarga completa yt-dlp |
+| `upfront_partial` | Clips en el primer tercio del video | Stream URLs + descarga 0→max_end una vez |
+| `per_clip_parallel` | Video largo con clips dispersos | yt-dlp `download_ranges` en paralelo (3 workers) |
 
 ```mermaid
 flowchart TD
-    A[Step 4: Descarga] --> B{USE_RAPIDAPI o prod?}
-    B -->|Sí| C[RapidAPI stream URLs]
-    C --> D[Sticky proxy + partial download]
-    D --> E[FFmpeg merge audio+video]
-    E --> Z[MP4 muxed único]
-    B -->|No| F{Plan A: yt-dlp full}
-    F -->|OK| Z
-    F -->|Fallo DRM/403| C
-    C -->|Fallo| G{Plan C: yt-dlp per-clip}
-    G -->|OK| H[Segmento por momento]
-    G -->|Fallo| I[Fallback: deep-link YouTube]
-    Z --> J[Generar clips]
-    H --> J
-    I --> K[Solo copy, sin MP4]
+    A[Step 4: Selector] --> B{estrategia}
+    B -->|full_ytdlp| C[yt-dlp video completo]
+    B -->|upfront_partial| D[Stream URLs + partial 0 a max_end]
+    B -->|per_clip_parallel| E[N descargas paralelas por clip]
+    C --> F[Step 5: cut_clip local]
+    D --> F
+    E --> G[Step 5: clip_paths_cache]
+    G --> H[cut_clip con margen keyframe]
 ```
 
-| Plan | Método | Cuándo funciona | Cuándo falla |
-|------|--------|-----------------|--------------|
-| **A (prod)** | RapidAPI stream URLs + sticky proxy + partial download | Camino primario en VPS con `USE_RAPIDAPI_DOWNLOAD=true` | HEAD/download error, proxy 402 |
-| **B** | yt-dlp full + proxy | Dev sin RapidAPI forzado; videos sin DRM | DRM, PO Token (común con client `tv`) |
-| **C** | yt-dlp `download_ranges` per-clip | Clips cortos, proxy OK, sin RapidAPI | Mismo que B |
-| **D** | Link `youtube.com/watch?v=X&t=Ns` | Siempre | No hay archivo MP4 |
+**Fallback per-clip en Step 5** (si Step 4 no dejó video listo):
 
-**Nota:** `YOUTUBE_COOKIES` ayuda con anti-bot en yt-dlp, pero **no** desbloquea DRM/PO Token. En producción asumir RapidAPI + proxy como camino fiable; yt-dlp full es fallback opcional.
+1. `clip_paths_cache` (per-clip paralelo)
+2. `muxed_video_path` (upfront/full)
+3. `download_clip_ytdlp` con margen ±8s (`CLIP_KEYFRAME_MARGIN_SEC`)
+4. `download_clip_apify` si `USE_APIFY_FALLBACK=true`
+5. Stream partial solo si clip está en primer 20% del video
+6. Deep-link YouTube
+
+**Validación anti-desfase:** `verify_phrases_after_snap` + cobertura subs ≥90%. Si falla y `STRICT_SYNC_VALIDATION=true`, reintenta hasta `CLIP_SYNC_RETRIES` veces antes del deep-link.
+
+**Variables de entorno:**
+
+```env
+DOWNLOAD_STRATEGY=auto
+DOWNLOAD_PARALLEL_WORKERS=3
+CLIP_KEYFRAME_MARGIN_SEC=8
+DOWNLOAD_PHASE_BUDGET_SEC=600
+CLIP_SYNC_RETRIES=2
+STRICT_SYNC_VALIDATION=true
+USE_APIFY_FALLBACK=false
+APIFY_TOKEN=...
+```
 
 **Config ideal en OVH:**
 
 ```env
 USE_RAPIDAPI_DOWNLOAD=true
-WEBSHARE_PROXY_FILE=/app/proxies.txt   # 20 proxies Webshare Static
+WEBSHARE_PROXY_FILE=/app/proxies.txt
 SUPADATA_API_KEY=...
 ```
-
-**Partial download:** descarga bytes `0` hasta el último `end_time` de los momentos (+ buffer 15s), una sola vez para todos los clips. Ahorra bandwidth vs descargar el video completo.
 
 ### Step 5: Generación de clips (por cada momento)
 

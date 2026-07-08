@@ -276,6 +276,68 @@ class TestStreamUrlStrategy:
         assert result["video_url"] == "v"
 
 
+class TestDownloadStrategySelector:
+    """Tests for hybrid download strategy selection."""
+
+    def _moment(self, start: float, end: float):
+        from types import SimpleNamespace
+        return SimpleNamespace(start_time=start, end_time=end)
+
+    @patch.dict(os.environ, {"DOWNLOAD_STRATEGY": "auto", "ENVIRONMENT": "production"}, clear=True)
+    def test_long_video_late_clips_use_per_clip_parallel(self):
+        from main import _select_download_strategy
+        moments = [self._moment(5000, 5060), self._moment(5100, 5160)]
+        strategy = _select_download_strategy(5340, moments)
+        assert strategy == "per_clip_parallel"
+
+    @patch.dict(os.environ, {"DOWNLOAD_STRATEGY": "auto", "ENVIRONMENT": "production"}, clear=True)
+    def test_early_clips_use_upfront_partial(self):
+        from main import _select_download_strategy
+        moments = [self._moment(30, 90), self._moment(120, 180)]
+        strategy = _select_download_strategy(1200, moments)
+        assert strategy == "upfront_partial"
+
+    @patch.dict(os.environ, {"DOWNLOAD_STRATEGY": "per_clip_parallel"}, clear=True)
+    def test_manual_override(self):
+        from main import _select_download_strategy
+        strategy = _select_download_strategy(600, [self._moment(10, 70)])
+        assert strategy == "per_clip_parallel"
+
+    def test_should_use_stream_urls_fallback_early_only(self):
+        from services.downloader import should_use_stream_urls_fallback
+        assert should_use_stream_urls_fallback(100, 1000) is True
+        assert should_use_stream_urls_fallback(500, 1000) is False
+
+    def test_download_clip_ytdlp_applies_keyframe_margin(self):
+        from services.downloader import download_clip_ytdlp, ClipDownloadResult
+        from unittest.mock import patch, MagicMock
+
+        mock_ydl_cls = MagicMock()
+        mock_ydl = MagicMock()
+        mock_ydl_cls.return_value.__enter__.return_value = mock_ydl
+
+        with patch("services.downloader.yt_dlp.YoutubeDL", mock_ydl_cls), \
+             patch("services.downloader._build_ydl_opts", side_effect=lambda o, **kw: o), \
+             patch("services.downloader._clip_keyframe_margin_sec", return_value=8.0), \
+             patch("services.downloader.Path") as mock_path:
+            mock_path.return_value.with_suffix.return_value = mock_path.return_value
+            mp4 = MagicMock()
+            mp4.exists.return_value = True
+            mp4.stat.return_value.st_size = 1024 * 1024
+            mock_path.side_effect = lambda *a, **k: mp4 if str(a[0]).endswith(".mp4") else MagicMock()
+
+            result = download_clip_ytdlp(
+                "https://youtube.com/watch?v=abc12345678",
+                start_sec=100.0,
+                end_sec=160.0,
+                output_path="/tmp/clip",
+                video_duration=1000.0,
+            )
+        assert isinstance(result, ClipDownloadResult)
+        assert result.download_start == 92.0
+        assert result.download_end == 168.0
+
+
 class TestGooglevideoSticky:
     def test_is_googlevideo_url(self):
         from services.downloader import _is_googlevideo_url

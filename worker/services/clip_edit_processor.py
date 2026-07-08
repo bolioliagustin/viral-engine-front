@@ -24,6 +24,7 @@ from services.usage_tracker import finalize_job_usage, record_cache_hit
 from services.downloader import (
     download_clip_ytdlp,
     download_clip_via_stream_urls,
+    should_use_stream_urls_fallback,
     _extract_video_id,
 )
 from services.storage_client import download_file, object_key_from_public_url
@@ -118,8 +119,14 @@ def _download_segment_with_fallback(
         except Exception as e_cache:
             print(f"   ⚠️ R2 cache miss ({e_cache}) — fallback a streams")
 
-    # ── Intento 1: RapidAPI / stream partial (prod) ───────────────────
-    if os.getenv("ENVIRONMENT", "").lower() in ("production", "prod") or os.getenv("RAPIDAPI_KEY"):
+    # ── Intento 1: RapidAPI / stream partial (solo clips early) ───────
+    if (
+        should_use_stream_urls_fallback(start_s, end_s + 30)
+        and (
+            os.getenv("ENVIRONMENT", "").lower() in ("production", "prod")
+            or os.getenv("RAPIDAPI_KEY")
+        )
+    ):
         try:
             return download_clip_via_stream_urls(
                 youtube_url=video_url,
@@ -133,7 +140,7 @@ def _download_segment_with_fallback(
         except Exception as e_rapid:
             print(f"   ⚠️ RapidAPI edit falló ({e_rapid}) — probando yt-dlp")
 
-    # ── Intento 2: yt-dlp download_ranges (dev) ─────────────────────
+    # ── Intento 2: yt-dlp download_ranges ─────────────────────────────
     try:
         seg_out = str(DOWNLOADS_DIR / f"edit_{edit_id}_seg")
         path = download_clip_ytdlp(
@@ -141,27 +148,33 @@ def _download_segment_with_fallback(
             start_sec=start_s,
             end_sec=end_s,
             output_path=seg_out,
-        )
+            video_duration=end_s + 30,
+        ).path
         print(f"   ✅ yt-dlp segment OK")
         return path
     except Exception as e_ytdlp:
         print(f"   ⚠️ yt-dlp falló ({e_ytdlp}) — fallback a partial download")
 
-    # ── Intento 2: stream URLs + partial download + ffmpeg cut ────────
-    try:
-        return download_clip_via_stream_urls(
-            youtube_url=video_url,
-            start_sec=start_s,
-            end_sec=end_s,
-            video_duration=end_s + 30,
-            video_id=yt_video_id,
-            temp_id=f"edit_{edit_id}",
-            force_rapidapi=True,
-        )
-    except Exception as e_streams:
-        raise RuntimeError(
-            f"Sin streams disponibles (yt-dlp y RapidAPI fallaron): {e_streams}"
-        ) from e_streams
+    # ── Intento 3: stream URLs (solo early clip) ──────────────────────
+    if should_use_stream_urls_fallback(start_s, end_s + 30):
+        try:
+            return download_clip_via_stream_urls(
+                youtube_url=video_url,
+                start_sec=start_s,
+                end_sec=end_s,
+                video_duration=end_s + 30,
+                video_id=yt_video_id,
+                temp_id=f"edit_{edit_id}",
+                force_rapidapi=True,
+            )
+        except Exception as e_streams:
+            raise RuntimeError(
+                f"Sin streams disponibles (yt-dlp y RapidAPI fallaron): {e_streams}"
+            ) from e_streams
+
+    raise RuntimeError(
+        f"Clip tardío ({start_s:.0f}s) — stream partial omitido; yt-dlp falló"
+    )
 
 
 def _whisper_per_clip(src_path: str, clip_duration: float, edit_id: str):

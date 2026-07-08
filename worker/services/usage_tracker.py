@@ -125,7 +125,7 @@ def _base_event(
     return {
         "job_id": job_id,
         "user_id": ctx.get("user_id"),
-        "event_type": "llm_chat" if task != "whisper" else "whisper",
+        "event_type": "llm_chat" if task not in ("whisper", "download") else task,
         "provider": provider,
         "task": task,
         "model": model,
@@ -220,6 +220,37 @@ def record_whisper_usage(
 
     event["audio_seconds"] = round(float(audio_seconds or 0), 3)
     event["estimated_cost_usd"] = cost
+    _insert_event(event)
+
+
+def record_download_usage(
+    strategy: str,
+    download_seconds: float,
+    download_mb: float,
+    clips_count: int,
+    *,
+    failed_clips: int = 0,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Registra métricas de la fase de descarga de video."""
+    event = _base_event(
+        task="download",
+        provider="worker",
+        model=None,
+        metadata={
+            "strategy": strategy,
+            "download_seconds": round(float(download_seconds or 0), 2),
+            "download_mb": round(float(download_mb or 0), 2),
+            "clips_count": int(clips_count or 0),
+            "failed_clips": int(failed_clips or 0),
+            **(metadata or {}),
+        },
+    )
+    if not event:
+        return
+
+    event["event_type"] = "download"
+    event["latency_ms"] = int(float(download_seconds or 0) * 1000)
     _insert_event(event)
 
 

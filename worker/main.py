@@ -29,7 +29,7 @@ sentry_sdk.init(
 sys.path.insert(0, str(Path(__file__).parent))
 from config.logging import setup_logging, trace, set_phase, bind_trace
 from context.job_context import set_job_context, clear_job_context, set_moment_index
-from services.usage_tracker import finalize_job_usage
+from services.usage_tracker import finalize_job_usage, record_download_usage
 setup_logging()
 
 from config.validate_env import validate_env
@@ -43,8 +43,13 @@ from services.downloader import (
     get_stream_urls,
     download_clip_ytdlp,
     download_clip_via_stream_urls,
+    download_clips_parallel,
+    download_clip_apify,
+    should_use_stream_urls_fallback,
+    ClipDownloadResult,
     is_ytdlp_drm_error,
     cleanup_all,
+    _use_apify_fallback,
 )
 # _download_video_ytdlp es interno pero lo usamos como primer intento del
 # pipeline de descarga: si yt-dlp logra bajar el video completo (audio+video
@@ -170,6 +175,194 @@ def _resolve_video_duration(video_info: dict, transcript: dict, viral_moments) -
     # Sin datos: asumir video largo para no subestimar el ratio de bytes
     print("⚠️ Duración desconocida — asumiendo 2h para partial download")
     return 7200.0
+
+
+JOB_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+FULL_YTDLP_MAX_DURATION_SEC = 3600  # >1h: evitar descarga completa (OOM / bandwidth)
+FULL_YTDLP_SHORT_MAX_SEC = 1800  # ≤30 min: candidato a yt-dlp full
+VALID_DOWNLOAD_STRATEGIES = frozenset({
+    "auto", "full_ytdlp", "upfront_partial", "per_clip_parallel",
+})
+
+
+class _SyncRetryNeeded(Exception):
+    """Señal interna para reintentar descarga/corte por fallo de sync."""
+
+
+def _download_phase_budget_sec() -> float:
+    try:
+        return max(60.0, float(os.getenv("DOWNLOAD_PHASE_BUDGET_SEC", "600")))
+    except ValueError:
+        return 600.0
+
+
+def _clip_sync_retries() -> int:
+    try:
+        return max(0, int(os.getenv("CLIP_SYNC_RETRIES", "2")))
+    except ValueError:
+        return 2
+
+
+def _strict_sync_validation() -> bool:
+    return os.getenv("STRICT_SYNC_VALIDATION", "true").lower() not in ("0", "false", "no")
+
+
+def _select_download_strategy(video_duration: float, viral_moments) -> str:
+    """Selector automático de estrategia de descarga (sync-safe + rápido)."""
+    override = (os.getenv("DOWNLOAD_STRATEGY") or "auto").strip().lower()
+    if override != "auto":
+        if override in VALID_DOWNLOAD_STRATEGIES:
+            return override
+        print(f"⚠️ DOWNLOAD_STRATEGY inválida '{override}' — usando auto")
+
+    timed_moments = [
+        m for m in viral_moments
+        if m.start_time is not None and m.end_time is not None
+    ]
+    if not timed_moments:
+        return "upfront_partial"
+
+    max_end = max(float(m.end_time) for m in timed_moments)
+    total_clip_sec = sum(float(m.end_time) - float(m.start_time) for m in timed_moments)
+    coverage_ratio = max_end / max(video_duration, 1)
+    clip_density = total_clip_sec / max(max_end, 1)
+
+    if video_duration <= FULL_YTDLP_SHORT_MAX_SEC and _should_try_full_ytdlp_download(video_duration):
+        return "full_ytdlp"
+
+    if coverage_ratio < 0.35 and total_clip_sec / max(video_duration, 1) < 0.25:
+        return "upfront_partial"
+
+    if coverage_ratio >= 0.35 or clip_density < 0.5:
+        return "per_clip_parallel"
+
+    return "upfront_partial"
+
+
+def _log_download_strategy(
+    strategy: str,
+    video_duration: float,
+    viral_moments,
+) -> None:
+    timed = [m for m in viral_moments if m.end_time is not None]
+    max_end = max((float(m.end_time) for m in timed), default=0.0)
+    total_clip = sum(
+        float(m.end_time) - float(m.start_time)
+        for m in timed
+        if m.start_time is not None
+    )
+    coverage = max_end / max(video_duration, 1)
+    print(
+        f"📐 Estrategia de descarga: {strategy} | "
+        f"coverage={coverage:.0%} | clip_sec={total_clip:.0f}s / "
+        f"video={video_duration:.0f}s"
+    )
+
+
+def _resolve_moment_video_source(
+    *,
+    moment_index: int,
+    start_s: float,
+    end_s: float,
+    video_url: str,
+    video_id: str,
+    video_duration: float,
+    muxed_video_path: str | None,
+    clip_paths_cache: dict[int, ClipDownloadResult],
+    partial_download_failed: bool,
+    sync_attempt: int = 0,
+) -> tuple[str, float, float, float, str | None]:
+    """Resuelve fuente de video para un clip."""
+    cached = clip_paths_cache.get(moment_index)
+    if cached and Path(cached.path).exists() and sync_attempt == 0:
+        print(f"   ✓ Usando segmento per-clip cacheado (paralelo)")
+        return (
+            cached.path,
+            start_s - cached.download_start,
+            end_s - cached.download_start,
+            start_s,
+            cached.path,
+        )
+
+    if muxed_video_path and Path(muxed_video_path).exists():
+        print(f"   ✓ Usando video muxeado cacheado")
+        return muxed_video_path, start_s, end_s, start_s, None
+
+    if _should_use_ytdlp_for_clips():
+        try:
+            seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{moment_index}_{int(start_s)}")
+            proxy = None
+            if sync_attempt > 0:
+                from services.downloader import _get_proxy_list
+                proxy_list = _get_proxy_list()
+                if proxy_list:
+                    proxy = proxy_list[sync_attempt % len(proxy_list)]
+            dl_result = download_clip_ytdlp(
+                youtube_url=video_url,
+                start_sec=start_s,
+                end_sec=end_s,
+                output_path=seg_out,
+                video_duration=video_duration,
+                proxy_url=proxy,
+            )
+            print(f"   ✓ yt-dlp per-clip OK")
+            return (
+                dl_result.path,
+                start_s - dl_result.download_start,
+                end_s - dl_result.download_start,
+                start_s,
+                dl_result.path,
+            )
+        except Exception as e_ytdlp:
+            print(f"   ⚠️ yt-dlp per-clip falló: {e_ytdlp}")
+
+    if _use_apify_fallback():
+        try:
+            apify_out = str(DOWNLOADS_DIR / f"{video_id}_apify_{moment_index}.mp4")
+            dl_result = download_clip_apify(
+                youtube_url=video_url,
+                start_sec=start_s,
+                end_sec=end_s,
+                output_path=apify_out,
+            )
+            print(f"   ✓ Apify per-clip OK")
+            return dl_result.path, 0.0, end_s - start_s, start_s, dl_result.path
+        except Exception as e_apify:
+            print(f"   ⚠️ Apify per-clip falló: {e_apify}")
+
+    if (
+        should_use_stream_urls_fallback(start_s, video_duration)
+        and (_prefer_rapidapi_download() or partial_download_failed)
+    ):
+        _clip_retries = int(os.getenv("CLIP_GEN_RETRIES", "1"))
+        last_stream_err = None
+        for _attempt in range(_clip_retries + 1):
+            try:
+                if _attempt > 0:
+                    time.sleep(2 ** _attempt)
+                print(f"   📥 Descargando clip vía stream partial (early clip)...")
+                seg_path = download_clip_via_stream_urls(
+                    youtube_url=video_url,
+                    start_sec=start_s,
+                    end_sec=end_s,
+                    video_duration=video_duration,
+                    video_id=video_id,
+                    temp_id=f"{video_id}_m{moment_index}",
+                )
+                return seg_path, 0.0, end_s - start_s, start_s, seg_path
+            except Exception as e_stream:
+                last_stream_err = e_stream
+                print(f"   ⚠️ Stream partial per-clip falló: {e_stream}")
+        if last_stream_err:
+            raise RuntimeError(
+                f"Sin video para clip {moment_index} — stream partial falló: {last_stream_err}"
+            ) from last_stream_err
+
+    raise RuntimeError(
+        f"Sin video disponible para clip {moment_index} "
+        f"(muxed={'no' if not muxed_video_path else 'sí'}, "
+        f"cached={'no' if not cached else 'sí'})"
+    )
 
 
 def _has_proxies() -> bool:
@@ -375,17 +568,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         print(f"📏 Duración efectiva para descarga: {video_duration:.0f}s")
         check_timeout()
         
-        # Step 4: Preparar para clipping.
-        # Estrategia (Fase 1.6 v3):
-        #   1. PRIMARY: yt-dlp full download (audio+video mergeados en 1 MP4).
-        #      yt-dlp tiene su propio downloader interno, no usa nuestro
-        #      _parallel_download. Suele evadir el throttle de audio del proxy
-        #      residencial. Con player_client=[tv,ios,web] funciona en 2025.
-        #   2. SECONDARY: partial download (stream URLs split video+audio).
-        #      Más rápido EN TEORÍA pero el audio se cuelga 30 KB/s vía proxy.
-        #      Lo dejamos como fallback por si yt-dlp se rompe en el futuro.
-        #   3. BACKUP per-clip: yt-dlp download_ranges (rápido cuando funciona).
-        #   4. FALLBACK final: deep-link de YouTube (sin MP4, mantiene el job vivo).
+        # Step 4: Preparar para clipping (estrategias híbridas sync-safe).
         supabase = get_supabase()
         print("\n📹 Step 4: Preparando descarga del video...")
         _log_download_config()
@@ -395,76 +578,102 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 "Agregala en ~/viralengine/.env y reinicia: "
                 "docker compose -f docker-compose.worker.yml up -d --build"
             )
-        update_job_progress(job_id, current_step="clipping", progress_percentage=70)
+
+        download_strategy = _select_download_strategy(video_duration, result.viral_moments)
+        _log_download_strategy(download_strategy, video_duration, result.viral_moments)
+        update_job_progress(job_id, current_step="downloading", progress_percentage=70)
+
         stream_urls = None
-        video_path = None
         muxed_video_path = None
-        # Flag para que si la partial falla en el upfront, no la reintentamos
-        # per-clip (cada intento puede comer hasta 8 min del watchdog).
+        clip_paths_cache: dict[int, ClipDownloadResult] = {}
         partial_download_failed = False
-        # yt-dlp solo queda bloqueado si no hay proxy residencial para el bypass
-        ytdlp_blocked = _prefer_rapidapi_download() and not _has_proxies()
+        download_t0 = time.time()
+        download_mb = 0.0
+        download_failed_clips = 0
 
-        # ── PRIMARY: yt-dlp full download (videos ≤1h; en prod requiere proxy) ─
-        if _should_try_full_ytdlp_download(video_duration):
+        if download_strategy == "full_ytdlp":
             try:
-                print("🎬 Intentando descarga full vía yt-dlp (audio+video merged)...")
-                t_ytdlp = time.time()
+                print("🎬 Estrategia full_ytdlp: descarga completa vía yt-dlp...")
                 muxed_video_path = _download_video_ytdlp(video_url, video_id)
-                size_mb = Path(muxed_video_path).stat().st_size / (1 << 20)
-                elapsed = time.time() - t_ytdlp
-                print(f"✅ yt-dlp full download: {size_mb:.0f}MB en {elapsed:.0f}s ({size_mb/max(elapsed,0.01):.1f}MB/s)")
+                download_mb = Path(muxed_video_path).stat().st_size / (1 << 20)
+                print(f"✅ yt-dlp full: {download_mb:.0f}MB en {time.time() - download_t0:.0f}s")
             except Exception as e_ytdlp_full:
-                if is_ytdlp_drm_error(e_ytdlp_full):
-                    ytdlp_blocked = True
-                    print(f"⚠️ yt-dlp full bloqueado por DRM — saltando a RapidAPI")
-                else:
-                    print(f"⚠️ yt-dlp full download falló: {str(e_ytdlp_full)[:200]}")
-                print(f"🔄 Cayendo a Plan B: partial download con stream URLs split")
-                muxed_video_path = None
-        else:
-            print("ℹ️ Saltando yt-dlp full — usando Plan B (RapidAPI + partial download)")
+                print(f"⚠️ full_ytdlp falló: {str(e_ytdlp_full)[:200]} — cayendo a upfront_partial")
+                download_strategy = "upfront_partial"
 
-        # ── SECONDARY: Stream URLs + partial download ──────────────────────
-        # Solo si yt-dlp full falló. Esto es lo que tenemos hoy funcionando
-        # parcialmente (video rápido, audio lentísimo vía proxy).
-        if not muxed_video_path:
+        if download_strategy == "upfront_partial" and not muxed_video_path:
             try:
                 stream_urls = get_stream_urls(video_url, video_id)
             except Exception as e:
-                if is_ytdlp_drm_error(e):
-                    ytdlp_blocked = True
-                print(f"ℹ️ Stream URLs no disponibles ({e}), se usará fallback per-clip")
-
-        # PARTIAL DOWNLOAD UPFRONT (Fase 1.6):
-        # Descargamos una sola vez ahora para todos los clips, en lugar de
-        # reintentar el yt-dlp roto y caer al partial download per-clip.
-        if stream_urls and not muxed_video_path:
-            try:
-                from services.downloader import prepare_muxed_video_from_streams
-                max_end = max(
-                    float(m.end_time) for m in result.viral_moments
-                    if m.end_time is not None
-                )
-                print(f"\n📥 Partial download del video (1 sola vez, max_end={max_end:.0f}s)...")
-                muxed_video_path = prepare_muxed_video_from_streams(
-                    video_url=stream_urls["video_url"],
-                    audio_url=stream_urls["audio_url"],
-                    max_end_sec=max_end,
-                    video_duration=video_duration,
-                    video_id=video_id,
-                    resolve_proxy=stream_urls.get("resolve_proxy"),
-                )
-                size_mb = Path(muxed_video_path).stat().st_size // (1 << 20)
-                print(f"✅ Video listo para todos los clips: {size_mb}MB")
-            except Exception as e_partial:
-                print(f"⚠️ Partial download upfront falló: {e_partial}")
-                print(f"🔄 Caeremos a RapidAPI per-clip o YouTube deep-link")
-                muxed_video_path = None
+                print(f"ℹ️ Stream URLs no disponibles ({e}) — fallback per-clip en Step 5")
                 partial_download_failed = True
-        elif not muxed_video_path:
-            print(f"⚠️ Sin stream_urls — se intentará RapidAPI per-clip")
 
+            if stream_urls:
+                try:
+                    from services.downloader import prepare_muxed_video_from_streams
+                    max_end = max(
+                        float(m.end_time) for m in result.viral_moments
+                        if m.end_time is not None
+                    )
+                    print(f"\n📥 upfront_partial: 0→{max_end:.0f}s (1 descarga)...")
+                    muxed_video_path = prepare_muxed_video_from_streams(
+                        video_url=stream_urls["video_url"],
+                        audio_url=stream_urls["audio_url"],
+                        max_end_sec=max_end,
+                        video_duration=video_duration,
+                        video_id=video_id,
+                        resolve_proxy=stream_urls.get("resolve_proxy"),
+                    )
+                    download_mb = Path(muxed_video_path).stat().st_size / (1 << 20)
+                    print(f"✅ Video muxeado listo: {download_mb:.0f}MB")
+                except Exception as e_partial:
+                    print(f"⚠️ upfront_partial falló: {e_partial}")
+                    muxed_video_path = None
+                    partial_download_failed = True
+
+        elif download_strategy == "per_clip_parallel":
+            muxed_video_path = None
+            total_clips = sum(
+                1 for m in result.viral_moments
+                if m.start_time is not None and m.end_time is not None
+            )
+
+            def _on_parallel_clip_done(done: int, total: int) -> None:
+                pct = 70 + int((done / max(total, 1)) * 10)
+                update_job_progress(
+                    job_id,
+                    current_step="downloading",
+                    progress_percentage=min(80, pct),
+                )
+                print(f"   📥 Descargando clip {done}/{total}...")
+
+            clip_paths_cache = download_clips_parallel(
+                youtube_url=video_url,
+                moments=result.viral_moments,
+                video_id=video_id,
+                video_duration=video_duration,
+                deadline=time.time() + _download_phase_budget_sec(),
+                on_clip_done=_on_parallel_clip_done,
+            )
+            download_failed_clips = total_clips - len(clip_paths_cache)
+            download_mb = sum(
+                Path(r.path).stat().st_size for r in clip_paths_cache.values()
+            ) / (1 << 20)
+            if not clip_paths_cache:
+                print("⚠️ per_clip_parallel no descargó ningún clip — Step 5 reintentará individual")
+                partial_download_failed = True
+
+        record_download_usage(
+            strategy=download_strategy,
+            download_seconds=time.time() - download_t0,
+            download_mb=download_mb,
+            clips_count=len(result.viral_moments),
+            failed_clips=download_failed_clips,
+            metadata={
+                "muxed": bool(muxed_video_path),
+                "parallel_cached": len(clip_paths_cache),
+            },
+        )
         check_timeout()
         print("\n💾 Step 5: Saving results...")
         update_job_progress(job_id, current_step="generating", progress_percentage=85)
@@ -504,539 +713,487 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             #      player_client=[tv,ios,web])
             #   3. FALLBACK final: YouTube deep-link (sin MP4)
             if moment.start_time is not None and moment.end_time is not None:
-                try:
-                    start_s = float(moment.start_time)
-                    end_s = float(moment.end_time)
-                    print(f"\n✂️ Generando clip MP4 {moment_index} ({int(start_s)}-{int(end_s)}s)...")
-
-                    clip_output = CLIPS_DIR / f"{video_id}_moment_{moment_index}.mp4"
-                    clip_output.parent.mkdir(parents=True, exist_ok=True)
-                    overlay_text = getattr(moment, 'viral_overlay', None)
-                    if not overlay_text:
-                        tp = getattr(moment, 'tiktok_package', None)
-                        overlay_text = getattr(tp, 'overlay_text', None) if tp else None
-
-                    seg_path = None
-                    src_path = None
-
-                    # ── PRIMARY: partial download ya disponible ──────────────────
-                    if muxed_video_path and Path(muxed_video_path).exists():
-                        src_path = muxed_video_path
-                        src_start = start_s
-                        src_end = end_s
-                        src_offset = start_s
-                        print(f"   ✓ Usando video muxeado cacheado")
-                    else:
-                        seg_path = None
-                        # ── BACKUP 1: RapidAPI / stream partial (prod default) ────
-                        if _prefer_rapidapi_download() or partial_download_failed:
-                            _clip_retries = int(os.getenv("CLIP_GEN_RETRIES", "1"))
-                            last_stream_err = None
-                            for _attempt in range(_clip_retries + 1):
-                                try:
-                                    if _attempt > 0:
-                                        wait = 2 ** _attempt
-                                        print(f"   🔄 Retry descarga clip ({_attempt}/{_clip_retries}) en {wait}s...")
-                                        time.sleep(wait)
-                                    print(f"   📥 Descargando clip vía RapidAPI streams...")
-                                    seg_path = download_clip_via_stream_urls(
-                                        youtube_url=video_url,
-                                        start_sec=start_s,
-                                        end_sec=end_s,
-                                        video_duration=video_duration,
-                                        video_id=video_id,
-                                        temp_id=f"{video_id}_m{moment_index}",
-                                    )
-                                    src_path = seg_path
-                                    src_start = 0.0
-                                    src_end = end_s - start_s
-                                    src_offset = start_s
-                                    last_stream_err = None
-                                    break
-                                except Exception as e_stream:
-                                    last_stream_err = e_stream
-                                    print(f"   ⚠️ RapidAPI per-clip falló: {e_stream}")
-                            if last_stream_err and not seg_path:
-                                if not _should_use_ytdlp_for_clips():
-                                    raise RuntimeError(
-                                        f"Sin video para clip {moment_index} — "
-                                        f"RapidAPI falló y yt-dlp deshabilitado en producción: {last_stream_err}"
-                                    ) from last_stream_err
-
-                        # ── BACKUP 2: yt-dlp per-clip (solo dev, sin RapidAPI) ──
-                        if not seg_path and _should_use_ytdlp_for_clips():
-                            try:
-                                seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{int(start_s)}")
-                                seg_path = download_clip_ytdlp(
-                                    youtube_url=video_url,
-                                    start_sec=start_s,
-                                    end_sec=end_s,
-                                    output_path=seg_out,
-                                )
-                                src_path = seg_path
-                                src_start = 0.0
-                                src_end = end_s - start_s
-                                src_offset = start_s
-                                print(f"   ✓ yt-dlp per-clip OK (dev fallback)")
-                            except Exception as e_ytdlp:
-                                if is_ytdlp_drm_error(e_ytdlp):
-                                    ytdlp_blocked = True
-                                print(f"   ⚠️ yt-dlp per-clip falló: {e_ytdlp}")
-                                try:
-                                    seg_path = download_clip_via_stream_urls(
-                                        youtube_url=video_url,
-                                        start_sec=start_s,
-                                        end_sec=end_s,
-                                        video_duration=video_duration,
-                                        video_id=video_id,
-                                        temp_id=f"{video_id}_m{moment_index}",
-                                    )
-                                    src_path = seg_path
-                                    src_start = 0.0
-                                    src_end = end_s - start_s
-                                    src_offset = start_s
-                                except Exception as e_stream2:
-                                    raise RuntimeError(
-                                        f"Sin video disponible para clip {moment_index} "
-                                        f"(yt-dlp y RapidAPI fallaron: {e_stream2})"
-                                    ) from e_stream2
-
-                        if not seg_path:
-                            raise RuntimeError(
-                                f"Sin video disponible para clip {moment_index} "
-                                f"(muxed={'no' if not muxed_video_path else 'sí'}, "
-                                f"partial upfront={'falló' if partial_download_failed else 'no'})"
-                            )
-
-                    # ── Pre-corte frame-accurate (seek DESPUÉS de -i) ─────────────
-                    # Whisper y el encode final usan el MISMO archivo → subs en sync.
-                    clip_duration = src_end - src_start
-                    precut_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_precut.mp4"
-                    print(f"   ✂️ Pre-corte preciso ({clip_duration:.1f}s)...")
-                    cut_clip(
-                        video_path=src_path,
-                        start_sec=src_start,
-                        end_sec=src_end,
-                        output_path=str(precut_path),
-                    )
-                    if not seg_path:
-                        seg_path = str(precut_path)
-
-                    # ── Whisper sobre el clip ya cortado (timestamps 0..duration) ─
-                    clip_words = None
-                    clip_segments_whisper = None
-                    clip_audio_path = None
-                    whisper_vocab: list[str] = []
+                sync_retries = _clip_sync_retries()
+                strict_sync = _strict_sync_validation()
+                for sync_attempt in range(sync_retries + 1):
                     try:
-                        from services.transcriber import transcribe_with_whisper_openrouter
-                        clip_audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
-                        extract_whisper_audio(str(precut_path), str(clip_audio_path))
+                        if sync_attempt > 0:
+                            print(
+                                f"   🔄 Reintento sync {sync_attempt}/{sync_retries} "
+                                f"para clip {moment_index}..."
+                            )
+                            clip_paths_cache.pop(moment_index, None)
 
-                        whisper_prompt = None
-                        prompt_parts = []
-                        video_title = (video_info.get("title") or "").strip()
-                        if video_title:
-                            prompt_parts.append(video_title)
-                        yt_segments = transcript.get("segments") or []
-                        ctx_texts = []
-                        for sg in yt_segments:
-                            sg_start = float(sg.get("start", 0))
-                            sg_end = float(sg.get("end", 0))
-                            if sg_end >= start_s and sg_start <= end_s:
-                                ctx_texts.append(sg.get("text", "").strip())
-                        yt_slice = " ".join(ctx_texts).strip()
-                        if ctx_texts:
-                            prompt_parts.append(yt_slice)
-                        from services.transcriber import (
-                            build_whisper_vocabulary,
-                            format_whisper_vocabulary_prompt,
+                        start_s = float(moment.start_time)
+                        end_s = float(moment.end_time)
+                        print(f"\n✂️ Generando clip MP4 {moment_index} ({int(start_s)}-{int(end_s)}s)...")
+
+                        clip_output = CLIPS_DIR / f"{video_id}_moment_{moment_index}.mp4"
+                        clip_output.parent.mkdir(parents=True, exist_ok=True)
+                        overlay_text = getattr(moment, 'viral_overlay', None)
+                        if not overlay_text:
+                            tp = getattr(moment, 'tiktok_package', None)
+                            overlay_text = getattr(tp, 'overlay_text', None) if tp else None
+
+                        seg_path = None
+                        src_path, src_start, src_end, src_offset, seg_path = _resolve_moment_video_source(
+                            moment_index=moment_index,
+                            start_s=start_s,
+                            end_s=end_s,
+                            video_url=video_url,
+                            video_id=video_id,
+                            video_duration=video_duration,
+                            muxed_video_path=muxed_video_path,
+                            clip_paths_cache=clip_paths_cache,
+                            partial_download_failed=partial_download_failed,
+                            sync_attempt=sync_attempt,
                         )
-                        whisper_vocab = build_whisper_vocabulary(
-                            video_title=video_title,
-                            hook=moment.hook or "",
-                            yt_slice=yt_slice,
+
+                        # ── Pre-corte frame-accurate (seek DESPUÉS de -i) ─────────────
+                        # Whisper y el encode final usan el MISMO archivo → subs en sync.
+                        clip_duration = src_end - src_start
+                        precut_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_precut.mp4"
+                        print(f"   ✂️ Pre-corte preciso ({clip_duration:.1f}s)...")
+                        cut_clip(
+                            video_path=src_path,
+                            start_sec=src_start,
+                            end_sec=src_end,
+                            output_path=str(precut_path),
                         )
-                        vocab_prompt = format_whisper_vocabulary_prompt(whisper_vocab)
-                        if vocab_prompt:
-                            prompt_parts.insert(0, vocab_prompt)
-                        if prompt_parts:
-                            whisper_prompt = ". ".join(prompt_parts)
-                            if len(whisper_prompt) > 800:
-                                whisper_prompt = whisper_prompt[:800]
+                        if not seg_path:
+                            seg_path = str(precut_path)
 
-                        whisper_lang = transcript.get("language")
-                        if whisper_lang and len(whisper_lang) > 2:
-                            whisper_lang = whisper_lang.split("-")[0].lower()
-
-                        print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper "
-                              f"(lang={whisper_lang}, prompt={len(whisper_prompt or '')} chars)...")
-                        clip_tr = transcribe_with_whisper_openrouter(
-                            str(clip_audio_path),
-                            prompt=whisper_prompt,
-                            language=whisper_lang,
-                        )
-                        raw_words = clip_tr.get("words") or []
-                        raw_segments = clip_tr.get("segments") or []
-                        clip_words = filter_whisper_words(raw_words, clip_duration)
-                        clip_words = fix_ghost_leading_words(clip_words)
-                        from services.clip_generator import apply_whisper_brand_corrections
-                        clip_words = apply_whisper_brand_corrections(clip_words, whisper_vocab)
-
-                        clip_segments_whisper = []
-                        for sg in raw_segments:
-                            ss = float(sg.get("start", 0))
-                            se = float(sg.get("end", ss + 0.1))
-                            if se <= 0 or ss >= clip_duration + 0.25:
-                                continue
-                            sg2 = dict(sg)
-                            sg2["start"] = max(0.0, ss)
-                            sg2["end"] = min(clip_duration + 0.10, se)
-                            clip_segments_whisper.append(sg2)
-
-                        n_raw = len(raw_words)
-                        n_kept = len(clip_words)
-                        retention = (n_kept / n_raw * 100) if n_raw else 0
-                        words_per_sec = (n_kept / clip_duration) if clip_duration > 0 else 0
-                        print(f"   ✅ Whisper: {n_kept}/{n_raw} words ({retention:.0f}%), "
-                              f"{len(clip_segments_whisper)}/{len(raw_segments)} segments "
-                              f"(clip_duration={clip_duration:.1f}s, density={words_per_sec:.2f} w/s)")
-
-                        if n_kept == 0:
-                            print(f"   🔄 Whisper devolvió 0 words — fallback a YT transcript")
-                            clip_words = None
-                            clip_segments_whisper = None
-                    except Exception as e_whisper:
-                        print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
-                              f"fallback a YT Transcript API")
+                        # ── Whisper sobre el clip ya cortado (timestamps 0..duration) ─
                         clip_words = None
                         clip_segments_whisper = None
-                    finally:
-                        if clip_audio_path:
-                            try:
-                                Path(clip_audio_path).unlink(missing_ok=True)
-                            except Exception:
-                                pass
+                        clip_audio_path = None
+                        whisper_vocab: list[str] = []
+                        try:
+                            from services.transcriber import transcribe_with_whisper_openrouter
+                            clip_audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
+                            extract_whisper_audio(str(precut_path), str(clip_audio_path))
 
-                    if clip_words or clip_segments_whisper:
-                        subs_segments = clip_segments_whisper
-                        subs_words = clip_words
-                        subs_offset = 0.0
-                        snap_trim_start = 0.0
-                        incomplete_tail = False
-                        late_hook = False
-
-                        # Fase A: snap trim silencio + refinamiento a oración
-                        from services.validation import (
-                            verify_phrases_after_snap,
-                            find_phrase_start_in_words,
-                            find_hook_start_in_words,
-                            hook_keyword_overlap,
-                        )
-                        from services.clip_generator import (
-                            refine_bounds_to_sentences,
-                            has_incomplete_tail,
-                            detect_sentence_boundaries,
-                        )
-                        trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
-                        tail_snapped_by_sentence = False
-
-                        # Fase 3: límites a boundaries de oración (puntuación +
-                        # gaps >0.6s + fin de segmentos Whisper)
-                        s_start, s_end = refine_bounds_to_sentences(
-                            clip_words, clip_duration,
-                            segments=clip_segments_whisper,
-                            max_duration=60.0,
-                        )
-                        if s_start > trim_start:
-                            print(f"   📝 Sentence snap start: {trim_start:.2f} → {s_start:.2f}")
-                            trim_start = s_start
-                        if s_end < trim_end:
-                            print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
-                            trim_end = s_end
-                            tail_snapped_by_sentence = True
-
-                        # Hook anchor: overlay > hook > first_phrase (después de sentence snap)
-                        _overlay = getattr(moment, "viral_overlay", None) or ""
-                        _first_phrase = getattr(
-                            getattr(moment, "verification", None),
-                            "first_phrase_in_audio", None,
-                        )
-                        hook_anchor = find_hook_start_in_words(
-                            clip_words,
-                            hook=moment.hook or "",
-                            overlay=_overlay,
-                            first_phrase=_first_phrase or "",
-                            clip_duration=clip_duration,
-                        )
-                        if hook_anchor is not None:
-                            new_start = max(0.0, hook_anchor - 0.2)
-                            if (
-                                0.5 <= hook_anchor <= clip_duration * 0.4
-                                and (trim_end - new_start) >= 8.0
-                                and new_start > trim_start
-                            ):
-                                print(
-                                    f"   🎯 Hook anchor: {hook_anchor:.2f}s — "
-                                    f"inicio {trim_start:.2f} → {new_start:.2f}"
-                                )
-                                trim_start = new_start
-                        elif moment.hook and len(clip_words) >= 3:
-                            head_tokens = [
-                                (w.get("word") or "").strip()
-                                for w in clip_words[:3]
-                            ]
-                            if hook_keyword_overlap(head_tokens, moment.hook) < 0.2:
-                                bounds = detect_sentence_boundaries(
-                                    clip_words, clip_segments_whisper
-                                )
-                                alt = [b for b in bounds if 2.0 < b <= clip_duration * 0.35]
-                                if alt:
-                                    remaining = [
-                                        w for w in clip_words
-                                        if float(w.get("start", 0)) > alt[0]
-                                    ]
-                                    if remaining and (trim_end - float(remaining[0]["start"])) >= 8.0:
-                                        new_start = max(0.0, float(remaining[0]["start"]) - 0.15)
-                                        print(
-                                            f"   🧹 Head filler trim: {trim_start:.2f} → {new_start:.2f}"
-                                        )
-                                        trim_start = new_start
-
-                        # First-phrase anchor (fallback si hook anchor no corrió)
-                        if _first_phrase and trim_start < 0.5:
-                            anchor_t = find_phrase_start_in_words(clip_words, _first_phrase)
-                            if (
-                                anchor_t is not None
-                                and anchor_t - trim_start > 0.8
-                                and anchor_t < clip_duration * 0.5
-                                and (trim_end - anchor_t) >= 8.0
-                            ):
-                                print(
-                                    f"   ⚓ First-phrase anchor: frase en "
-                                    f"{anchor_t:.2f}s — inicio "
-                                    f"{trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f}"
-                                )
-                                trim_start = max(0.0, anchor_t - 0.35)
-
-                        if trim_end - trim_start < 3.0:
-                            trim_start, trim_end = 0.0, clip_duration
-
-                        if trim_start > 0.05 or trim_end < clip_duration - 0.05:
-                            snap_trim_start = trim_start
-                            words_before_snap = len(clip_words)
-                            print(
-                                f"   ✂️ Snap trim: {clip_duration:.1f}s → "
-                                f"{trim_end - trim_start:.1f}s "
-                                f"(start={trim_start:.2f}, end={trim_end:.2f})"
+                            whisper_prompt = None
+                            prompt_parts = []
+                            video_title = (video_info.get("title") or "").strip()
+                            if video_title:
+                                prompt_parts.append(video_title)
+                            yt_segments = transcript.get("segments") or []
+                            ctx_texts = []
+                            for sg in yt_segments:
+                                sg_start = float(sg.get("start", 0))
+                                sg_end = float(sg.get("end", 0))
+                                if sg_end >= start_s and sg_start <= end_s:
+                                    ctx_texts.append(sg.get("text", "").strip())
+                            yt_slice = " ".join(ctx_texts).strip()
+                            if ctx_texts:
+                                prompt_parts.append(yt_slice)
+                            from services.transcriber import (
+                                build_whisper_vocabulary,
+                                format_whisper_vocabulary_prompt,
                             )
-                            snapped_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_snapped.mp4"
-                            try:
-                                cut_clip(
-                                    video_path=str(precut_path),
-                                    start_sec=trim_start,
-                                    end_sec=trim_end,
-                                    output_path=str(snapped_path),
-                                )
-                                precut_path = snapped_path
-                                clip_duration = trim_end - trim_start
-                                clip_words = shift_words_timeline(
-                                    clip_words, trim_start, clip_duration=clip_duration
-                                )
-                                clip_words = fix_ghost_leading_words(clip_words)
-                                clip_words = filter_whisper_words(clip_words, clip_duration)
-                                print(
-                                    f"   📊 Snap words: {words_before_snap} → "
-                                    f"{len(clip_words)} (after shift+filter)"
-                                )
-                                clip_segments_whisper = [
-                                    {
-                                        **sg,
-                                        "start": max(0.0, float(sg["start"]) - trim_start),
-                                        "end": max(0.0, float(sg["end"]) - trim_start),
-                                    }
-                                    for sg in clip_segments_whisper
-                                    if float(sg.get("end", 0)) > trim_start
-                                    and float(sg.get("start", 0)) < trim_end
-                                ]
-                                subs_words = clip_words
-                                subs_segments = clip_segments_whisper
-                            except ClipGenerationError as e_snap:
-                                print(f"   ⚠️ Snap trim falló ({e_snap}) — continuando sin snap")
-                                snap_trim_start = 0.0
+                            whisper_vocab = build_whisper_vocabulary(
+                                video_title=video_title,
+                                hook=moment.hook or "",
+                                yt_slice=yt_slice,
+                            )
+                            vocab_prompt = format_whisper_vocabulary_prompt(whisper_vocab)
+                            if vocab_prompt:
+                                prompt_parts.insert(0, vocab_prompt)
+                            if prompt_parts:
+                                whisper_prompt = ". ".join(prompt_parts)
+                                if len(whisper_prompt) > 800:
+                                    whisper_prompt = whisper_prompt[:800]
+
+                            whisper_lang = transcript.get("language")
+                            if whisper_lang and len(whisper_lang) > 2:
+                                whisper_lang = whisper_lang.split("-")[0].lower()
+
+                            print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper "
+                                  f"(lang={whisper_lang}, prompt={len(whisper_prompt or '')} chars)...")
+                            clip_tr = transcribe_with_whisper_openrouter(
+                                str(clip_audio_path),
+                                prompt=whisper_prompt,
+                                language=whisper_lang,
+                            )
+                            raw_words = clip_tr.get("words") or []
+                            raw_segments = clip_tr.get("segments") or []
+                            clip_words = filter_whisper_words(raw_words, clip_duration)
+                            clip_words = fix_ghost_leading_words(clip_words)
+                            from services.clip_generator import apply_whisper_brand_corrections
+                            clip_words = apply_whisper_brand_corrections(clip_words, whisper_vocab)
+
+                            clip_segments_whisper = []
+                            for sg in raw_segments:
+                                ss = float(sg.get("start", 0))
+                                se = float(sg.get("end", ss + 0.1))
+                                if se <= 0 or ss >= clip_duration + 0.25:
+                                    continue
+                                sg2 = dict(sg)
+                                sg2["start"] = max(0.0, ss)
+                                sg2["end"] = min(clip_duration + 0.10, se)
+                                clip_segments_whisper.append(sg2)
+
+                            n_raw = len(raw_words)
+                            n_kept = len(clip_words)
+                            retention = (n_kept / n_raw * 100) if n_raw else 0
+                            words_per_sec = (n_kept / clip_duration) if clip_duration > 0 else 0
+                            print(f"   ✅ Whisper: {n_kept}/{n_raw} words ({retention:.0f}%), "
+                                  f"{len(clip_segments_whisper)}/{len(raw_segments)} segments "
+                                  f"(clip_duration={clip_duration:.1f}s, density={words_per_sec:.2f} w/s)")
+
+                            if n_kept == 0:
+                                print(f"   🔄 Whisper devolvió 0 words — fallback a YT transcript")
+                                clip_words = None
+                                clip_segments_whisper = None
+                        except Exception as e_whisper:
+                            print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
+                                  f"fallback a YT Transcript API")
+                            clip_words = None
+                            clip_segments_whisper = None
+                        finally:
+                            if clip_audio_path:
                                 try:
-                                    snapped_path.unlink(missing_ok=True)
+                                    Path(clip_audio_path).unlink(missing_ok=True)
                                 except Exception:
                                     pass
 
-                        # Post-snap: cola incompleta (omitir si sentence snap ya recortó tail)
-                        incomplete_tail = has_incomplete_tail(
-                            clip_words, tail_already_snapped=tail_snapped_by_sentence
-                        )
-                        late_hook = snap_trim_start > 3.0
+                        if clip_words or clip_segments_whisper:
+                            subs_segments = clip_segments_whisper
+                            subs_words = clip_words
+                            subs_offset = 0.0
+                            snap_trim_start = 0.0
+                            incomplete_tail = False
+                            late_hook = False
 
-                        # Fase 4: verificación anti-alucinación (frases post-snap)
-                        verification_info = verify_phrases_after_snap(
-                            moment, clip_words, snap_trim_start, clip_duration
-                        )
-                        if (
-                            verification_info.get("failed")
-                            or incomplete_tail
-                            or late_hook
-                        ):
-                            moment.verification_failed = True
-                            reasons = []
-                            if verification_info.get("failed"):
-                                reasons.append("phrase mismatch")
-                            if incomplete_tail:
-                                reasons.append("incomplete tail")
-                            if late_hook:
-                                reasons.append("late hook")
-                            print(f"   🚩 verification_failed: {', '.join(reasons)}")
-                        coverage_val = srt_coverage_metric(clip_words, clip_duration)
-                        wps_val = (len(clip_words) / clip_duration) if clip_duration > 0 else 0.0
-                        print(f"   📊 Sub coverage: {coverage_val:.0%} | densidad: {wps_val:.2f} w/s")
+                            # Fase A: snap trim silencio + refinamiento a oración
+                            from services.validation import (
+                                verify_phrases_after_snap,
+                                find_phrase_start_in_words,
+                                find_hook_start_in_words,
+                                hook_keyword_overlap,
+                            )
+                            from services.clip_generator import (
+                                refine_bounds_to_sentences,
+                                has_incomplete_tail,
+                                detect_sentence_boundaries,
+                            )
+                            trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
+                            tail_snapped_by_sentence = False
 
-                        from services.processor import _clip_text_from_words
-                        clip_text_final = _clip_text_from_words(clip_words)
-                    else:
-                        subs_segments = transcript.get("segments")
-                        subs_words = None
-                        subs_offset = start_s
-                        # Sin Whisper: el texto real del clip es el slice del
-                        # transcript YT (para pasada B y juez)
-                        from services.validation import _words_in_range
-                        clip_text_final = _words_in_range(
-                            transcript.get("segments") or [], start_s, end_s
-                        )
+                            # Fase 3: límites a boundaries de oración (puntuación +
+                            # gaps >0.6s + fin de segmentos Whisper)
+                            s_start, s_end = refine_bounds_to_sentences(
+                                clip_words, clip_duration,
+                                segments=clip_segments_whisper,
+                                max_duration=60.0,
+                            )
+                            if s_start > trim_start:
+                                print(f"   📝 Sentence snap start: {trim_start:.2f} → {s_start:.2f}")
+                                trim_start = s_start
+                            if s_end < trim_end:
+                                print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
+                                trim_end = s_end
+                                tail_snapped_by_sentence = True
 
-                    roi_clip_duration = clip_duration
+                            # Hook anchor: overlay > hook > first_phrase (después de sentence snap)
+                            _overlay = getattr(moment, "viral_overlay", None) or ""
+                            _first_phrase = getattr(
+                                getattr(moment, "verification", None),
+                                "first_phrase_in_audio", None,
+                            )
+                            hook_anchor = find_hook_start_in_words(
+                                clip_words,
+                                hook=moment.hook or "",
+                                overlay=_overlay,
+                                first_phrase=_first_phrase or "",
+                                clip_duration=clip_duration,
+                            )
+                            if hook_anchor is not None:
+                                new_start = max(0.0, hook_anchor - 0.2)
+                                if (
+                                    0.5 <= hook_anchor <= clip_duration * 0.4
+                                    and (trim_end - new_start) >= 8.0
+                                    and new_start > trim_start
+                                ):
+                                    print(
+                                        f"   🎯 Hook anchor: {hook_anchor:.2f}s — "
+                                        f"inicio {trim_start:.2f} → {new_start:.2f}"
+                                    )
+                                    trim_start = new_start
+                            elif moment.hook and len(clip_words) >= 3:
+                                head_tokens = [
+                                    (w.get("word") or "").strip()
+                                    for w in clip_words[:3]
+                                ]
+                                if hook_keyword_overlap(head_tokens, moment.hook) < 0.2:
+                                    bounds = detect_sentence_boundaries(
+                                        clip_words, clip_segments_whisper
+                                    )
+                                    alt = [b for b in bounds if 2.0 < b <= clip_duration * 0.35]
+                                    if alt:
+                                        remaining = [
+                                            w for w in clip_words
+                                            if float(w.get("start", 0)) > alt[0]
+                                        ]
+                                        if remaining and (trim_end - float(remaining[0]["start"])) >= 8.0:
+                                            new_start = max(0.0, float(remaining[0]["start"]) - 0.15)
+                                            print(
+                                                f"   🧹 Head filler trim: {trim_start:.2f} → {new_start:.2f}"
+                                            )
+                                            trim_start = new_start
 
-                    # ── Pasada B (Fase 2): copy completo desde el texto real ──
-                    # Corre ANTES de generate_clip para que el viral_overlay
-                    # final (regenerado) sea el que se quema en el video.
-                    if clip_text_final and clip_text_final.strip():
-                        from services.processor import generate_moment_copy_full
-                        from services.content_validators import clean_moment
-                        category = getattr(moment, 'category', None) or 'business'
-                        _lang = transcript.get("language")
-                        copy_ok = generate_moment_copy_full(
-                            moment,
-                            clip_text_final,
-                            category=category,
-                            tone=job_tone,
-                            language=_lang,
-                            user_name=user_name or "Creador",
-                            user_title=user_title or "Experto",
-                        )
-                        moment_dict = moment.model_dump()
-                        copy_stats = clean_moment(moment_dict)
-                        if copy_ok and (copy_stats.wrong_tweet_count or copy_stats.linkedin_out_of_range):
-                            print("   🔄 Copy validation retry (tweet count / LinkedIn length)...")
-                            generate_moment_copy_full(
-                                moment, clip_text_final,
-                                category=category, tone=job_tone, language=_lang,
+                            # First-phrase anchor (fallback si hook anchor no corrió)
+                            if _first_phrase and trim_start < 0.5:
+                                anchor_t = find_phrase_start_in_words(clip_words, _first_phrase)
+                                if (
+                                    anchor_t is not None
+                                    and anchor_t - trim_start > 0.8
+                                    and anchor_t < clip_duration * 0.5
+                                    and (trim_end - anchor_t) >= 8.0
+                                ):
+                                    print(
+                                        f"   ⚓ First-phrase anchor: frase en "
+                                        f"{anchor_t:.2f}s — inicio "
+                                        f"{trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f}"
+                                    )
+                                    trim_start = max(0.0, anchor_t - 0.35)
+
+                            if trim_end - trim_start < 3.0:
+                                trim_start, trim_end = 0.0, clip_duration
+
+                            if trim_start > 0.05 or trim_end < clip_duration - 0.05:
+                                snap_trim_start = trim_start
+                                words_before_snap = len(clip_words)
+                                print(
+                                    f"   ✂️ Snap trim: {clip_duration:.1f}s → "
+                                    f"{trim_end - trim_start:.1f}s "
+                                    f"(start={trim_start:.2f}, end={trim_end:.2f})"
+                                )
+                                snapped_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_snapped.mp4"
+                                try:
+                                    cut_clip(
+                                        video_path=str(precut_path),
+                                        start_sec=trim_start,
+                                        end_sec=trim_end,
+                                        output_path=str(snapped_path),
+                                    )
+                                    precut_path = snapped_path
+                                    clip_duration = trim_end - trim_start
+                                    clip_words = shift_words_timeline(
+                                        clip_words, trim_start, clip_duration=clip_duration
+                                    )
+                                    clip_words = fix_ghost_leading_words(clip_words)
+                                    clip_words = filter_whisper_words(clip_words, clip_duration)
+                                    print(
+                                        f"   📊 Snap words: {words_before_snap} → "
+                                        f"{len(clip_words)} (after shift+filter)"
+                                    )
+                                    clip_segments_whisper = [
+                                        {
+                                            **sg,
+                                            "start": max(0.0, float(sg["start"]) - trim_start),
+                                            "end": max(0.0, float(sg["end"]) - trim_start),
+                                        }
+                                        for sg in clip_segments_whisper
+                                        if float(sg.get("end", 0)) > trim_start
+                                        and float(sg.get("start", 0)) < trim_end
+                                    ]
+                                    subs_words = clip_words
+                                    subs_segments = clip_segments_whisper
+                                except ClipGenerationError as e_snap:
+                                    print(f"   ⚠️ Snap trim falló ({e_snap}) — continuando sin snap")
+                                    snap_trim_start = 0.0
+                                    try:
+                                        snapped_path.unlink(missing_ok=True)
+                                    except Exception:
+                                        pass
+
+                            # Post-snap: cola incompleta (omitir si sentence snap ya recortó tail)
+                            incomplete_tail = has_incomplete_tail(
+                                clip_words, tail_already_snapped=tail_snapped_by_sentence
+                            )
+                            late_hook = snap_trim_start > 3.0
+
+                            # Fase 4: verificación anti-alucinación (frases post-snap)
+                            verification_info = verify_phrases_after_snap(
+                                moment, clip_words, snap_trim_start, clip_duration
+                            )
+                            if (
+                                verification_info.get("failed")
+                                or incomplete_tail
+                                or late_hook
+                            ):
+                                moment.verification_failed = True
+                                reasons = []
+                                if verification_info.get("failed"):
+                                    reasons.append("phrase mismatch")
+                                if incomplete_tail:
+                                    reasons.append("incomplete tail")
+                                if late_hook:
+                                    reasons.append("late hook")
+                                print(f"   🚩 verification_failed: {', '.join(reasons)}")
+                            coverage_val = srt_coverage_metric(clip_words, clip_duration)
+                            wps_val = (len(clip_words) / clip_duration) if clip_duration > 0 else 0.0
+                            print(f"   📊 Sub coverage: {coverage_val:.0%} | densidad: {wps_val:.2f} w/s")
+
+                            if strict_sync and (
+                                verification_info.get("failed")
+                                or coverage_val < 0.9
+                            ):
+                                if sync_attempt < sync_retries:
+                                    raise _SyncRetryNeeded(
+                                        "phrase/coverage mismatch — re-download"
+                                    )
+                                raise ClipGenerationError(
+                                    "Sync validation failed after retries"
+                                )
+
+                            from services.processor import _clip_text_from_words
+                            clip_text_final = _clip_text_from_words(clip_words)
+                        else:
+                            subs_segments = transcript.get("segments")
+                            subs_words = None
+                            subs_offset = start_s
+                            # Sin Whisper: el texto real del clip es el slice del
+                            # transcript YT (para pasada B y juez)
+                            from services.validation import _words_in_range
+                            clip_text_final = _words_in_range(
+                                transcript.get("segments") or [], start_s, end_s
+                            )
+
+                        roi_clip_duration = clip_duration
+
+                        # ── Pasada B (Fase 2): copy completo desde el texto real ──
+                        # Corre ANTES de generate_clip para que el viral_overlay
+                        # final (regenerado) sea el que se quema en el video.
+                        if clip_text_final and clip_text_final.strip():
+                            from services.processor import generate_moment_copy_full
+                            from services.content_validators import clean_moment
+                            category = getattr(moment, 'category', None) or 'business'
+                            _lang = transcript.get("language")
+                            copy_ok = generate_moment_copy_full(
+                                moment,
+                                clip_text_final,
+                                category=category,
+                                tone=job_tone,
+                                language=_lang,
                                 user_name=user_name or "Creador",
                                 user_title=user_title or "Experto",
                             )
                             moment_dict = moment.model_dump()
-                            clean_moment(moment_dict)
-                        # Sync de vuelta los campos limpiados por clean_moment
-                        if moment_dict.get("content_pieces"):
-                            cp = moment_dict["content_pieces"]
-                            if cp.get("twitter_thread"):
-                                moment.content_pieces.twitter_thread = cp["twitter_thread"]
-                            if cp.get("linkedin_post"):
-                                moment.content_pieces.linkedin_post = cp["linkedin_post"]
-                            if cp.get("tiktok_caption"):
-                                moment.content_pieces.tiktok_caption = cp["tiktok_caption"]
-                        if moment_dict.get("viral_overlay"):
-                            moment.viral_overlay = moment_dict["viral_overlay"]
-                        # El overlay que se quema es el final (post-pasada B)
-                        if moment.viral_overlay:
-                            overlay_text = moment.viral_overlay
+                            copy_stats = clean_moment(moment_dict)
+                            if copy_ok and (copy_stats.wrong_tweet_count or copy_stats.linkedin_out_of_range):
+                                print("   🔄 Copy validation retry (tweet count / LinkedIn length)...")
+                                generate_moment_copy_full(
+                                    moment, clip_text_final,
+                                    category=category, tone=job_tone, language=_lang,
+                                    user_name=user_name or "Creador",
+                                    user_title=user_title or "Experto",
+                                )
+                                moment_dict = moment.model_dump()
+                                clean_moment(moment_dict)
+                            # Sync de vuelta los campos limpiados por clean_moment
+                            if moment_dict.get("content_pieces"):
+                                cp = moment_dict["content_pieces"]
+                                if cp.get("twitter_thread"):
+                                    moment.content_pieces.twitter_thread = cp["twitter_thread"]
+                                if cp.get("linkedin_post"):
+                                    moment.content_pieces.linkedin_post = cp["linkedin_post"]
+                                if cp.get("tiktok_caption"):
+                                    moment.content_pieces.tiktok_caption = cp["tiktok_caption"]
+                            if moment_dict.get("viral_overlay"):
+                                moment.viral_overlay = moment_dict["viral_overlay"]
+                            # El overlay que se quema es el final (post-pasada B)
+                            if moment.viral_overlay:
+                                overlay_text = moment.viral_overlay
 
-                        # ── Fase 4: juez independiente sobre el clip final ────
-                        from services.scorer import judge_moment_scores
-                        judge_scores = judge_moment_scores(
-                            clip_text_final,
-                            hook=moment.hook or "",
-                            viral_overlay=moment.viral_overlay or "",
-                            category=category,
-                            clip_duration_sec=roi_clip_duration or 0.0,
-                        )
-                        if judge_scores:
-                            print(
-                                f"   ⚖️ Judge: hook={judge_scores['hook']} "
-                                f"retention={judge_scores['retention']} "
-                                f"share={judge_scores['shareability']}"
+                            # ── Fase 4: juez independiente sobre el clip final ────
+                            from services.scorer import judge_moment_scores
+                            judge_scores = judge_moment_scores(
+                                clip_text_final,
+                                hook=moment.hook or "",
+                                viral_overlay=moment.viral_overlay or "",
+                                category=category,
+                                clip_duration_sec=roi_clip_duration or 0.0,
                             )
+                            if judge_scores:
+                                print(
+                                    f"   ⚖️ Judge: hook={judge_scores['hook']} "
+                                    f"retention={judge_scores['retention']} "
+                                    f"share={judge_scores['shareability']}"
+                                )
 
-                    # Cache post-snap precut so re-edits align with whisper_words (0-based).
-                    raw_cache_path = str(precut_path) if precut_path else seg_path
-                    if raw_cache_path and Path(raw_cache_path).exists():
-                        try:
-                            from services.supabase_client import upload_raw_clip_to_storage
-                            raw_clip_url_cache = upload_raw_clip_to_storage(
-                                raw_cache_path, job_id, moment_index
-                            )
-                            print(
-                                f"   💾 Raw cache subido "
-                                f"({'post-snap' if raw_cache_path == str(precut_path) else 'segment'})"
-                            )
-                        except Exception as e_cache:
-                            print(f"   ⚠️ Cache raw clip falló (no fatal): {e_cache}")
-
-                    gen_result = generate_clip(
-                        video_path=str(precut_path),
-                        start_sec=0.0,
-                        end_sec=clip_duration,
-                        output_path=str(clip_output),
-                        segments=subs_segments,
-                        segments_start_offset_sec=subs_offset,
-                        words=subs_words,
-                        subtitle_style="tiktok_viral",
-                        overlay_text=overlay_text,
-                        overlay_style="tiktok_viral",
-                        target_width=720,
-                        target_height=1280,
-                    )
-                    print(f"✅ Clip generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
-                    print(f"📤 Subiendo clip {moment_index} a R2...")
-                    clip_url = upload_clip_to_storage(str(clip_output), job_id, moment_index)
-                    if clip_url:
-                        print(f"✅ Clip subido: {clip_url[:70]}...")
-                        clip_rendered_ok = True
-                        clips_rendered_count += 1
-                        if clip_words or clip_segments_whisper:
-                            whisper_words_cache = {
-                                "words": clip_words or [],
-                                "segments": clip_segments_whisper or [],
-                                "duration_sec": clip_duration,
-                                "snap_trim_start": snap_trim_start,
-                            }
-                    else:
-                        raise RuntimeError("upload_clip_to_storage devolvió None")
-                except (ClipGenerationError, Exception) as e:
-                    clip_generation_error = str(e)[:500]
-                    print(f"⚠️ Clip {moment_index} falló: {e}")
-                    whisper_words_cache = None
-                    if moment.start_time is not None:
-                        clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
-                        print(f"🔗 Fallback a link de YouTube: {clip_url}")
-                finally:
-                    for tmp in (seg_path, locals().get("precut_path")):
-                        if tmp:
+                        # Cache post-snap precut so re-edits align with whisper_words (0-based).
+                        raw_cache_path = str(precut_path) if precut_path else seg_path
+                        if raw_cache_path and Path(raw_cache_path).exists():
                             try:
-                                Path(tmp).unlink(missing_ok=True)
-                            except Exception:
-                                pass
-                    # Limpiar clip final
-                    try:
-                        if clip_output.exists():
-                            clip_output.unlink()
-                    except Exception:
-                        pass
-                    gc.collect()
+                                from services.supabase_client import upload_raw_clip_to_storage
+                                raw_clip_url_cache = upload_raw_clip_to_storage(
+                                    raw_cache_path, job_id, moment_index
+                                )
+                                print(
+                                    f"   💾 Raw cache subido "
+                                    f"({'post-snap' if raw_cache_path == str(precut_path) else 'segment'})"
+                                )
+                            except Exception as e_cache:
+                                print(f"   ⚠️ Cache raw clip falló (no fatal): {e_cache}")
+
+                        gen_result = generate_clip(
+                            video_path=str(precut_path),
+                            start_sec=0.0,
+                            end_sec=clip_duration,
+                            output_path=str(clip_output),
+                            segments=subs_segments,
+                            segments_start_offset_sec=subs_offset,
+                            words=subs_words,
+                            subtitle_style="tiktok_viral",
+                            overlay_text=overlay_text,
+                            overlay_style="tiktok_viral",
+                            target_width=720,
+                            target_height=1280,
+                        )
+                        print(f"✅ Clip generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
+                        print(f"📤 Subiendo clip {moment_index} a R2...")
+                        clip_url = upload_clip_to_storage(str(clip_output), job_id, moment_index)
+                        if clip_url:
+                            print(f"✅ Clip subido: {clip_url[:70]}...")
+                            clip_rendered_ok = True
+                            clips_rendered_count += 1
+                            if clip_words or clip_segments_whisper:
+                                whisper_words_cache = {
+                                    "words": clip_words or [],
+                                    "segments": clip_segments_whisper or [],
+                                    "duration_sec": clip_duration,
+                                    "snap_trim_start": snap_trim_start,
+                                }
+                        else:
+                            raise RuntimeError("upload_clip_to_storage devolvió None")
+                        break
+                    except _SyncRetryNeeded as e_sync:
+                        print(f"   ⚠️ {e_sync}")
+                        continue
+                    except (ClipGenerationError, Exception) as e:
+                        clip_generation_error = str(e)[:500]
+                        print(f"⚠️ Clip {moment_index} falló: {e}")
+                        whisper_words_cache = None
+                        if moment.start_time is not None:
+                            clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
+                            print(f"🔗 Fallback a link de YouTube: {clip_url}")
+                        break
+                for tmp in (locals().get("seg_path"), locals().get("precut_path")):
+                    if tmp:
+                        try:
+                            Path(tmp).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                try:
+                    _clip_out = locals().get("clip_output")
+                    if _clip_out and Path(_clip_out).exists():
+                        Path(_clip_out).unlink()
+                except Exception:
+                    pass
+                gc.collect()
             else:
                 # Sin video local — deep link con timestamp
                 if moment.start_time is not None:

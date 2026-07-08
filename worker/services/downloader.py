@@ -14,9 +14,47 @@ import shutil
 import subprocess
 import tempfile
 import urllib.parse
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 from urllib.request import urlopen, Request, build_opener, ProxyHandler
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+@dataclass
+class ClipDownloadResult:
+    """Segmento descargado con rango absoluto en el video fuente."""
+    path: str
+    download_start: float
+    download_end: float
+
+
+def _clip_keyframe_margin_sec() -> float:
+    try:
+        return max(0.0, float(os.getenv("CLIP_KEYFRAME_MARGIN_SEC", "8")))
+    except ValueError:
+        return 8.0
+
+
+def _download_parallel_workers() -> int:
+    try:
+        return max(1, int(os.getenv("DOWNLOAD_PARALLEL_WORKERS", "3")))
+    except ValueError:
+        return 3
+
+
+def should_use_stream_urls_fallback(start_sec: float, video_duration: float) -> bool:
+    """Stream partial per-clip solo conviene si el clip está en el primer 20% del video."""
+    if video_duration <= 0:
+        return True
+    return start_sec <= video_duration * 0.2
+
+
+def _format_apify_timestamp(seconds: float) -> str:
+    total = max(0, int(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
 
 DOWNLOADS_DIR = Path(__file__).parent.parent / "downloads"
 COOKIES_FILE = Path(__file__).parent.parent / "cookies.txt"
@@ -1037,7 +1075,11 @@ def download_clip_ytdlp(
     start_sec: float,
     end_sec: float,
     output_path: str,
-) -> str:
+    *,
+    keyframe_margin_sec: float | None = None,
+    video_duration: float | None = None,
+    proxy_url: str | None = None,
+) -> ClipDownloadResult:
     """
     Descarga SOLO el segmento necesario para un clip usando yt-dlp con proxy.
 
@@ -1049,9 +1091,15 @@ def download_clip_ytdlp(
     en IPs de datacenter.
 
     Returns:
-        Path al MP4 descargado (clip listo para procesar con generate_clip)
+        ClipDownloadResult con path y rango absoluto descargado en el video fuente.
     """
     from yt_dlp.utils import download_range_func
+
+    margin = _clip_keyframe_margin_sec() if keyframe_margin_sec is None else max(0.0, keyframe_margin_sec)
+    dl_start = max(0.0, float(start_sec) - margin)
+    dl_end = float(end_sec) + margin
+    if video_duration and video_duration > 0:
+        dl_end = min(dl_end, float(video_duration))
 
     # output_path puede terminar en .mp4 pero yt-dlp agrega su propia extensión
     # Usar un stem sin extensión y dejar que yt-dlp la maneje
@@ -1069,7 +1117,7 @@ def download_clip_ytdlp(
             'bestvideo+bestaudio/'
             'best'
         ),
-        'download_ranges': download_range_func(None, [(start_sec, end_sec)]),
+        'download_ranges': download_range_func(None, [(dl_start, dl_end)]),
         'force_keyframes_at_cuts': True,
         'outtmpl': out_stem + '.%(ext)s',
         'ffmpeg_location': FFMPEG_LOCATION,
@@ -1077,7 +1125,7 @@ def download_clip_ytdlp(
         'quiet': False,
         'no_warnings': False,
         'nocheckcertificate': True,
-    })
+    }, proxy_url=proxy_url)
 
     DOWNLOADS_DIR.mkdir(exist_ok=True)
 
@@ -1088,16 +1136,173 @@ def download_clip_ytdlp(
     result_path = Path(out_stem + '.mp4')
     if result_path.exists():
         size_mb = result_path.stat().st_size / (1 << 20)
-        print(f"✅ yt-dlp segmento: {result_path.name} ({size_mb:.1f}MB, {start_sec:.0f}s-{end_sec:.0f}s)")
-        return str(result_path)
+        print(
+            f"✅ yt-dlp segmento: {result_path.name} ({size_mb:.1f}MB, "
+            f"{dl_start:.0f}s-{dl_end:.0f}s, clip {start_sec:.0f}-{end_sec:.0f}s)"
+        )
+        return ClipDownloadResult(str(result_path), dl_start, dl_end)
 
     # Buscar cualquier extensión
     for ext in ['mp4', 'mkv', 'webm']:
         p = Path(out_stem + f'.{ext}')
         if p.exists():
-            return str(p)
+            return ClipDownloadResult(str(p), dl_start, dl_end)
 
     raise FileNotFoundError(f"yt-dlp no generó archivo en: {out_stem}.*")
+
+
+def download_clips_parallel(
+    youtube_url: str,
+    moments: list,
+    video_id: str,
+    *,
+    video_duration: float,
+    deadline: float | None = None,
+    on_clip_done: Callable[[int, int], None] | None = None,
+) -> dict[int, ClipDownloadResult]:
+    """
+    Descarga segmentos per-clip en paralelo con yt-dlp download_ranges.
+
+    Returns:
+        dict moment_index (1-based) → ClipDownloadResult para clips exitosos.
+    """
+    jobs: list[tuple[int, float, float]] = []
+    for i, moment in enumerate(moments):
+        if moment.start_time is None or moment.end_time is None:
+            continue
+        jobs.append((i + 1, float(moment.start_time), float(moment.end_time)))
+
+    if not jobs:
+        return {}
+
+    workers = min(_download_parallel_workers(), len(jobs))
+    proxies = _get_proxy_list()
+    results: dict[int, ClipDownloadResult] = {}
+    total = len(jobs)
+    completed = 0
+
+    def _worker(moment_index: int, start_s: float, end_s: float) -> tuple[int, ClipDownloadResult | None]:
+        if deadline and time.time() > deadline:
+            print(f"   ⏱️ Budget de descarga agotado — omitiendo clip {moment_index}")
+            return moment_index, None
+        proxy = None
+        if proxies:
+            proxy = proxies[(moment_index - 1) % len(proxies)]
+        out = str(DOWNLOADS_DIR / f"{video_id}_seg_{moment_index}_{int(start_s)}")
+        try:
+            result = download_clip_ytdlp(
+                youtube_url=youtube_url,
+                start_sec=start_s,
+                end_sec=end_s,
+                output_path=out,
+                video_duration=video_duration,
+                proxy_url=proxy,
+            )
+            return moment_index, result
+        except Exception as e:
+            print(f"   ⚠️ Per-clip paralelo {moment_index} falló: {e}")
+            return moment_index, None
+
+    print(f"   🚀 Descarga per-clip paralela: {total} clips, {workers} workers")
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(_worker, moment_index, start_s, end_s)
+            for moment_index, start_s, end_s in jobs
+        ]
+        for fut in as_completed(futures):
+            moment_index, result = fut.result()
+            completed += 1
+            if result is not None:
+                results[moment_index] = result
+            if on_clip_done:
+                on_clip_done(completed, total)
+
+    elapsed = time.time() - t0
+    failed = total - len(results)
+    total_mb = sum(Path(r.path).stat().st_size for r in results.values()) / (1 << 20)
+    print(
+        f"   ⏱️ Per-clip paralelo: {len(results)}/{total} OK en {elapsed:.0f}s "
+        f"({total_mb:.1f}MB)"
+    )
+    return results
+
+
+def download_clip_apify(
+    youtube_url: str,
+    start_sec: float,
+    end_sec: float,
+    output_path: str,
+) -> ClipDownloadResult:
+    """Descarga un clip vía Apify YouTube Video Clipper (fallback externo)."""
+    import requests
+
+    token = (os.getenv("APIFY_TOKEN") or "").strip()
+    if not token:
+        raise RuntimeError("APIFY_TOKEN no configurado")
+
+    actor_id = "fractalai~youtube-video-clipper"
+    run_resp = requests.post(
+        f"https://api.apify.com/v2/acts/{actor_id}/runs",
+        params={"token": token, "waitForFinish": "300"},
+        json={
+            "videoUrl": youtube_url,
+            "clips": [{
+                "name": "clip",
+                "start": _format_apify_timestamp(start_sec),
+                "end": _format_apify_timestamp(end_sec),
+            }],
+            "quality": "720p",
+            "enableFallbacks": True,
+        },
+        timeout=330,
+    )
+    run_resp.raise_for_status()
+    run_data = run_resp.json().get("data") or {}
+    if run_data.get("status") not in ("SUCCEEDED", "READY"):
+        raise RuntimeError(f"Apify run status: {run_data.get('status')}")
+
+    dataset_id = run_data.get("defaultDatasetId")
+    if not dataset_id:
+        raise RuntimeError("Apify no devolvió defaultDatasetId")
+
+    items_resp = requests.get(
+        f"https://api.apify.com/v2/datasets/{dataset_id}/items",
+        params={"token": token, "limit": 5},
+        timeout=60,
+    )
+    items_resp.raise_for_status()
+    items = items_resp.json()
+    if not items:
+        raise RuntimeError("Apify dataset vacío")
+
+    clip_url = (
+        items[0].get("videoFileUrl")
+        or items[0].get("clipUrl")
+        or items[0].get("downloadUrl")
+    )
+    if not clip_url:
+        raise RuntimeError(f"Apify sin URL de clip: {list(items[0].keys())}")
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with requests.get(clip_url, stream=True, timeout=300) as r:
+        r.raise_for_status()
+        with open(out, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 20):
+                if chunk:
+                    f.write(chunk)
+
+    size_mb = out.stat().st_size / (1 << 20)
+    print(f"   ✅ Apify clip OK ({size_mb:.1f}MB, {start_sec:.0f}-{end_sec:.0f}s)")
+    return ClipDownloadResult(str(out), float(start_sec), float(end_sec))
+
+
+def _use_apify_fallback() -> bool:
+    return (
+        os.getenv("USE_APIFY_FALLBACK", "").lower() in ("1", "true", "yes")
+        and bool((os.getenv("APIFY_TOKEN") or "").strip())
+    )
 
 
 def _get_stream_content_length(url: str, label: str = "stream") -> int:
@@ -1496,7 +1701,15 @@ def download_clip_via_stream_urls(
     """
     Descarga un clip [start_sec, end_sec] vía stream URLs (RapidAPI/yt-dlp),
     partial download hasta end_sec y corte ffmpeg. Bypassa DRM de yt-dlp.
+
+    Solo recomendado para clips en el primer 20% del video (evita re-descargar
+    0→end_sec en videos largos).
     """
+    if not should_use_stream_urls_fallback(start_sec, video_duration):
+        raise RuntimeError(
+            f"Stream partial per-clip omitido: clip en {start_sec:.0f}s "
+            f"(>{video_duration * 0.2:.0f}s, 20% del video) — usar yt-dlp per-clip"
+        )
     DOWNLOADS_DIR.mkdir(exist_ok=True)
     tid = temp_id or f"{video_id}_pc{int(start_sec)}"
     stream_urls = get_stream_urls(youtube_url, video_id, force_rapidapi=force_rapidapi)
