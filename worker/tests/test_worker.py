@@ -175,11 +175,10 @@ class TestDownloadStrategy:
         "USE_RAPIDAPI_DOWNLOAD": "true",
         "WEBSHARE_PROXY_URL": "http://user:pass@1.2.3.4:6754",
     }, clear=True)
-    def test_allows_full_in_production_with_proxies(self):
-        # Con proxy residencial, yt-dlp resuelve+descarga por la misma IP:
-        # es el camino fiable incluso cuando RapidAPI está habilitado.
+    def test_skips_full_when_rapidapi_forced_even_with_proxies(self):
+        # Producción: RapidAPI + partial download es el camino primario.
         from main import _should_try_full_ytdlp_download
-        assert _should_try_full_ytdlp_download(600) is True
+        assert _should_try_full_ytdlp_download(600) is False
 
     @patch.dict(os.environ, {
         "USE_RAPIDAPI_DOWNLOAD": "true",
@@ -204,13 +203,16 @@ class TestDrmDetection:
     """Tests for yt-dlp DRM / PO Token error detection."""
 
     def test_detects_drm_error(self):
-        from services.downloader import is_ytdlp_drm_error
+        from services.downloader import is_ytdlp_drm_error, is_ytdlp_bot_error
         assert is_ytdlp_drm_error(Exception("This video is DRM protected"))
         assert is_ytdlp_drm_error(Exception("ios client requires a GVS PO Token"))
+        assert is_ytdlp_bot_error(Exception("Sign in to confirm you're not a bot"))
+        assert not is_ytdlp_drm_error(Exception("Sign in to confirm you're not a bot"))
 
     def test_ignores_generic_errors(self):
-        from services.downloader import is_ytdlp_drm_error
+        from services.downloader import is_ytdlp_drm_error, is_ytdlp_bot_error
         assert not is_ytdlp_drm_error(Exception("Connection timeout"))
+        assert not is_ytdlp_bot_error(Exception("Connection timeout"))
 
 
 class TestStreamUrlStrategy:
@@ -494,6 +496,42 @@ class TestSnapTrimAndCoverage:
         ]
         coverage = srt_coverage_metric(words, clip_duration=10.0)
         assert 0.5 <= coverage <= 1.0
+
+    def test_fix_ghost_leading_word_reanchors_speech(self):
+        from services.clip_generator import fix_ghost_leading_words, snap_trim_bounds
+
+        words = [{"word": "para", "start": 0.0, "end": 20.38}]
+        words += [
+            {"word": f"w{i}", "start": 20.38 + i * 0.4, "end": 20.78 + i * 0.4}
+            for i in range(12)
+        ]
+        fixed = fix_ghost_leading_words(words)
+        assert fixed[0]["word"] == "w0"
+        assert fixed[0]["start"] == pytest.approx(20.38, abs=0.01)
+        start, _ = snap_trim_bounds(fixed, clip_duration=30.0, min_words_after_trim=2)
+        assert start >= 19.0
+
+    def test_filter_whisper_drops_ghost_word(self):
+        from services.clip_generator import filter_whisper_words
+
+        raw = [
+            {"word": "le", "start": 0.0, "end": 22.96},
+            {"word": "vamos", "start": 22.96, "end": 23.1},
+        ]
+        kept = filter_whisper_words(raw, clip_duration=50.0)
+        assert len(kept) == 1
+        assert kept[0]["word"] == "vamos"
+
+    def test_has_incomplete_tail_skips_when_already_snapped(self):
+        from services.clip_generator import has_incomplete_tail
+
+        words = [
+            {"word": "bien.", "start": 38.0, "end": 38.5},
+            {"word": "Entonces", "start": 40.0, "end": 40.5},
+            {"word": "todo", "start": 40.6, "end": 41.0},
+        ]
+        assert has_incomplete_tail(words) is True
+        assert has_incomplete_tail(words, tail_already_snapped=True) is False
 
 
 class TestOverlapFilter:
@@ -833,6 +871,24 @@ class TestScorer:
         )
         r = verify_phrases_against_whisper(m_half, words)
         assert r["first_ok"] and not r["last_ok"] and r["failed"]
+
+    def test_verify_phrases_after_snap_updates_claims(self):
+        from services.validation import verify_phrases_after_snap
+        from types import SimpleNamespace
+
+        words = [{"word": w, "start": i, "end": i + 0.5}
+                 for i, w in enumerate(["hola", "mundo", "adios", "gracias"])]
+        m = SimpleNamespace(
+            hook="h",
+            verification=SimpleNamespace(
+                first_phrase_in_audio="texto viejo del cache",
+                last_phrase_in_audio="otro texto viejo",
+            ),
+        )
+        r = verify_phrases_after_snap(m, words, snap_trim_start=1.0, clip_duration=4.0)
+        assert r["first_ok"] and r["last_ok"] and not r["failed"]
+        assert m.verification.first_phrase_in_audio.startswith("hola")
+        assert "gracias" in m.verification.last_phrase_in_audio
 
 
 class TestGoldenSetEval:

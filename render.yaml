@@ -60,3 +60,9 @@ services:
         sync: false
       - key: SUPADATA_API_KEY
         sync: false
+      - key: YOUTUBE_COOKIES
+        sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: WEBSHARE_PROXY_LIST
+        sync: false

@@ -94,49 +94,68 @@ def _urlopen_maybe_proxied(req, timeout: int = 30):
 
 def _get_cookies_path():
     """Get YouTube cookies file path for yt-dlp authentication.
-    Priority: YOUTUBE_COOKIES env var (base64) > cookies.txt file
+    Priority: YOUTUBE_COOKIES env var (base64 or plaintext) > cookies.txt file
     """
-    # Option 1: Base64-encoded cookies in env var
-    cookies_b64 = os.getenv('YOUTUBE_COOKIES')
-    if cookies_b64:
+    cookies_raw = (os.getenv('YOUTUBE_COOKIES') or '').strip()
+    if cookies_raw:
         tmp = Path(tempfile.gettempdir()) / 'yt_cookies.txt'
+        # Plaintext Netscape (usuario pegó el archivo sin base64)
+        if cookies_raw.startswith('#') or cookies_raw.lstrip().startswith('.google'):
+            try:
+                tmp.write_text(cookies_raw, encoding='utf-8')
+                print(f"🍪 YOUTUBE_COOKIES: plaintext Netscape ({len(cookies_raw)} chars)")
+                return str(tmp)
+            except Exception as e:
+                print(f"❌ Failed to write YOUTUBE_COOKIES plaintext: {e}")
+                return None
         try:
-            decoded = base64.b64decode(cookies_b64)
+            # Limpiar saltos de línea/espacios del base64 (común al pegar en Render)
+            b64_clean = ''.join(cookies_raw.split())
+            decoded = base64.b64decode(b64_clean, validate=True)
             tmp.write_bytes(decoded)
-            print(f"🍪 Decoded cookies from env var ({len(decoded)} bytes) -> {tmp}")
-            # Print first line to verify format
+            print(f"🍪 Decoded YOUTUBE_COOKIES ({len(decoded)} bytes) -> {tmp}")
             first_line = decoded.decode('utf-8', errors='ignore').split('\n')[0]
             print(f"🍪 First line: {first_line[:60]}...")
             return str(tmp)
         except Exception as e:
-            print(f"❌ Failed to decode YOUTUBE_COOKIES: {e}")
+            print(
+                f"❌ Failed to decode YOUTUBE_COOKIES "
+                f"({len(cookies_raw)} chars in env): {e}"
+            )
             return None
-    
+
     # Option 2: cookies.txt file in worker dir
     if COOKIES_FILE.exists():
         print(f"🍪 Using cookies file: {COOKIES_FILE} ({COOKIES_FILE.stat().st_size} bytes)")
         return str(COOKIES_FILE)
-    
+
     print("⚠️ No YouTube cookies found (set YOUTUBE_COOKIES env var)")
     return None
 
 
-def _build_ydl_opts(base_opts: dict) -> dict:
-    """Add cookies and common options to yt-dlp opts."""
+def cookies_env_status() -> str:
+    """Diagnóstico seguro para logs (sin exponer el valor)."""
+    raw = os.getenv('YOUTUBE_COOKIES') or ''
+    if not raw.strip():
+        return 'MISSING'
+    return f'SET ({len(raw.strip())} chars)'
+
+
+def _build_ydl_opts(
+    base_opts: dict,
+    *,
+    player_clients: list[str] | None = None,
+    proxy_url: str | None = None,
+) -> dict:
+    """Add cookies, player_client cascade, and proxy to yt-dlp opts."""
     cookies_path = _get_cookies_path()
     if cookies_path:
         base_opts['cookiefile'] = cookies_path
-    
-    # Cascada de clients para 2025-2026:
-    #   - tv: cliente Smart TV, no requiere PO Token, devuelve adaptive formats hasta 1080p
-    #   - ios: cliente iOS oficial, también bypass de PO Token
-    #   - web: legacy fallback (en 2025 muchas veces filtra todos los formats sin PO Token,
-    #          que es exactamente el bug "Requested format is not available" que veíamos)
-    # Probamos tv primero porque tiene mejores formats h264 para nuestro ffmpeg pipeline.
-    base_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'ios', 'web']}}
 
-    # Proxy residencial si está configurado (bypassea IP bans de YouTube)
-    proxy = _get_proxy_url()
+    clients = player_clients or ['tv', 'ios', 'android', 'web']
+    base_opts['extractor_args'] = {'youtube': {'player_client': clients}}
+
+    proxy = proxy_url or _get_proxy_url()
     if proxy:
         base_opts['proxy'] = proxy
         print(f"🌐 yt-dlp usando proxy residencial: {proxy.split('@')[-1] if '@' in proxy else proxy}")
@@ -229,11 +248,27 @@ def is_ytdlp_drm_error(exc: BaseException) -> bool:
     """True cuando yt-dlp no puede bajar por DRM, PO Token o experimentos tv client."""
     msg = str(exc).lower()
     return (
-        "drm" in msg
+        "drm protected" in msg
+        or "drm" in msg and "sign in" not in msg
         or "po token" in msg
         or "challenge solving failed" in msg
         or "n challenge" in msg
     )
+
+
+def is_ytdlp_bot_error(exc: BaseException) -> bool:
+    """True cuando YouTube pide cookies / verificación anti-bot."""
+    msg = str(exc).lower()
+    return (
+        "sign in to confirm" in msg
+        or "not a bot" in msg
+        or "confirm you're not a bot" in msg
+        or "cookies" in msg and "bot" in msg
+    )
+
+
+def has_youtube_cookies() -> bool:
+    return _get_cookies_path() is not None
 
 
 def _pick_rapidapi_formats(
@@ -392,6 +427,80 @@ def _probe_stream_size(url: str, label: str = "stream") -> int:
 
 def _is_googlevideo_url(url: str) -> bool:
     return "googlevideo.com" in url or "googleusercontent.com" in url
+
+
+def _probe_stream_info_for_proxy(
+    url: str,
+    proxy_url: str,
+    label: str = "stream",
+) -> tuple[int, str, str]:
+    """Probe Content-Length usando un proxy específico (misma IP que resolvió URLs)."""
+    name = "resolve_proxy"
+    opener = build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
+    _open = lambda r, t=30: opener.open(r, timeout=t)
+    base_hdrs = _YT_MEDIA_HEADERS
+    try:
+        with _open(Request(url, method="HEAD", headers=dict(base_hdrs)), 30) as resp:
+            size = int(resp.headers.get("Content-Length", 0))
+        if size > 0:
+            return size, proxy_url, name
+    except Exception:
+        pass
+    get_hdrs = {**base_hdrs, "Range": "bytes=0-0"}
+    with _open(Request(url, headers=get_hdrs), 30) as resp:
+        size = _parse_content_range(resp.headers.get("Content-Range"))
+        if not size:
+            size = int(resp.headers.get("Content-Length", 0))
+    if size > 0:
+        print(f"   📦 {label} size via {name} (GET probe): {size // (1 << 20)}MB")
+        return size, proxy_url, name
+    raise RuntimeError(f"{label}: probe falló con resolve_proxy")
+
+
+def _download_bytes_sequential(
+    url: str,
+    out_path: Path,
+    end_byte: int | None = None,
+    known_total: int | None = None,
+    *,
+    label: str = "stream",
+    sticky_proxy: str | None = None,
+    sticky_via: str = "",
+) -> None:
+    """
+    Descarga secuencial (1 conexión) vía proxy sticky.
+
+    googlevideo rechaza chunks paralelos en URLs de RapidAPI; una sola conexión
+    Range bytes=0-N por la misma IP que resolvió/probeó funciona de forma fiable.
+    """
+    if known_total and known_total > 0 and sticky_proxy:
+        total = known_total
+    elif sticky_proxy:
+        total, _, sticky_via = _probe_stream_info_for_proxy(url, sticky_proxy, label)
+    else:
+        total, sticky_proxy, sticky_via = _probe_stream_info(url, label)
+
+    if not sticky_proxy:
+        raise RuntimeError(f"{label}: googlevideo requiere proxy residencial para descarga")
+
+    effective_end = min(end_byte, total - 1) if end_byte is not None else total - 1
+    want = effective_end + 1
+    print(
+        f"   📥 {label}: descarga secuencial {want // (1 << 20)}MB "
+        f"via {sticky_via or 'proxy'}"
+    )
+
+    opener = build_opener(ProxyHandler({"http": sticky_proxy, "https": sticky_proxy}))
+    hdrs = {**_YT_MEDIA_HEADERS, "Range": f"bytes=0-{effective_end}"}
+    t0 = time.time()
+    with opener.open(Request(url, headers=hdrs), timeout=600) as resp:
+        with open(out_path, "wb") as f:
+            shutil.copyfileobj(resp, f, 1 << 20)
+    elapsed = time.time() - t0
+    got = out_path.stat().st_size
+    if got <= 0:
+        raise RuntimeError(f"{label}: descarga secuencial vacía")
+    print(f"   ✅ {label}: {got // (1 << 20)}MB en {elapsed:.1f}s ({got // (1 << 20) / max(elapsed, 0.01):.1f}MB/s)")
 
 
 def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "",
@@ -1037,6 +1146,8 @@ def download_video_for_clips(
     video_duration: float,
     video_id: str,
     buffer_sec: float = 15.0,
+    *,
+    resolve_proxy: str | None = None,
 ) -> tuple[str, str]:
     """
     Descarga video+audio desde byte 0 hasta el byte correspondiente a
@@ -1061,8 +1172,16 @@ def download_video_for_clips(
 
     print(f"   📐 Descargando 0s–{effective_end:.0f}s ({ratio * 100:.0f}% del video)")
 
-    vid_total, vid_proxy, vid_via = _probe_stream_info(video_url, label="video")
-    aud_total, aud_proxy, aud_via = _probe_stream_info(audio_url, label="audio")
+    if resolve_proxy:
+        vid_total, vid_proxy, vid_via = _probe_stream_info_for_proxy(
+            video_url, resolve_proxy, label="video",
+        )
+        aud_total, aud_proxy, aud_via = _probe_stream_info_for_proxy(
+            audio_url, resolve_proxy, label="audio",
+        )
+    else:
+        vid_total, vid_proxy, vid_via = _probe_stream_info(video_url, label="video")
+        aud_total, aud_proxy, aud_via = _probe_stream_info(audio_url, label="audio")
 
     if vid_total <= 0 or aud_total <= 0:
         raise RuntimeError(f"Content-Length inválido: video={vid_total}, audio={aud_total}")
@@ -1077,19 +1196,29 @@ def download_video_for_clips(
     aud_path = DOWNLOADS_DIR / f"{video_id}_paud.m4a"
 
     t0 = time.time()
-    # Video y audio: descarga paralela por chunks vía pool de proxies.
-    # El audio secuencial (_download_with_progress) se cuelga a ~30 KB/s por proxy;
-    # en paralelo con 6-8 chunks alcanza 5-10 MB/s como el video.
     audio_chunks = min(8, max(4, aud_total // (2 * (1 << 20)) or 4))
+    use_sequential = _is_googlevideo_url(video_url) or _is_googlevideo_url(audio_url)
     with ThreadPoolExecutor(max_workers=2) as ex:
-        fv = ex.submit(
-            _parallel_download, video_url, vid_path, 8, "video",
-            vid_end_byte, vid_total, vid_proxy, vid_via,
-        )
-        fa = ex.submit(
-            _parallel_download, audio_url, aud_path, audio_chunks, "audio",
-            aud_end_byte, aud_total, aud_proxy, aud_via,
-        )
+        if use_sequential:
+            fv = ex.submit(
+                _download_bytes_sequential, video_url, vid_path,
+                vid_end_byte, vid_total,
+                label="video", sticky_proxy=vid_proxy, sticky_via=vid_via,
+            )
+            fa = ex.submit(
+                _download_bytes_sequential, audio_url, aud_path,
+                aud_end_byte, aud_total,
+                label="audio", sticky_proxy=aud_proxy, sticky_via=aud_via,
+            )
+        else:
+            fv = ex.submit(
+                _parallel_download, video_url, vid_path, 8, "video",
+                vid_end_byte, vid_total, vid_proxy, vid_via,
+            )
+            fa = ex.submit(
+                _parallel_download, audio_url, aud_path, audio_chunks, "audio",
+                aud_end_byte, aud_total, aud_proxy, aud_via,
+            )
         fv.result()
         fa.result()
 
@@ -1269,6 +1398,7 @@ def download_clip_via_stream_urls(
         max_end_sec=end_sec,
         video_duration=effective_duration,
         video_id=tid,
+        resolve_proxy=stream_urls.get("resolve_proxy"),
     )
 
     ffmpeg_bin = "ffmpeg"
@@ -1318,12 +1448,10 @@ def download_clip_via_stream_urls(
 
 def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: int = 720) -> dict:
     """
-    Obtiene URLs de stream de video+audio vía RapidAPI SIN descargar nada.
+    Obtiene URLs de stream vía RapidAPI SIN descargar.
 
-    Retorna {"video_url": str, "audio_url": str, "video_id": str}.
-    Llama al mismo endpoint que download_video_rapidapi pero solo devuelve
-    las URLs — FFmpeg luego hace HTTP Range requests para los segmentos exactos
-    que necesita (descarga selectiva: ~50MB en vez de 1.3GB).
+    Las URLs de googlevideo quedan atadas a la IP que llama a yt-api.
+    Por eso resolvemos vía proxy residencial (misma IP que usará la descarga).
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
@@ -1332,69 +1460,125 @@ def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: i
     if not video_id:
         video_id = _extract_video_id(video_url)
 
-    print(f"🔌 RapidAPI: obteniendo URLs de stream para {video_id}...")
     import json
     meta_url = f"https://yt-api.p.rapidapi.com/dl?id={video_id}"
     req = Request(meta_url, headers={
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": "yt-api.p.rapidapi.com",
     })
-    with urlopen(req, timeout=30) as r:
-        data = json.loads(r.read().decode("utf-8"))
 
-    if data.get("status") != "OK":
-        raise RuntimeError(f"YT-API devolvió status={data.get('status')}: {data.get('reason', '')}")
+    proxies = _get_proxy_list()
+    proxies_to_try: list[str | None] = proxies if proxies else [None]
+    last_err: Exception | None = None
 
-    vid, aud = _pick_rapidapi_formats(data, max_height)
-    vid_quality = int(re.match(r"(\d+)", vid.get("qualityLabel", "0") or "0").group(1) or 0)
-    aud_bitrate = aud.get("bitrate", 0)
+    for i, proxy in enumerate(proxies_to_try):
+        if proxy:
+            name = f"proxy[{i + 1}/{len(proxies_to_try)}]" if len(proxies_to_try) > 1 else "proxy"
+        else:
+            name = "direct"
+        try:
+            print(f"🔌 RapidAPI vía {name}: obteniendo URLs de stream para {video_id}...")
+            if proxy:
+                opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+                with opener.open(req, timeout=45) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+            else:
+                with urlopen(req, timeout=45) as r:
+                    data = json.loads(r.read().decode("utf-8"))
 
-    print(f"   ✅ URLs obtenidas: video={vid_quality}p | audio={aud_bitrate // 1000}kbps")
-    return {
-        "video_url": vid["url"],
-        "audio_url": aud["url"],
-        "video_id": video_id,
-    }
+            if data.get("status") != "OK":
+                raise RuntimeError(
+                    f"YT-API devolvió status={data.get('status')}: {data.get('reason', '')}"
+                )
+
+            vid, aud = _pick_rapidapi_formats(data, max_height)
+            vid_quality = int(re.match(r"(\d+)", vid.get("qualityLabel", "0") or "0").group(1) or 0)
+            aud_bitrate = aud.get("bitrate", 0)
+
+            print(f"   ✅ URLs obtenidas: video={vid_quality}p | audio={aud_bitrate // 1000}kbps")
+            return {
+                "video_url": vid["url"],
+                "audio_url": aud["url"],
+                "video_id": video_id,
+                "resolve_proxy": proxy,
+            }
+        except Exception as e:
+            last_err = e
+            print(f"   ⚠️ RapidAPI vía {name} falló: {str(e)[:80]}")
+            continue
+
+    raise RuntimeError(f"RapidAPI no pudo resolver streams para {video_id}: {last_err}")
 
 
 def _get_stream_urls_ytdlp(video_url: str, video_id: str = None) -> dict:
     """
     Extrae URLs de stream vía yt-dlp sin descargar (download=False).
-    Retorna {"video_url": str, "audio_url": str, "video_id": str}.
+    Rota player_client y proxy hasta encontrar una combinación que funcione.
     """
-    ydl_opts = _build_ydl_opts({
-        'format': 'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio',
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-    })
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=False)
-        if not video_id:
-            video_id = info['id']
+    client_cascades = [
+        ['tv', 'ios', 'web'],
+        ['android', 'web'],
+        ['mweb', 'web'],
+        ['web'],
+    ]
+    proxies = _get_proxy_list()
+    proxies_to_try = proxies if proxies else [None]
 
-        # Para formatos merged yt-dlp pone los componentes en requested_formats
-        req_formats = info.get('requested_formats', [])
-        if len(req_formats) >= 2:
-            v_fmt = next((f for f in req_formats if f.get('vcodec', 'none') != 'none'), None)
-            a_fmt = next((f for f in req_formats
-                         if f.get('acodec', 'none') != 'none' and f.get('vcodec', 'none') == 'none'), None)
-        elif len(req_formats) == 1:
-            v_fmt = req_formats[0]
-            a_fmt = req_formats[0]
-        else:
-            v_fmt = info if info.get('url') else None
-            a_fmt = info if info.get('url') else None
+    last_err: Exception | None = None
+    for proxy in proxies_to_try:
+        for clients in client_cascades:
+            try:
+                ydl_opts = _build_ydl_opts({
+                    'format': (
+                        'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
+                        'bestvideo[height<=720]+bestaudio'
+                    ),
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                }, player_clients=clients, proxy_url=proxy)
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(video_url, download=False)
+                    if not video_id:
+                        video_id = info['id']
 
-        if not v_fmt or not a_fmt or not v_fmt.get('url') or not a_fmt.get('url'):
-            raise RuntimeError("yt-dlp no pudo obtener URLs de stream utilizables")
+                    req_formats = info.get('requested_formats', [])
+                    if len(req_formats) >= 2:
+                        v_fmt = next((f for f in req_formats if f.get('vcodec', 'none') != 'none'), None)
+                        a_fmt = next(
+                            (f for f in req_formats
+                             if f.get('acodec', 'none') != 'none' and f.get('vcodec', 'none') == 'none'),
+                            None,
+                        )
+                    elif len(req_formats) == 1:
+                        v_fmt = req_formats[0]
+                        a_fmt = req_formats[0]
+                    else:
+                        v_fmt = info if info.get('url') else None
+                        a_fmt = info if info.get('url') else None
 
-        print(f"   ✅ URLs yt-dlp: video={v_fmt.get('height', '?')}p | audio OK")
-        return {
-            "video_url": v_fmt["url"],
-            "audio_url": a_fmt["url"],
-            "video_id": video_id,
-        }
+                    if not v_fmt or not a_fmt or not v_fmt.get('url') or not a_fmt.get('url'):
+                        raise RuntimeError("yt-dlp no pudo obtener URLs de stream utilizables")
+
+                    print(f"   ✅ URLs yt-dlp: video={v_fmt.get('height', '?')}p | audio OK")
+                    return {
+                        "video_url": v_fmt["url"],
+                        "audio_url": a_fmt["url"],
+                        "video_id": video_id,
+                        "resolve_proxy": proxy,
+                    }
+            except Exception as e:
+                last_err = e
+                if is_ytdlp_bot_error(e) or is_ytdlp_drm_error(e):
+                    continue
+                raise
+
+    if is_ytdlp_bot_error(last_err) and not has_youtube_cookies():
+        raise RuntimeError(
+            "YouTube pide cookies (anti-bot). Configura YOUTUBE_COOKIES en Render — "
+            "exporta cookies.txt desde tu browser logueado en YouTube y codifícalo en base64."
+        ) from last_err
+    raise last_err or RuntimeError("yt-dlp no pudo resolver stream URLs")
 
 
 def get_stream_urls(video_url: str, video_id: str = None, *, force_rapidapi: bool = False) -> dict:

@@ -31,6 +31,7 @@ OPTIONAL_ENV_VARS = {
     'WEBSHARE_PROXY_FILE': 'Residential proxies for YouTube downloads on datacenter VPS',
     'WEBSHARE_PROXY_LIST': 'Comma/newline-separated proxy URLs (alternative to WEBSHARE_PROXY_FILE)',
     'WEBSHARE_PROXY_URL': 'Single proxy URL (legacy)',
+    'YOUTUBE_COOKIES': 'Base64 de cookies.txt (Netscape) para yt-dlp anti-bot',
     'MAX_WORKERS': 'Parallel jobs (default 2). Use 2 on 12GB RAM VPS.',
 }
 
@@ -45,6 +46,7 @@ PRODUCTION_RECOMMENDED_VARS = [
     'USE_RAPIDAPI_DOWNLOAD',
     'RAPIDAPI_KEY',
     'WEBSHARE_PROXY_FILE',
+    'YOUTUBE_COOKIES',
 ]
 
 def validate_env():

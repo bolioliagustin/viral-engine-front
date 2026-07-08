@@ -96,6 +96,29 @@ def save_analysis(
         return False
 
 
+def delete_cached_analysis(video_id: str) -> int:
+    """
+    Borra todas las filas de analysis_cache para un video_id.
+    Retorna cantidad de filas eliminadas (0 si falla o no hay match).
+    """
+    supabase = get_supabase()
+    if not supabase:
+        return 0
+    try:
+        res = (
+            supabase.table("analysis_cache")
+            .delete()
+            .eq("video_id", video_id)
+            .execute()
+        )
+        deleted = len(res.data or [])
+        print(f"   🗑️ analysis_cache: {deleted} fila(s) borrada(s) para {video_id}")
+        return deleted
+    except Exception as e:
+        print(f"   ⚠️ analysis_cache delete falló: {e}")
+        return 0
+
+
 # ─── Category cache (más simple, solo string por video+model) ───────────────
 def get_cached_category(video_id: str, model: str) -> Optional[str]:
     supabase = get_supabase()

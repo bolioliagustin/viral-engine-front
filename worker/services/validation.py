@@ -207,6 +207,46 @@ def verify_phrases_against_whisper(moment, words: list[dict]) -> dict:
     return result
 
 
+def phrases_from_whisper_words(words: list[dict], n_words: int = 8) -> tuple[str, str]:
+    """Deriva first/last phrase desde palabras Whisper post-snap."""
+    tokens = [(w.get("word") or "").strip() for w in (words or [])]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return "", ""
+    first = " ".join(tokens[:n_words])
+    last = " ".join(tokens[-n_words:])
+    return first, last
+
+
+def sync_verification_phrases_from_words(moment, words: list[dict]) -> None:
+    """Actualiza verification phrases del momento con el audio real post-trim."""
+    verification = getattr(moment, "verification", None)
+    if not verification or not words:
+        return
+    first, last = phrases_from_whisper_words(words)
+    if first:
+        verification.first_phrase_in_audio = first
+    if last:
+        verification.last_phrase_in_audio = last
+
+
+def verify_phrases_after_snap(
+    moment,
+    words: list[dict],
+    snap_trim_start: float,
+    clip_duration: float,
+    significant_snap_threshold: float = 0.5,
+) -> dict:
+    """
+    Verifica frases post-snap: actualiza claims desde Whisper y compara.
+    Si no hubo snap significativo, usa las frases originales del análisis.
+    """
+    significant_snap = snap_trim_start >= significant_snap_threshold
+    if significant_snap and words:
+        sync_verification_phrases_from_words(moment, words)
+    return verify_phrases_against_whisper(moment, words)
+
+
 def _fuzzy_window_match(target_words: list[str], norm_words: list[tuple], max_words: int = 8) -> Optional[float]:
     """Busca target_words en norm_words; devuelve timestamp del match o None."""
     if not target_words or not norm_words:

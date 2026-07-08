@@ -60,6 +60,7 @@ from services.clip_generator import (
     filter_whisper_words,
     snap_trim_bounds,
     shift_words_timeline,
+    fix_ghost_leading_words,
     srt_coverage_metric,
 )
 from services.supabase_client import (
@@ -177,13 +178,14 @@ def _has_proxies() -> bool:
 
 
 def _should_try_full_ytdlp_download(video_duration: float) -> bool:
-    """yt-dlp full primero cuando hay proxy residencial (misma IP resuelve+descarga).
+    """En producción el camino primario es RapidAPI + sticky proxy (partial download).
 
-    Las URLs de googlevideo están atadas a la IP que las resolvió. RapidAPI
-    las resuelve con SU IP → descargar desde el worker/proxy da 403. yt-dlp
-    vía proxy residencial resuelve Y descarga por la misma IP, así que es el
-    camino fiable en producción. RapidAPI queda como fallback.
+    yt-dlp full queda como intento opcional cuando RapidAPI no está forzado y hay
+    proxy residencial (misma IP resuelve+descarga). Muchos videos fallan por
+    DRM/PO Token aunque YOUTUBE_COOKIES esté configurado.
     """
+    if _prefer_rapidapi_download():
+        return False
     if video_duration > FULL_YTDLP_MAX_DURATION_SEC:
         print(
             f"ℹ️ Video >{FULL_YTDLP_MAX_DURATION_SEC // 60}min "
@@ -218,17 +220,24 @@ def _should_use_ytdlp_for_clips() -> bool:
 
 
 def _log_download_config() -> None:
-    from services.downloader import _get_proxy_list
+    from services.downloader import _get_proxy_list, cookies_env_status, has_youtube_cookies
     rapid = os.getenv("RAPIDAPI_KEY")
     n_proxies = len(_get_proxy_list())
     print(
         f"🔧 Download config: ENV={os.getenv('ENVIRONMENT', 'development')} | "
         f"USE_RAPIDAPI={os.getenv('USE_RAPIDAPI_DOWNLOAD', 'false')} | "
         f"RAPIDAPI_KEY={'SET' if rapid else '❌ MISSING'} | "
+        f"YOUTUBE_COOKIES={cookies_env_status()} | "
         f"proxies={n_proxies} | "
         f"prefer_rapidapi={_prefer_rapidapi_download()} | "
         f"yt_dlp_clips={_should_use_ytdlp_for_clips()}"
     )
+    if not has_youtube_cookies():
+        print(
+            "⚠️ YOUTUBE_COOKIES no llegó al worker. Este worker corre en el VPS "
+            "(Docker), NO en Render — agregala en ~/viralengine/.env y reiniciá: "
+            "docker compose -f docker-compose.worker.yml up -d --build"
+        )
     if _prefer_rapidapi_download() and n_proxies == 0:
         print(
             "⚠️ Sin proxies residenciales — descargas googlevideo desde datacenter "
@@ -443,6 +452,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     max_end_sec=max_end,
                     video_duration=video_duration,
                     video_id=video_id,
+                    resolve_proxy=stream_urls.get("resolve_proxy"),
                 )
                 muxed_video_path = str(DOWNLOADS_DIR / f"{video_id}_muxed.mp4")
                 mux_r = _sp.run(
@@ -678,6 +688,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         raw_words = clip_tr.get("words") or []
                         raw_segments = clip_tr.get("segments") or []
                         clip_words = filter_whisper_words(raw_words, clip_duration)
+                        clip_words = fix_ghost_leading_words(clip_words)
                         from services.clip_generator import apply_whisper_brand_corrections
                         clip_words = apply_whisper_brand_corrections(clip_words, whisper_vocab)
 
@@ -726,7 +737,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
 
                         # Fase A: snap trim silencio + refinamiento a oración
                         from services.validation import (
-                            verify_phrases_against_whisper,
+                            verify_phrases_after_snap,
                             find_phrase_start_in_words,
                             find_hook_start_in_words,
                             hook_keyword_overlap,
@@ -737,6 +748,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             detect_sentence_boundaries,
                         )
                         trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
+                        tail_snapped_by_sentence = False
 
                         # Fase 3: límites a boundaries de oración (puntuación +
                         # gaps >0.6s + fin de segmentos Whisper)
@@ -751,6 +763,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         if s_end < trim_end:
                             print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
                             trim_end = s_end
+                            tail_snapped_by_sentence = True
 
                         # Hook anchor: overlay > hook > first_phrase (después de sentence snap)
                         _overlay = getattr(moment, "viral_overlay", None) or ""
@@ -838,6 +851,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             clip_words = shift_words_timeline(
                                 clip_words, trim_start, clip_duration=clip_duration
                             )
+                            clip_words = fix_ghost_leading_words(clip_words)
                             clip_words = filter_whisper_words(clip_words, clip_duration)
                             print(
                                 f"   📊 Snap words: {words_before_snap} → "
@@ -856,12 +870,16 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             subs_words = clip_words
                             subs_segments = clip_segments_whisper
 
-                        # Post-snap: cola incompleta
-                        incomplete_tail = has_incomplete_tail(clip_words)
+                        # Post-snap: cola incompleta (omitir si sentence snap ya recortó tail)
+                        incomplete_tail = has_incomplete_tail(
+                            clip_words, tail_already_snapped=tail_snapped_by_sentence
+                        )
                         late_hook = snap_trim_start > 3.0
 
-                        # Fase 4: verificación anti-alucinación con acción real
-                        verification_info = verify_phrases_against_whisper(moment, clip_words)
+                        # Fase 4: verificación anti-alucinación (frases post-snap)
+                        verification_info = verify_phrases_after_snap(
+                            moment, clip_words, snap_trim_start, clip_duration
+                        )
                         if (
                             verification_info.get("failed")
                             or incomplete_tail

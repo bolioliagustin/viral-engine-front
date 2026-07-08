@@ -200,26 +200,30 @@ YouTube bloquea IPs de datacenter. Por eso en VPS se usan **proxies residenciale
 
 ```mermaid
 flowchart TD
-    A[Step 4: Descarga] --> B{Plan A: yt-dlp full}
-    B -->|OK| Z[MP4 muxed único]
-    B -->|Fallo DRM/403| C{Plan B: RapidAPI URLs}
-    C -->|OK| D[Partial download 0→max_end]
+    A[Step 4: Descarga] --> B{USE_RAPIDAPI o prod?}
+    B -->|Sí| C[RapidAPI stream URLs]
+    C --> D[Sticky proxy + partial download]
     D --> E[FFmpeg merge audio+video]
-    E --> Z
-    C -->|Fallo| F{Plan C: yt-dlp per-clip}
-    F -->|OK| G[Segmento por momento]
-    F -->|Fallo| H[Fallback: deep-link YouTube]
-    Z --> I[Generar clips]
-    G --> I
-    H --> J[Solo copy, sin MP4]
+    E --> Z[MP4 muxed único]
+    B -->|No| F{Plan A: yt-dlp full}
+    F -->|OK| Z
+    F -->|Fallo DRM/403| C
+    C -->|Fallo| G{Plan C: yt-dlp per-clip}
+    G -->|OK| H[Segmento por momento]
+    G -->|Fallo| I[Fallback: deep-link YouTube]
+    Z --> J[Generar clips]
+    H --> J
+    I --> K[Solo copy, sin MP4]
 ```
 
 | Plan | Método | Cuándo funciona | Cuándo falla |
 |------|--------|-----------------|--------------|
-| **A** | yt-dlp full + proxy | Videos sin DRM, proxy activo | DRM, PO Token, proxy caído |
-| **B** | RapidAPI stream URLs + partial download | La mayoría en producción | HEAD/download error, proxy 402 |
-| **C** | yt-dlp `download_ranges` per-clip | Clips cortos, proxy OK | Mismo que A |
+| **A (prod)** | RapidAPI stream URLs + sticky proxy + partial download | Camino primario en VPS con `USE_RAPIDAPI_DOWNLOAD=true` | HEAD/download error, proxy 402 |
+| **B** | yt-dlp full + proxy | Dev sin RapidAPI forzado; videos sin DRM | DRM, PO Token (común con client `tv`) |
+| **C** | yt-dlp `download_ranges` per-clip | Clips cortos, proxy OK, sin RapidAPI | Mismo que B |
 | **D** | Link `youtube.com/watch?v=X&t=Ns` | Siempre | No hay archivo MP4 |
+
+**Nota:** `YOUTUBE_COOKIES` ayuda con anti-bot en yt-dlp, pero **no** desbloquea DRM/PO Token. En producción asumir RapidAPI + proxy como camino fiable; yt-dlp full es fallback opcional.
 
 **Config ideal en OVH:**
 

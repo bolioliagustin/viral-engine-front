@@ -323,6 +323,30 @@ def apply_whisper_brand_corrections(
     return result
 
 
+_GHOST_WORD_MIN_DURATION_SEC = 5.0
+
+
+def fix_ghost_leading_words(
+    words: list[dict],
+    max_word_duration: float = _GHOST_WORD_MIN_DURATION_SEC,
+) -> list[dict]:
+    """
+    Whisper a veces asigna start=0 y un end enorme a la primera palabra cuando
+    hay intro/silencio largo. Elimina esos tokens fantasma; el habla real
+    empieza en la siguiente palabra.
+    """
+    if not words:
+        return words
+    fixed = [dict(w) for w in words]
+    while fixed:
+        ws = float(fixed[0].get("start", 0))
+        we = float(fixed[0].get("end", ws + 0.08))
+        if we - ws <= max_word_duration:
+            break
+        fixed.pop(0)
+    return fixed
+
+
 def snap_trim_bounds(
     words: list[dict],
     clip_duration: float,
@@ -339,6 +363,7 @@ def snap_trim_bounds(
     if not words or clip_duration <= 0:
         return 0.0, clip_duration
 
+    words = fix_ghost_leading_words(words)
     first_start = float(words[0].get("start", 0))
     last_end = float(words[-1].get("end", first_start))
 
@@ -365,12 +390,16 @@ def shift_words_timeline(
     words: list[dict],
     offset_sec: float,
     clip_duration: float | None = None,
+    pre_trim_tolerance: float = 0.2,
 ) -> list[dict]:
     """Shift word timestamps after trimming clip start; drop words outside range."""
     shifted = []
     for w in words:
         raw_start = float(w.get("start", 0))
         raw_end = float(w.get("end", raw_start + 0.08))
+        # Palabras enteramente antes del corte: descartar (no aplastar en t=0)
+        if raw_end <= offset_sec + pre_trim_tolerance:
+            continue
         ws = raw_start - offset_sec
         we = raw_end - offset_sec
         if we <= 0:
@@ -446,12 +475,18 @@ def find_last_complete_sentence_end(words: list[dict]) -> Optional[float]:
     return last_end
 
 
-def has_incomplete_tail(words: list[dict], tolerance: float = 0.25) -> bool:
+def has_incomplete_tail(
+    words: list[dict],
+    tolerance: float = 0.25,
+    tail_already_snapped: bool = False,
+) -> bool:
     """
     True si hay palabras sin puntuación después del último fin de oración
     completo (cola colgante tipo 'Para entender lo' tras 'pidiendo.').
+
+    Si refine_bounds_to_sentences ya recortó la cola, no volver a flaggear.
     """
-    if not words:
+    if not words or tail_already_snapped:
         return False
     last_complete = find_last_complete_sentence_end(words)
     if last_complete is None:
@@ -651,6 +686,9 @@ def filter_whisper_words(raw_words: list, clip_duration: float) -> list[dict]:
         ws = float(w.get("start", 0))
         we = float(w.get("end", ws + 0.08))
         if we <= 0 or ws >= clip_duration + 0.35:
+            continue
+        # Palabra fantasma: un solo token cubre >5s (intro/silencio mal etiquetado)
+        if we - ws > _GHOST_WORD_MIN_DURATION_SEC and ws < 0.5:
             continue
         w2 = dict(w)
         w2["start"] = max(0.0, ws)

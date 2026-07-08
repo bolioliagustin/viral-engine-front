@@ -50,6 +50,13 @@ else
     log "WARNING: GROQ_API_KEY missing in .env — Whisper fallback to OpenAI"
 fi
 
+if [[ -f .env ]] && grep -qE '^YOUTUBE_COOKIES=.+' .env; then
+    log "YOUTUBE_COOKIES: configured (yt-dlp anti-bot)"
+else
+    log "WARNING: YOUTUBE_COOKIES missing in .env — yt-dlp fallará con 'Sign in to confirm you're not a bot'"
+    log "         Render env vars NO llegan al worker Docker. Agregala en ~/viralengine/.env"
+fi
+
 log "Building and restarting worker (no cache)..."
 dc -f "$COMPOSE_FILE" build --pull --no-cache
 dc -f "$COMPOSE_FILE" up -d --remove-orphans --force-recreate
