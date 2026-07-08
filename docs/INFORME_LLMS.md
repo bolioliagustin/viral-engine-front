@@ -632,7 +632,7 @@ Esta sección define **cómo** realizar el análisis exhaustivo que permitirá l
 |-----------|-------------|-------------|
 | **Calidad** | Output cumple criterios de la ficha | Golden set + métricas por tarea |
 | **Latencia** | Tiempo de respuesta y tiempo total del job | Logs del worker |
-| **Costo** | Tokens/minutos consumidos | `job_usage_events` en Supabase + `log_llm_usage()` |
+| **Costo** | Tokens/minutos consumidos | `job_usage_events` + panel `/admin/usage` (Recharts, benchmarks rolling) |
 | **Estabilidad JSON** | Respuestas parseables sin repair | Tasa de fallos en producción |
 | **Idioma** | Calidad en español (prioritario) | Videos de prueba en ES |
 
@@ -670,7 +670,15 @@ Umbrales: [`worker/eval/golden_set.json`](../worker/eval/golden_set.json). Cache
 2. **Una variable por experimento:** cambiar solo `MODEL_ANALYSIS`, medir, revertir o mantener.
 3. **Registrar métricas:** por cada experimento, anotar pass rate de validación, `verification_failed`, delta juez vs LLM, latencia.
 4. **Priorizar por impacto:** Analysis y Copy primero (críticos + mayor costo). Classifier y Judge al final.
-5. **Monitorear costo real:** cada job persiste eventos en `job_usage_events` y rollup en `jobs.usage_summary`. Panel admin en `/admin/usage` (requiere `ADMIN_USER_IDS` o `ADMIN_EMAILS`). Calibrar `pricing.py` vs facturas OpenRouter/Groq si la desviación supera ~15%.
+5. **Monitorear costo real:** panel admin `/admin/usage` con KPIs, desglose por task/modelo/proveedor, margen bruto y detalle por job con pipeline colapsable. Benchmarks rolling de los últimos N jobs reemplazan comparaciones hardcodeadas. Calibrar `pricing.py` vs facturas OpenRouter/Groq si la desviación supera ~15%.
+
+### Métricas de costo en panel admin
+
+| Vista | Qué muestra |
+|-------|-------------|
+| `/admin/usage` | KPIs del período, margen ingreso vs costo, charts Recharts, tabla de jobs |
+| `/admin/usage/jobs/[id]` | Pipeline por tarea, comparación real vs benchmark, eventos granulares |
+| Canvas `costos-y-llms` | Escenario "Medido (1er job prod)" recalibrado vs legacy |
 
 ### Métricas de producción ya persistidas
 

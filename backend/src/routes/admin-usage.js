@@ -6,14 +6,19 @@ const express = require('express');
 const { supabase } = require('../lib/supabase');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin, isAdminUser } = require('../middleware/admin');
+const {
+    CREDIT_PRICE_USD,
+    LEGACY_CANVAS_ESTIMATES,
+    num,
+    round,
+    mapRound,
+    computeBenchmarks,
+    groupEventsByPipeline,
+} = require('../lib/cost-benchmarks');
 
 const router = express.Router();
 
-const CREDIT_PRICE_USD = 9 / 40; // plan Starter: $9 / 40 créditos
-const CANVAS_ESTIMATES = {
-    happy_path: 0.13,
-    current_config: 0.20,
-};
+const BENCHMARK_SAMPLE_SIZE = 20;
 
 function parseDateRange(req) {
     const now = new Date();
@@ -27,14 +32,54 @@ function parseDateRange(req) {
     };
 }
 
-function num(v) {
-    const n = parseFloat(v);
-    return Number.isFinite(n) ? n : 0;
+async function fetchBenchmarkJobs(limit = BENCHMARK_SAMPLE_SIZE) {
+    const { data, error } = await supabase
+        .from('jobs')
+        .select('id, usage_summary, created_at')
+        .eq('status', 'completed')
+        .not('usage_summary', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+}
+
+function jobRowExtras(j) {
+    const s = j.usage_summary || {};
+    const cost = num(s.total_cost_usd);
+    const marginUsd = round(CREDIT_PRICE_USD - cost);
+    const marginPct = CREDIT_PRICE_USD > 0 ? round((marginUsd / CREDIT_PRICE_USD) * 100, 1) : 0;
+
+    return {
+        total_cost_usd: cost,
+        total_input_tokens: s.total_input_tokens || 0,
+        total_output_tokens: s.total_output_tokens || 0,
+        whisper_seconds: num(s.whisper_seconds),
+        event_count: s.event_count || 0,
+        cache_hits: s.cache_hits || 0,
+        cost_avoided_usd: num(s.cost_avoided_usd),
+        by_task: s.by_task || {},
+        margin_usd: marginUsd,
+        margin_pct: marginPct,
+    };
 }
 
 /** GET /admin/usage/me — gate del frontend */
 router.get('/usage/me', requireAuth, (req, res) => {
     res.json({ isAdmin: isAdminUser(req.user) });
+});
+
+/** GET /admin/usage/benchmarks */
+router.get('/usage/benchmarks', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit, 10) || BENCHMARK_SAMPLE_SIZE, 100);
+        const jobs = await fetchBenchmarkJobs(limit);
+        res.json(computeBenchmarks(jobs));
+    } catch (err) {
+        console.error('admin/usage/benchmarks error:', err.message);
+        res.status(500).json({ error: 'Failed to load usage benchmarks' });
+    }
 });
 
 /** GET /admin/usage/summary */
@@ -56,6 +101,8 @@ router.get('/usage/summary', requireAuth, requireAdmin, async (req, res) => {
         let totalTokensIn = 0;
         let totalTokensOut = 0;
         let whisperSeconds = 0;
+        let totalCacheHits = 0;
+        let totalCostAvoided = 0;
 
         for (const j of completed) {
             const s = j.usage_summary || {};
@@ -63,10 +110,15 @@ router.get('/usage/summary', requireAuth, requireAdmin, async (req, res) => {
             totalTokensIn += parseInt(s.total_input_tokens, 10) || 0;
             totalTokensOut += parseInt(s.total_output_tokens, 10) || 0;
             whisperSeconds += num(s.whisper_seconds);
+            totalCacheHits += parseInt(s.cache_hits, 10) || 0;
+            totalCostAvoided += num(s.cost_avoided_usd);
         }
 
         const jobCount = completed.length;
         const revenueUsd = jobCount * CREDIT_PRICE_USD;
+        const marginUsd = revenueUsd - totalCost;
+        const marginPct = revenueUsd > 0 ? round((marginUsd / revenueUsd) * 100, 1) : 0;
+        const costPctOfRevenue = revenueUsd > 0 ? round((totalCost / revenueUsd) * 100, 1) : 0;
 
         res.json({
             period: { from, to },
@@ -77,7 +129,11 @@ router.get('/usage/summary', requireAuth, requireAdmin, async (req, res) => {
             total_output_tokens: totalTokensOut,
             whisper_minutes: round(whisperSeconds / 60, 2),
             revenue_usd: round(revenueUsd),
-            margin_usd: round(revenueUsd - totalCost),
+            margin_usd: round(marginUsd),
+            margin_pct: marginPct,
+            cost_as_pct_of_revenue: costPctOfRevenue,
+            total_cache_hits: totalCacheHits,
+            total_cost_avoided_usd: round(totalCostAvoided),
             credit_price_usd: CREDIT_PRICE_USD,
         });
     } catch (err) {
@@ -111,11 +167,7 @@ router.get('/usage/jobs', requireAuth, requireAdmin, async (req, res) => {
             video_url: j.video_url,
             status: j.status,
             created_at: j.created_at,
-            total_cost_usd: num(j.usage_summary?.total_cost_usd),
-            total_input_tokens: j.usage_summary?.total_input_tokens || 0,
-            total_output_tokens: j.usage_summary?.total_output_tokens || 0,
-            whisper_seconds: num(j.usage_summary?.whisper_seconds),
-            event_count: j.usage_summary?.event_count || 0,
+            ...jobRowExtras(j),
         }));
 
         res.json({ jobs, total: count ?? jobs.length, limit, offset });
@@ -130,36 +182,46 @@ router.get('/usage/jobs/:jobId', requireAuth, requireAdmin, async (req, res) => 
     try {
         const { jobId } = req.params;
 
-        const { data: job, error: jobErr } = await supabase
-            .from('jobs')
-            .select('id, video_title, video_url, status, usage_summary, created_at, user_id')
-            .eq('id', jobId)
-            .single();
+        const [jobResult, eventsResult, benchmarkJobs] = await Promise.all([
+            supabase
+                .from('jobs')
+                .select('id, video_title, video_url, status, usage_summary, created_at, user_id')
+                .eq('id', jobId)
+                .single(),
+            supabase
+                .from('job_usage_events')
+                .select('*')
+                .eq('job_id', jobId)
+                .order('created_at', { ascending: true }),
+            fetchBenchmarkJobs(),
+        ]);
 
+        const { data: job, error: jobErr } = jobResult;
         if (jobErr || !job) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        const { data: events, error: evErr } = await supabase
-            .from('job_usage_events')
-            .select('*')
-            .eq('job_id', jobId)
-            .order('created_at', { ascending: true });
-
+        const { data: events, error: evErr } = eventsResult;
         if (evErr) throw evErr;
 
+        const benchmarks = computeBenchmarks(benchmarkJobs);
         const actualCost = num(job.usage_summary?.total_cost_usd)
             || (events || []).reduce((s, e) => s + num(e.estimated_cost_usd), 0);
 
         res.json({
             job,
+            usage_summary: job.usage_summary || null,
             events: events || [],
+            events_grouped: groupEventsByPipeline(events || []),
             comparison: {
                 actual_cost_usd: round(actualCost),
-                canvas_happy_path_usd: CANVAS_ESTIMATES.happy_path,
-                canvas_current_config_usd: CANVAS_ESTIMATES.current_config,
-                delta_vs_happy: round(actualCost - CANVAS_ESTIMATES.happy_path),
-                delta_vs_current: round(actualCost - CANVAS_ESTIMATES.current_config),
+                benchmark_avg_cost_usd: benchmarks.avg_cost_per_job,
+                benchmark_sample_size: benchmarks.sample_size,
+                legacy_happy_path_usd: LEGACY_CANVAS_ESTIMATES.happy_path,
+                legacy_docs_config_usd: LEGACY_CANVAS_ESTIMATES.docs_current_config,
+                delta_vs_benchmark: round(actualCost - benchmarks.avg_cost_per_job),
+                delta_vs_happy: round(actualCost - LEGACY_CANVAS_ESTIMATES.happy_path),
+                delta_vs_docs: round(actualCost - LEGACY_CANVAS_ESTIMATES.docs_current_config),
             },
         });
     } catch (err) {
@@ -204,18 +266,5 @@ router.get('/usage/breakdown', requireAuth, requireAdmin, async (req, res) => {
         res.status(500).json({ error: 'Failed to load usage breakdown' });
     }
 });
-
-function round(n, decimals = 4) {
-    const f = 10 ** decimals;
-    return Math.round(n * f) / f;
-}
-
-function mapRound(obj) {
-    const out = {};
-    for (const [k, v] of Object.entries(obj)) {
-        out[k] = round(v);
-    }
-    return out;
-}
 
 module.exports = router;

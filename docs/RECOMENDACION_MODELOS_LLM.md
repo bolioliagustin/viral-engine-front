@@ -137,18 +137,20 @@ Validación: correr la correlación juez-vs-humano del golden set con el juez ac
 
 Supuestos: video de 30–60 min, 5 clips, transcript compactado (~35k tokens de input en Analysis), happy path sin retries.
 
-| Componente | Config actual (defaults) | Config recomendada |
-|---|---|---|
-| Classifier | ~$0.000 (roto/keywords) | <$0.001 · ~0.5s |
-| Analysis | ~$0.10 · ~35s | ~$0.14 · ~30s |
-| Copy ×5 | ~$0.023 · ~30s | $0.045–0.09 · ~30s |
-| Judge ×5 | ~$0.003 · ~8s | ~$0.01 · ~8s |
-| Whisper ×5 | ~$0.003 · ~5s | ~$0.003 · ~5s |
-| **Total IA** | **~$0.13 · ~80s** | **~$0.20–0.25 · ~75–90s** |
+| Componente | Config actual (defaults) | Config recomendada | **Medido (1er job prod)** |
+|---|---|---|---|
+| Classifier | ~$0.000 (roto/keywords) | <$0.001 · ~0.5s | **$0.0001** |
+| Analysis | ~$0.10 · ~35s | ~$0.14 · ~30s | **~$0.14** |
+| Copy ×5 | ~$0.023 · ~30s | $0.045–0.09 · ~30s | **~$0.035** ($0.007 × 5) |
+| Judge ×5 | ~$0.003 · ~8s | ~$0.01 · ~8s | **~$0.0014** ($0.00027 × 5) |
+| Whisper ×5 | ~$0.003 · ~5s | ~$0.003 · ~5s | **~$0.0025** |
+| **Total IA** | **~$0.13 · ~80s** | **~$0.20–0.25 · ~75–90s** | **~$0.18** |
 
 Lectura: el upgrade cuesta ~$0.10 más por job y no empeora (levemente mejora) la latencia total, concentrando la inversión en la tarea que define la calidad del producto. A 1.000 jobs/mes, la diferencia es ~USD 100/mes.
 
-Importante: estas cifras son estimaciones sobre precios de lista. Los thinking tokens de la generación 3.x se facturan como output y pueden desviar el costo real — por eso el paso 0 del plan (sección 8) es implementar el tracking de `response.usage`.
+**Medición real (jul 2026):** el worker persiste cada llamada en `job_usage_events` y rollup en `jobs.usage_summary`. Panel admin `/admin/usage` muestra desglose por task/modelo y comparación vs benchmarks. Calibrado contra OpenRouter: judge nano ~$0.00027/llamada, copy 3.5-flash ~$0.007/llamada. El judge con gpt-5.4-nano resultó **mucho más barato** que la estimación docs (~$0.01).
+
+Importante: thinking tokens de Gemini 3.x se facturan como output. Supadata/R2/proxies siguen sin medición por job.
 
 ---
 
@@ -191,7 +193,7 @@ Siguiendo el proceso definido en el informe original — no cambiar todo a la ve
 
 **Paso 0 — Prerrequisitos (antes de cualquier experimento):**
 
-- [ ] Implementar logging de `response.usage` (tokens in/out/thinking por llamada) y minutos de Whisper → costo real por job. Sin esto, los experimentos comparan calidad a ciegas contra precios de lista.
+- [x] Implementar logging de `response.usage` y minutos de Whisper → costo real por job (`job_usage_events` + panel `/admin/usage`).
 - [ ] Documentar los modelos efectivos de producción (`.env` del VPS).
 - [ ] Fix urgente del Classifier (sección 2).
 

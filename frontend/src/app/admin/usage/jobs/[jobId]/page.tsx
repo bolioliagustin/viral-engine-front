@@ -4,67 +4,35 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
-import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ArrowLeft } from "lucide-react";
-
-interface UsageEvent {
-  id: string;
-  created_at: string;
-  task: string;
-  model?: string;
-  provider: string;
-  input_tokens: number;
-  output_tokens: number;
-  reasoning_tokens: number;
-  audio_seconds?: number;
-  estimated_cost_usd: number;
-  cache_hit: boolean;
-  moment_index?: number;
-}
-
-interface JobDetail {
-  job: {
-    id: string;
-    video_title?: string;
-    status: string;
-    created_at: string;
-    usage_summary?: Record<string, unknown>;
-  };
-  events: UsageEvent[];
-  comparison: {
-    actual_cost_usd: number;
-    canvas_happy_path_usd: number;
-    canvas_current_config_usd: number;
-    delta_vs_happy: number;
-    delta_vs_current: number;
-  };
-}
+import { Card, CardContent } from "@/components/ui/card";
+import { JobCostComparison } from "@/components/admin/JobCostComparison";
+import { JobPipelineView } from "@/components/admin/JobPipelineView";
+import { EventDetailTable } from "@/components/admin/EventDetailTable";
+import {
+  checkIsAdmin,
+  fetchJobUsageDetail,
+  formatUsd,
+  type JobUsageDetail,
+} from "@/lib/admin-usage";
+import { ArrowLeft, Loader2 } from "lucide-react";
 
 export default function AdminJobUsagePage() {
   const { jobId } = useParams<{ jobId: string }>();
   const router = useRouter();
-  const [data, setData] = useState<JobDetail | null>(null);
+  const [data, setData] = useState<JobUsageDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const meRes = await apiFetch("/admin/usage/me");
-      if (!meRes.ok) {
-        router.replace("/dashboard");
-        return;
-      }
-      const me = await meRes.json();
-      if (!me.isAdmin) {
+      const isAdmin = await checkIsAdmin();
+      if (!isAdmin) {
         router.replace("/dashboard");
         return;
       }
 
-      const res = await apiFetch(`/admin/usage/jobs/${jobId}`);
-      if (res.ok) {
-        setData(await res.json());
-      }
+      const detail = await fetchJobUsageDetail(jobId);
+      setData(detail);
       setLoading(false);
     })();
   }, [jobId, router]);
@@ -88,119 +56,101 @@ export default function AdminJobUsagePage() {
     );
   }
 
-  const { job, events, comparison } = data;
-  const maxCompare = Math.max(
-    comparison.actual_cost_usd,
-    comparison.canvas_current_config_usd,
-    comparison.canvas_happy_path_usd,
-    0.001
-  );
+  const { job, usage_summary, events, events_grouped, comparison } = data;
+  const summary = usage_summary as Record<string, unknown> | null;
+  const costAvoided = Number(summary?.cost_avoided_usd || 0);
+  const cacheHits = Number(summary?.cache_hits || 0);
+  const whisperProvider = summary?.whisper_provider as string | undefined;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        {/* Breadcrumb */}
         <Link
           href="/admin/usage"
-          className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-purple-300"
+          className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-purple-300 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Volver al panel
         </Link>
 
-        <div>
-          <h1 className="text-xl font-bold">{job.video_title || job.id}</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {new Date(job.created_at).toLocaleString("es-AR")} · {job.status}
-          </p>
+        {/* Job header */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <p className="text-xs text-slate-600 uppercase tracking-widest mb-1">Detalle de job</p>
+            <h1 className="text-xl font-bold leading-snug">
+              {job.video_title || job.id}
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">
+              {new Date(job.created_at).toLocaleString("es-AR")} ·{" "}
+              <Badge variant="outline" className="text-[10px] border-white/10 text-slate-400">
+                {job.status}
+              </Badge>
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xs text-slate-500">Costo total medido</p>
+            <p className="text-2xl font-bold font-mono text-purple-300">
+              {formatUsd(comparison.actual_cost_usd)}
+            </p>
+            <p className="text-xs text-slate-600 mt-0.5 font-mono">{job.id.slice(0, 8)}</p>
+          </div>
         </div>
 
-        <Card className="bg-slate-900/60 border-white/10">
-          <CardHeader>
-            <CardTitle className="text-lg">Real vs estimación canvas</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { label: "Costo real", value: comparison.actual_cost_usd, color: "from-purple-500 to-pink-500" },
-              { label: "Canvas config actual (~$0.20)", value: comparison.canvas_current_config_usd, color: "from-slate-500 to-slate-400" },
-              { label: "Canvas happy path (~$0.13)", value: comparison.canvas_happy_path_usd, color: "from-emerald-500 to-teal-500" },
-            ].map((row) => (
-              <div key={row.label}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-300">{row.label}</span>
-                  <span className="font-mono text-slate-200">${row.value.toFixed(4)}</span>
-                </div>
-                <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full bg-gradient-to-r ${row.color} rounded-full`}
-                    style={{ width: `${(row.value / maxCompare) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-            <p className="text-xs text-slate-500">
-              Δ vs happy path: {comparison.delta_vs_happy >= 0 ? "+" : ""}
-              ${comparison.delta_vs_happy.toFixed(4)} · Δ vs config actual:{" "}
-              {comparison.delta_vs_current >= 0 ? "+" : ""}
-              ${comparison.delta_vs_current.toFixed(4)}
-            </p>
-          </CardContent>
-        </Card>
+        {/* Summary stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "Eventos", value: String(summary?.event_count || events.length) },
+            {
+              label: "Tokens in/out",
+              value: `${((Number(summary?.total_input_tokens) || 0) / 1000).toFixed(1)}k / ${((Number(summary?.total_output_tokens) || 0) / 1000).toFixed(1)}k`,
+            },
+            {
+              label: "Whisper",
+              value: summary?.whisper_seconds
+                ? `${(Number(summary.whisper_seconds) / 60).toFixed(1)} min`
+                : "—",
+            },
+            {
+              label: "Proveedor whisper",
+              value: whisperProvider || "—",
+            },
+          ].map((stat) => (
+            <Card key={stat.label} className="bg-slate-900/60 border-white/10">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">{stat.label}</p>
+                <p className="text-sm font-mono text-white mt-1">{stat.value}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-        <Card className="bg-slate-900/60 border-white/10">
-          <CardHeader>
-            <CardTitle className="text-lg">
-              Eventos granulares ({events.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/10 text-slate-500 text-left">
-                  <th className="px-4 py-3">Hora</th>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Modelo</th>
-                  <th className="px-4 py-3">In/Out</th>
-                  <th className="px-4 py-3">Audio</th>
-                  <th className="px-4 py-3">USD</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => (
-                  <tr key={e.id} className="border-b border-white/5">
-                    <td className="px-4 py-2 text-slate-500 whitespace-nowrap">
-                      {new Date(e.created_at).toLocaleTimeString("es-AR")}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className="capitalize text-slate-200">{e.task}</span>
-                      {e.moment_index != null && (
-                        <span className="text-slate-500 ml-1">m{e.moment_index}</span>
-                      )}
-                      {e.cache_hit && (
-                        <Badge variant="outline" className="ml-2 text-xs border-emerald-500/30 text-emerald-400">
-                          cache
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-slate-400 font-mono text-xs max-w-[140px] truncate">
-                      {e.model || "—"}
-                    </td>
-                    <td className="px-4 py-2 text-slate-400 font-mono text-xs">
-                      {e.task === "whisper"
-                        ? "—"
-                        : `${e.input_tokens}/${e.output_tokens}${e.reasoning_tokens ? `+${e.reasoning_tokens}r` : ""}`}
-                    </td>
-                    <td className="px-4 py-2 text-slate-400 font-mono text-xs">
-                      {e.audio_seconds != null ? `${Number(e.audio_seconds).toFixed(1)}s` : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-purple-300 font-mono">
-                      ${Number(e.estimated_cost_usd).toFixed(6)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+        {/* Cache savings */}
+        {costAvoided > 0 && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-5 py-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-emerald-300">Ahorro por cache</p>
+              <p className="text-xs text-emerald-600 mt-0.5">
+                {cacheHits} cache hit{cacheHits !== 1 ? "s" : ""} en este job
+              </p>
+            </div>
+            <p className="text-lg font-mono font-bold text-emerald-400">
+              {formatUsd(costAvoided)} evitados
+            </p>
+          </div>
+        )}
+
+        {/* Comparison chart */}
+        <JobCostComparison comparison={comparison} />
+
+        {/* Pipeline */}
+        <div>
+          <h2 className="text-sm font-semibold text-slate-300 mb-3">Pipeline por tarea</h2>
+          <JobPipelineView eventsGrouped={events_grouped} />
+        </div>
+
+        {/* Full event table */}
+        <EventDetailTable events={events} />
       </main>
     </div>
   );
