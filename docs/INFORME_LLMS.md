@@ -6,7 +6,9 @@ Documento de referencia sobre los modelos de inteligencia artificial usados en e
 
 Este informe cubre **solo la capa de IA**. No incluye costos en USD ni infraestructura de despliegue (ver canvas `costos-y-llms` para eso).
 
-**Fuentes de verdad en código:** `worker/config/model_tiers.py`, `worker/services/processor.py`, `worker/services/moment_selector.py`, `worker/services/scorer.py`, `worker/services/transcriber.py`, `worker/WORKER.md`.
+**Fuentes de verdad en código:** `worker/config/model_tiers.py`, `worker/config/llm_chat.py`, `worker/services/processor.py`, `worker/services/moment_selector.py`, `worker/services/scorer.py`, `worker/services/transcriber.py`, `worker/WORKER.md`.
+
+**Estado de migración (jul 2026):** defaults actualizados en código y `.env.example`; `PROMPT_VERSION=v4`. Validación en golden set pendiente antes de dar por cerrada la migración en producción (ver [`RECOMENDACION_MODELOS_LLM.md`](RECOMENDACION_MODELOS_LLM.md)).
 
 ---
 
@@ -79,21 +81,24 @@ flowchart TD
 
 ### Configuración central
 
-Archivo: [`worker/config/model_tiers.py`](../worker/config/model_tiers.py)
+Archivos: [`worker/config/model_tiers.py`](../worker/config/model_tiers.py) + [`worker/config/llm_chat.py`](../worker/config/llm_chat.py)
 
-- Resuelve el modelo efectivo por tarea (`get_model("analysis"|"copy"|"judge"|"classifier")`).
-- Orden de resolución: variable de entorno nueva → variable legacy → default en código.
-- Temperature por tarea (`TASK_TEMPERATURES`): baja para tareas estructurales, media-alta solo para copy creativo.
-- `is_free_tier()`: advierte al arranque si algún modelo usa el sufijo `:free` de OpenRouter (rate limits y peor calidad).
+- **`model_tiers.py`:** resuelve el modelo por tarea (`get_model`), temperature condicional, `max_tokens`, `reasoning.effort`, detección de Gemini 3.x / modelos deprecados.
+- **`llm_chat.py`:** `build_chat_kwargs()` arma cada llamada a OpenRouter; `log_llm_usage()` registra `response.usage` (activo por defecto con `LOG_LLM_USAGE=true`).
+- Orden de resolución de modelo: variable de entorno nueva → alias legacy → default en código.
+- **Gemini 3.x:** `get_temperature()` devuelve `None` → no se envía `temperature` (recomendación de Google).
+- **Modelos razonadores** (Gemini 3.x, GPT-5.x): `reasoning.effort` vía `extra_body` en OpenRouter; override por env `MODEL_{TASK}_REASONING`.
+- `is_free_tier()` / `is_deprecated_model()`: advierten al arranque en `validate_env.py`.
+- `resolved_models()`: imprime la config efectiva al iniciar el worker.
 
 ### Variables de entorno por tarea
 
-| Tarea | Variable principal | Aliases / legacy |
-|-------|-------------------|------------------|
-| Análisis (selección) | `MODEL_ANALYSIS` | `OPENROUTER_MODEL` |
-| Copy | `MODEL_COPY_WRITING` | `MODEL_COPY`, `OPENROUTER_COPY_MODEL`, `OPENROUTER_MODEL` |
-| Juez | `MODEL_JUDGE` | — |
-| Clasificador | `MODEL_CLASSIFIER` | `OPENROUTER_CLASSIFIER_MODEL` |
+| Tarea | Variable principal | Aliases / legacy | Reasoning default |
+|-------|-------------------|------------------|-------------------|
+| Análisis (selección) | `MODEL_ANALYSIS` | `OPENROUTER_MODEL` | `low` |
+| Copy | `MODEL_COPY_WRITING` | `MODEL_COPY`, `OPENROUTER_COPY_MODEL`, `OPENROUTER_MODEL` | `minimal` |
+| Juez | `MODEL_JUDGE` | — | `none` |
+| Clasificador | `MODEL_CLASSIFIER` | `OPENROUTER_CLASSIFIER_MODEL` | — (no aplica en 2.5-flash-lite) |
 
 ---
 
@@ -107,12 +112,16 @@ Cada subsección describe un modelo o proveedor de transcripción. La estructura
 
 | Campo | Detalle |
 |-------|---------|
-| **Modelo default** | `google/gemini-2.0-flash-001` |
+| **Modelo default** | `google/gemini-2.5-flash-lite` |
 | **Variable env** | `MODEL_CLASSIFIER` |
 | **Archivo fuente** | [`worker/services/processor.py`](../worker/services/processor.py) → `get_video_category()` |
-| **Temperature** | `0.0` |
+| **Llamada LLM** | [`worker/config/llm_chat.py`](../worker/config/llm_chat.py) → `build_chat_kwargs("classifier", ...)` |
+| **Temperature** | `0.0` (solo familia Gemini 2.x; omitida en 3.x) |
 | **max_tokens** | `5` |
+| **Reasoning** | No aplica (2.5-flash-lite no es razonador) |
 | **response_format** | Texto libre (una palabra) |
+
+> **Nota histórica:** el default anterior `gemini-2.0-flash-001` fue apagado por Google en jun 2026. Si producción no migró, el classifier caía al fallback de keywords sin error visible.
 
 #### Qué hace hoy
 
@@ -167,12 +176,14 @@ Keywords de podcast: `podcast`, `entrevista`, `interview`, `episodio`, `invitado
 
 | Campo | Detalle |
 |-------|---------|
-| **Modelo default** | `google/gemini-2.5-pro` |
+| **Modelo default** | `google/gemini-3.5-flash` |
 | **Variable env** | `MODEL_ANALYSIS` |
 | **Archivo fuente** | [`worker/services/moment_selector.py`](../worker/services/moment_selector.py) |
-| **Temperature** | `0.3` |
-| **max_tokens** | `8000` |
-| **response_format** | JSON (`json_object` implícito vía prompt) |
+| **Llamada LLM** | `build_chat_kwargs("analysis", ...)` + `log_llm_usage()` |
+| **Temperature** | Omitida en Gemini 3.x (`None`); `0.3` si se usa familia 2.x vía override de env |
+| **max_tokens** | `16000` (thinking tokens consumen el límite) |
+| **Reasoning** | `low` (override: `MODEL_ANALYSIS_REASONING`) |
+| **response_format** | JSON (`json_object` vía OpenRouter) |
 
 #### Qué hace hoy
 
@@ -255,8 +266,8 @@ Tamaño estimado: **20k–50k tokens** de input en videos de 30–60 minutos.
 #### Requisitos de calidad
 
 - Es la tarea de **mayor impacto en calidad del producto**: malos timestamps = clips inutilizables.
-- Requiere razonamiento sobre transcript largo → default **Pro** (modelo más capaz).
-- Temperature baja (0.3) para output estructural consistente.
+- Default jul 2026: **Gemini 3.5 Flash** con reasoning `low` (velocidad + calidad frontier); validar contra golden set vs el Pro legacy.
+- El schema tolera scores incompletos (`ViralScores` infiere `shareability` si Gemini lo omite).
 
 #### Criterios para evaluar alternativas
 
@@ -276,11 +287,13 @@ Tamaño estimado: **20k–50k tokens** de input en videos de 30–60 minutos.
 
 | Campo | Detalle |
 |-------|---------|
-| **Modelo default** | `google/gemini-2.5-flash` |
+| **Modelo default** | `google/gemini-3.5-flash` |
 | **Variable env** | `MODEL_COPY_WRITING` / `MODEL_COPY` |
 | **Archivo fuente** | [`worker/services/processor.py`](../worker/services/processor.py) → `generate_moment_copy_full()`, `regenerate_moment_copy()` |
-| **Temperature** | `0.65` |
+| **Llamada LLM** | `build_chat_kwargs("copy", ...)` + `log_llm_usage()` |
+| **Temperature** | Omitida en Gemini 3.x; `0.65` en familia 2.x |
 | **max_tokens** | `4000` |
+| **Reasoning** | `minimal` (override: `MODEL_COPY_REASONING`) |
 | **response_format** | `json_object` |
 
 #### Qué hace hoy
@@ -359,16 +372,18 @@ Personalización inyectada: `jobs.tone` (profesional, sarcástico, motivador, ca
 
 | Campo | Detalle |
 |-------|---------|
-| **Modelo default** | `google/gemini-2.5-flash-lite` |
+| **Modelo default** | `openai/gpt-5.4-nano` |
 | **Variable env** | `MODEL_JUDGE` |
 | **Archivo fuente** | [`worker/services/scorer.py`](../worker/services/scorer.py) → `judge_moment_scores()` |
-| **Temperature** | `0.1` |
+| **Llamada LLM** | `build_chat_kwargs("judge", ...)` + `log_llm_usage()` |
+| **Temperature** | Omitida en GPT-5.x; `0.1` en familia Gemini 2.x |
 | **max_tokens** | `400` |
+| **Reasoning** | `none` (override: `MODEL_JUDGE_REASONING`) |
 | **response_format** | `json_object` |
 
 #### Qué hace hoy
 
-Modelo **independiente** del de análisis. Puntúa cada clip final contra una rúbrica con anclas explícitas:
+Modelo **independiente** del de análisis y copy (**cross-family**: OpenAI juzgando outputs de Gemini). Puntúa cada clip final contra una rúbrica con anclas explícitas:
 
 - **hook** (1–10): ¿los primeros 3 segundos frenan el scroll?
 - **retention** (1–10): ¿mantiene atención hasta el final?
@@ -413,8 +428,9 @@ Incluye `reasoning` (1–2 frases justificando los scores).
 
 #### Requisitos de calidad
 
-- Tarea estructural y barata → Flash Lite con temperature 0.1.
-- Separación de roles: el juez no creó el clip, debe ser crítico.
+- Tarea estructural y de alto volumen (~5 llamadas/job).
+- **Cross-family** reduce sesgo de auto-evaluación (mismo problema que scores 7–9 de la Pasada A).
+- `reasoning: none` evita que los thinking tokens consuman el `max_tokens=400`.
 
 #### Criterios para evaluar alternativas
 
