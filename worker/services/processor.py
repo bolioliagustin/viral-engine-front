@@ -419,6 +419,12 @@ def analyze_with_openrouter(
         cached = get_cached_analysis(video_id, model, tone)
         if cached:
             try:
+                from services.usage_tracker import record_cache_hit
+                record_cache_hit(
+                    "analysis",
+                    model=model,
+                    metadata={"source": "analysis_cache", "tone": tone},
+                )
                 return AnalysisResult(**cached)
             except Exception as e:
                 # Cache row corrupto/desactualizado — seguir y re-analizar
@@ -444,6 +450,15 @@ def analyze_with_openrouter(
         category = get_cached_category(video_id, model)
         if category:
             print(f"✅ Category cached: {category.upper()}")
+            try:
+                from services.usage_tracker import record_cache_hit
+                record_cache_hit(
+                    "classifier",
+                    model=model,
+                    metadata={"source": "category_cache"},
+                )
+            except Exception:
+                pass
     if not category:
         print(f"📂 Detecting content category...")
         category = get_video_category(

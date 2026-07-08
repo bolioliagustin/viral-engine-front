@@ -28,6 +28,8 @@ sentry_sdk.init(
 # Validate environment variables before proceeding
 sys.path.insert(0, str(Path(__file__).parent))
 from config.logging import setup_logging, trace, set_phase, bind_trace
+from context.job_context import set_job_context, clear_job_context, set_moment_index
+from services.usage_tracker import finalize_job_usage
 setup_logging()
 
 from config.validate_env import validate_env
@@ -255,6 +257,7 @@ def process_job(job_data: dict) -> None:
 
 
 def _process_job_inner(job_data: dict, job_id: str) -> None:
+    set_job_context(job_id=job_id, user_id=job_data.get("userId"))
     video_url = job_data["videoUrl"]
     audio_path = None
     video_path = None
@@ -477,6 +480,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             check_timeout()
             moment_index = i + 1
             bind_trace(moment_index=moment_index, phase="clip")
+            set_moment_index(moment_index)
             clip_url = None
             # Plan C: cache para acelerar re-renders del editor post-clip.
             # Se popula tras yt-dlp + Whisper; queda en None si caemos a paths
@@ -1255,6 +1259,8 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         update_job_error(job_id, str(e))
         
     finally:
+        finalize_job_usage(job_id)
+        clear_job_context()
         # C5: Cancel timeout timer
         timeout_timer.cancel()
 

@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Optional
 
 from config.logging import trace, set_phase
+from context.job_context import set_job_context, clear_job_context, set_moment_index
+from services.usage_tracker import finalize_job_usage, record_cache_hit
 from services.downloader import (
     download_clip_ytdlp,
     download_clip_via_stream_urls,
@@ -272,6 +274,7 @@ def _process_clip_edit_inner(
 
     seg_path = None
     clip_output = None
+    parent_job_id = None
 
     try:
         # 1) Resolve content_result
@@ -288,6 +291,14 @@ def _process_clip_edit_inner(
         job = get_job(cr["job_id"])
         if not job:
             raise RuntimeError(f"job {cr['job_id']} no existe")
+        set_job_context(
+            job_id=cr["job_id"],
+            user_id=job.get("user_id"),
+            clip_edit_id=edit_id,
+        )
+        parent_job_id = cr["job_id"]
+        if cr.get("moment_index") is not None:
+            set_moment_index(int(cr["moment_index"]))
         video_url = job.get("video_url")
         if not video_url:
             raise RuntimeError("job sin video_url")
@@ -324,6 +335,11 @@ def _process_clip_edit_inner(
                     print(
                         f"   ✅ Whisper cache hit: "
                         f"{len(words or [])} words, {len(segments or [])} segments"
+                    )
+                    record_cache_hit(
+                        "whisper",
+                        model="whisper-cache",
+                        metadata={"source": "whisper_words_cache"},
                     )
             except Exception as e_cache:
                 print(f"   ⚠️ Whisper cache parse falló ({e_cache}) — re-transcribo")
@@ -445,6 +461,9 @@ def _process_clip_edit_inner(
         except Exception:
             pass
     finally:
+        if parent_job_id:
+            finalize_job_usage(parent_job_id)
+        clear_job_context()
         # Cleanup
         for p in (seg_path, str(clip_output) if clip_output else None):
             if p:

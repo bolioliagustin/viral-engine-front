@@ -299,6 +299,20 @@ Cuando el usuario edita un clip en el frontend (`EditClipDrawer`):
 | Categoría | `category_cache` | Re-clasificar podcast/business |
 | Raw clip | R2 `raw_clips/` | Re-descargar segmento en re-edits |
 
+### Métricas de costo por job (`job_usage_events`)
+
+Migración: `supabase_migration_job_usage.sql`. Cada llamada LLM y cada Whisper
+genera una fila; al finalizar el job el worker escribe `jobs.usage_summary`.
+
+| Componente | Archivo |
+|------------|---------|
+| Precios USD | `config/pricing.py` |
+| Contexto job/momento | `context/job_context.py` |
+| Persistencia | `services/usage_tracker.py` |
+| Panel admin | `/admin/usage` (frontend) + `GET /admin/usage/*` (backend) |
+
+Env: `PERSIST_USAGE_EVENTS=true`, `ADMIN_USER_IDS` o `ADMIN_EMAILS`, opcional `PRICING_OVERRIDES_JSON`.
+
 ---
 
 ## 6.1 Pipeline de IA (Plan calidad IA, 2026)

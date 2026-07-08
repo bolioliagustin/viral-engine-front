@@ -92,6 +92,36 @@ def format_whisper_vocabulary_prompt(vocabulary: list[str], max_chars: int = 200
     return f"Vocabulario del video (transcribir exactamente): {vocab_str}."
 
 
+def _audio_duration_seconds(result: Dict, audio_path: str) -> float:
+    """Duración facturable: verbose_json duration o longitud del archivo."""
+    dur = result.get("duration")
+    if dur is not None:
+        try:
+            return float(dur)
+        except (TypeError, ValueError):
+            pass
+    try:
+        from pydub import AudioSegment
+        audio = AudioSegment.from_file(audio_path)
+        return len(audio) / 1000.0
+    except Exception:
+        return 0.0
+
+
+def _record_whisper_result(
+    provider: str,
+    model: str,
+    result: Dict,
+    audio_path: str,
+) -> None:
+    try:
+        from services.usage_tracker import record_whisper_usage
+        seconds = _audio_duration_seconds(result, audio_path)
+        record_whisper_usage(provider, model, seconds)
+    except Exception:
+        pass
+
+
 def transcribe_with_whisper_openrouter(
     audio_path: str,
     prompt: str = None,
@@ -180,6 +210,7 @@ def _transcribe_single(audio_path: str, prompt: str = None, language: str = None
             print(f"✅ Groq transcription: {n_segs} segments, {n_words} words")
             print(f"   Language: {result.get('language', 'unknown')}, "
                   f"Duration: {result.get('duration', 'N/A')}s")
+            _record_whisper_result("groq", "whisper-large-v3-turbo", result, audio_path)
             return result
         except Exception as e:
             print(f"⚠️ Groq falló ({e}) — fallback a OpenAI")
@@ -206,6 +237,7 @@ def _transcribe_single(audio_path: str, prompt: str = None, language: str = None
         print(f"✅ OpenAI transcription: {n_segs} segments, {n_words} words")
         print(f"   Language: {result.get('language', 'unknown')}, "
               f"Duration: {result.get('duration', 'N/A')}s")
+        _record_whisper_result("openai", "whisper-1", result, audio_path)
         return result
     except Exception as e:
         print(f"❌ OpenAI transcription failed: {e}")
@@ -281,6 +313,7 @@ def _transcribe_chunked(audio_path: str, audio: 'AudioSegment', prompt: str = No
             full_text.append(chunk_result.get('text', ''))
             n_words_chunk = len(chunk_result.get('words', []) or [])
             print(f"   ✅ Chunk {chunk_index + 1}: {len(chunk_result.get('segments', []))} segments, {n_words_chunk} words")
+            _record_whisper_result("openai", "whisper-1", chunk_result, chunk_path)
 
         # Deduplicate segments in overlap zones
         all_segments = _deduplicate_segments(all_segments)

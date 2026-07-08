@@ -13,10 +13,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 export function UserMenu() {
   const [user, setUser] = useState<any>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -34,6 +36,16 @@ export function UserMenu() {
         
         if (userData) {
           setCredits(userData.credits);
+        }
+
+        try {
+          const res = await apiFetch("/admin/usage/me");
+          if (res.ok) {
+            const data = await res.json();
+            setIsAdmin(!!data.isAdmin);
+          }
+        } catch {
+          /* no admin */
         }
       }
     };
@@ -107,6 +119,11 @@ export function UserMenu() {
           <DropdownMenuItem onClick={() => router.push("/settings")}>
             Configuración
           </DropdownMenuItem>
+          {isAdmin && (
+            <DropdownMenuItem onClick={() => router.push("/admin/usage")}>
+              Costos (admin)
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout} className="text-red-400 focus:text-red-400">
             Cerrar Sesión

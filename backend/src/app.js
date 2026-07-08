@@ -12,6 +12,7 @@ const compression = require('compression');
 const jobsRouter = require('./routes/jobs');
 const billingRouter = require('./routes/billing');
 const clipEditsRouter = require('./routes/clip-edits');
+const adminUsageRouter = require('./routes/admin-usage');
 const logger = require('./lib/logger');
 
 // C4: Initialize Sentry error tracking (must be before Express app creation)
@@ -62,6 +63,7 @@ app.use(express.json({
 app.use('/', jobsRouter);
 app.use('/', billingRouter);
 app.use('/', clipEditsRouter);
+app.use('/admin', adminUsageRouter);
 
 // Root route
 app.get('/', (req, res) => {

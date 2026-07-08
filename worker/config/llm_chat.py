@@ -86,3 +86,18 @@ def log_llm_usage(
 
     if os.getenv("LOG_LLM_USAGE", "true").lower() not in ("0", "false", "no"):
         print(f"   📊 {' '.join(parts)}")
+
+    try:
+        from context.job_context import get_job_context
+        from services.usage_tracker import record_llm_usage
+
+        ctx = get_job_context()
+        record_llm_usage(
+            task,
+            model,
+            response,
+            moment_index=moment_index if moment_index is not None else ctx.get("moment_index"),
+            metadata={"job_id_short": (ctx.get("job_id") or job_id or "")[:8] or None},
+        )
+    except Exception:
+        pass
