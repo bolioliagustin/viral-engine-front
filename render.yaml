@@ -1,16 +1,16 @@
-# Render Blueprint — auto-deploys backend + worker from GitHub
-# Usage: Connect GitHub repo → Render detects this file → deploys both services
+# Render Blueprint — solo el backend API. El worker corre en el VPS de OVH
+# (docker-compose.worker.yml), no en Render.
 
 services:
-  # Backend API (Node.js/Express)
   - type: web
     name: viralengine-backend
     runtime: node
     region: oregon
-    plan: free
+    plan: starter
     rootDir: backend
     buildCommand: npm ci
     startCommand: node src/index.js
+    healthCheckPath: /health/live
     envVars:
       - key: NODE_ENV
         value: production
@@ -22,47 +22,13 @@ services:
         sync: false
       - key: SENTRY_DSN_BACKEND
         sync: false
-    healthCheckPath: /health
-
-  # Worker (Python) — runs as background worker, not a web service
-  - type: worker
-    name: viralengine-worker
-    runtime: python
-    region: oregon
-    plan: free
-    rootDir: worker
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: MAX_WORKERS
-        value: 2
-      - key: SUPABASE_URL
+      - key: LEMONSQUEEZY_API_KEY
         sync: false
-      - key: SUPABASE_SERVICE_KEY
+      - key: LEMONSQUEEZY_STORE_ID
         sync: false
-      - key: OPENROUTER_API_KEY
+      - key: LEMONSQUEEZY_VARIANT_ID
         sync: false
-      - key: OPENAI_API_KEY
+      - key: LEMONSQUEEZY_WEBHOOK_SECRET
         sync: false
-      - key: R2_ACCOUNT_ID
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
-        sync: false
-      - key: R2_PUBLIC_URL
-        sync: false
-      - key: SENTRY_DSN_WORKER
-        sync: false
-      - key: SUPADATA_API_KEY
-        sync: false
-      - key: YOUTUBE_COOKIES
-        sync: false
-      - key: RAPIDAPI_KEY
-        sync: false
-      - key: WEBSHARE_PROXY_LIST
+      - key: ADMIN_EMAILS
         sync: false

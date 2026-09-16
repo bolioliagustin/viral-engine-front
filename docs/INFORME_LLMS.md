@@ -289,7 +289,7 @@ Tamaño estimado: **20k–50k tokens** de input en videos de 30–60 minutos.
 |-------|---------|
 | **Modelo default** | `google/gemini-3.5-flash` |
 | **Variable env** | `MODEL_COPY_WRITING` / `MODEL_COPY` |
-| **Archivo fuente** | [`worker/services/processor.py`](../worker/services/processor.py) → `generate_moment_copy_full()`, `regenerate_moment_copy()` |
+| **Archivo fuente** | [`worker/services/processor.py`](../worker/services/processor.py) → `generate_moment_copy_full()` |
 | **Llamada LLM** | `build_chat_kwargs("copy", ...)` + `log_llm_usage()` |
 | **Temperature** | Omitida en Gemini 3.x; `0.65` en familia 2.x |
 | **max_tokens** | `4000` |
@@ -342,7 +342,7 @@ Personalización inyectada: `jobs.tone` (profesional, sarcástico, motivador, ca
 - **No cacheable** (depende del corte real y del texto Whisper).
 - Posible **retry**: si `content_validators.clean_moment()` detecta tweet count ≠ 7 o LinkedIn fuera de rango, se re-ejecuta `generate_moment_copy_full()`.
 
-`regenerate_moment_copy()` existe para retries parciales (solo thread + LinkedIn).
+Los reintentos vuelven a llamar a `generate_moment_copy_full()` (paquete completo).
 
 #### Fallos y fallbacks
 

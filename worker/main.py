@@ -1,7 +1,7 @@
 """
-YouTube Viral Content Engine - AI Worker
-Watches the queue folder and processes video analysis jobs.
-Now with video clipping and Supabase integration.
+viral-engine — worker
+Sondea la tabla `jobs` de Supabase (la cola), procesa cada job (transcript,
+IA, descarga, clips, copy) y sube los resultados a R2 y Supabase.
 """
 import gc
 import os
@@ -38,8 +38,6 @@ validate_env()
 # Add parent to path for imports
 
 from services.downloader import (
-    download_audio,
-    download_video,
     get_stream_urls,
     download_clip_ytdlp,
     download_clip_via_stream_urls,
@@ -56,9 +54,8 @@ from services.downloader import (
 # mergeados) en un solo MP4, evitamos por completo el problema del proxy
 # residencial throttleando audio (30 KB/s) en la descarga parcial split.
 from services.downloader import _download_video_ytdlp
-from services.processor import analyze_with_gemini, cleanup_uploaded_file
-from services.clipper import extract_clip, cleanup_clips
 from services.clip_generator import (
+    cleanup_clips,
     generate_clip,
     ClipGenerationError,
     cut_clip,
@@ -461,8 +458,6 @@ def process_job(job_data: dict) -> None:
 def _process_job_inner(job_data: dict, job_id: str) -> None:
     set_job_context(job_id=job_id, user_id=job_data.get("userId"))
     video_url = job_data["videoUrl"]
-    audio_path = None
-    video_path = None
     video_id = None
     muxed_video_path = None  # se setea solo en path B (partial download fallback)
     timed_out = threading.Event()  # C5: timeout flag
@@ -1438,9 +1433,6 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         if video_id:
             cleanup_all(video_id)
             cleanup_clips(video_id)
-        
-        # Cleanup Gemini uploaded files
-        cleanup_uploaded_file(audio_path if audio_path else "")
 
 
 def watch_queue():

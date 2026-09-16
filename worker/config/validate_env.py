@@ -125,4 +125,30 @@ def validate_env():
         print()
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+
+    # If executed as `python config/validate_env.py`, sys.path[0] is worker/config,
+    # which shadows standard library modules (like logging.py).
+    # Point sys.path[0] to worker/ directory instead.
+    script_dir = Path(__file__).resolve().parent
+    worker_dir = script_dir.parent
+    if sys.path and sys.path[0] == str(script_dir):
+        sys.path[0] = str(worker_dir)
+    elif str(worker_dir) not in sys.path:
+        sys.path.insert(0, str(worker_dir))
+
+    try:
+        from dotenv import load_dotenv
+        _root_env = worker_dir.parent / ".env"
+        if _root_env.exists():
+            load_dotenv(_root_env)
+        _worker_env = worker_dir / ".env"
+        if _worker_env.exists():
+            load_dotenv(_worker_env)
+    except ImportError:
+        pass
+
     validate_env()
+
+

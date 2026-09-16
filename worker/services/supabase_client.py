@@ -60,7 +60,7 @@ def get_supabase() -> Optional[Client]:
     key = os.getenv("SUPABASE_SERVICE_KEY")
 
     if not url or not key:
-        print("⚠️ Supabase credentials not found. Using SQLite fallback.")
+        print("⚠️ SUPABASE_URL / SUPABASE_SERVICE_KEY no configuradas")
         return None
 
     # Fast path — client is healthy, return immediately
@@ -92,34 +92,30 @@ def get_supabase() -> Optional[Client]:
             return None
 
 
-def update_job_status(job_id: str, status: str, video_title: str = None) -> None:
-    """Update job status in Supabase or SQLite fallback"""
+def _require_supabase() -> Client:
+    """Cliente Supabase o error explícito (validate_env garantiza las credenciales)."""
     supabase = get_supabase()
-    
-    if supabase:
-        update_data = {"status": status}
-        if video_title:
-            update_data["video_title"] = video_title
-        
-        supabase.table("jobs").update(update_data).eq("id", job_id).execute()
-    else:
-        # SQLite fallback
-        from services.database import update_job_status as sqlite_update
-        sqlite_update(job_id, status)
+    if not supabase:
+        raise RuntimeError("Supabase no disponible (credenciales faltantes o conexión caída)")
+    return supabase
+
+
+def update_job_status(job_id: str, status: str, video_title: str = None) -> None:
+    """Update job status in Supabase"""
+    supabase = _require_supabase()
+    update_data = {"status": status}
+    if video_title:
+        update_data["video_title"] = video_title
+    supabase.table("jobs").update(update_data).eq("id", job_id).execute()
 
 
 def update_job_error(job_id: str, error_message: str) -> None:
     """Mark job as failed"""
-    supabase = get_supabase()
-    
-    if supabase:
-        supabase.table("jobs").update({
-            "status": "failed",
-            "error_message": error_message
-        }).eq("id", job_id).execute()
-    else:
-        from services.database import update_job_error as sqlite_update
-        sqlite_update(job_id, error_message)
+    supabase = _require_supabase()
+    supabase.table("jobs").update({
+        "status": "failed",
+        "error_message": error_message
+    }).eq("id", job_id).execute()
 
 
 def update_job_progress(
@@ -134,21 +130,14 @@ def update_job_progress(
         current_step: Current processing step (e.g., 'downloading', 'transcribing', 'analyzing', 'clipping', 'generating')
         progress_percentage: Progress from 0-100
     """
-    supabase = get_supabase()
-    
-    if supabase:
-        update_data = {}
-        if current_step is not None:
-            update_data["current_step"] = current_step
-        if progress_percentage is not None:
-            update_data["progress_percentage"] = progress_percentage
-        
-        if update_data:
-            supabase.table("jobs").update(update_data).eq("id", job_id).execute()
-    else:
-        # SQLite fallback
-        from services.database import update_job_progress as sqlite_update
-        sqlite_update(job_id, current_step, progress_percentage)
+    supabase = _require_supabase()
+    update_data = {}
+    if current_step is not None:
+        update_data["current_step"] = current_step
+    if progress_percentage is not None:
+        update_data["progress_percentage"] = progress_percentage
+    if update_data:
+        supabase.table("jobs").update(update_data).eq("id", job_id).execute()
 
 
 def _is_connection_error(e: Exception) -> bool:
@@ -184,114 +173,99 @@ def save_content_result(
     clip_quality_issues: list = None,  # flags: incomplete_tail, clip_not_rendered, etc.
     clip_generation_error: str = None,  # error si el MP4 no se generó
 ) -> str:
-    """Save content result to Supabase or SQLite"""
+    """Save content result to Supabase"""
     import uuid
     import json
     result_id = str(uuid.uuid4())
-    
-    supabase = get_supabase()
-    
-    if supabase:
-        data = {
-            "id": result_id,
-            "job_id": job_id,
-            "type": content_type,
-            "content": content,
-            "clip_url": clip_url,
-            "start_time": start_time,
-            "end_time": end_time,
-            "hook": hook,
-            "emotional_trigger": emotional_trigger,
-            "moment_index": moment_index,
-        }
-        # Add new metrics columns if they exist
-        if pillar_type:
-            data["pillar_type"] = pillar_type
-        if score_hook:
-            data["score_hook"] = score_hook
-        if score_retention:
-            data["score_retention"] = score_retention
-        if score_shareability:
-            data["score_shareability"] = score_shareability
-        # Phase B fields
-        if sentiment_detected:
-            data["sentiment_detected"] = sentiment_detected
-        if roi_time_saved:
-            data["roi_time_saved"] = roi_time_saved
-        if score_justifications:
-            data["score_justifications"] = json.dumps(score_justifications)
-        if viral_overlay:
-            data["viral_overlay"] = viral_overlay
-        # Plan C: cache para acelerar re-renders
-        if raw_clip_url:
-            data["raw_clip_url"] = raw_clip_url
-        if whisper_words:
-            data["whisper_words"] = json.dumps(whisper_words) if not isinstance(whisper_words, str) else whisper_words
-        # Fase 4: scoring calibrado + métricas de calidad.
-        # Estos campos requieren supabase_migration_ai_quality.sql — si las
-        # columnas no existen todavía, reintentamos el insert sin ellas.
-        _quality_keys = []
-        if score_llm:
-            data["score_llm"] = json.dumps(score_llm)
-            _quality_keys.append("score_llm")
-        if score_judge:
-            data["score_judge"] = json.dumps(score_judge)
-            _quality_keys.append("score_judge")
-        if verification_failed is not None:
-            data["verification_failed"] = verification_failed
-            _quality_keys.append("verification_failed")
-        if sub_coverage is not None:
-            data["sub_coverage"] = round(float(sub_coverage), 4)
-            _quality_keys.append("sub_coverage")
-        if words_per_sec is not None:
-            data["words_per_sec"] = round(float(words_per_sec), 3)
-            _quality_keys.append("words_per_sec")
-        if clip_quality_issues:
-            data["clip_quality_issues"] = json.dumps(clip_quality_issues)
-            _quality_keys.append("clip_quality_issues")
-        if clip_generation_error:
-            data["clip_generation_error"] = clip_generation_error[:500]
-            _quality_keys.append("clip_generation_error")
 
-        def _insert(payload):
-            supabase.table("content_results").insert(payload).execute()
+    supabase = _require_supabase()
+    data = {
+        "id": result_id,
+        "job_id": job_id,
+        "type": content_type,
+        "content": content,
+        "clip_url": clip_url,
+        "start_time": start_time,
+        "end_time": end_time,
+        "hook": hook,
+        "emotional_trigger": emotional_trigger,
+        "moment_index": moment_index,
+    }
+    # Add new metrics columns if they exist
+    if pillar_type:
+        data["pillar_type"] = pillar_type
+    if score_hook:
+        data["score_hook"] = score_hook
+    if score_retention:
+        data["score_retention"] = score_retention
+    if score_shareability:
+        data["score_shareability"] = score_shareability
+    # Phase B fields
+    if sentiment_detected:
+        data["sentiment_detected"] = sentiment_detected
+    if roi_time_saved:
+        data["roi_time_saved"] = roi_time_saved
+    if score_justifications:
+        data["score_justifications"] = json.dumps(score_justifications)
+    if viral_overlay:
+        data["viral_overlay"] = viral_overlay
+    # Plan C: cache para acelerar re-renders
+    if raw_clip_url:
+        data["raw_clip_url"] = raw_clip_url
+    if whisper_words:
+        data["whisper_words"] = json.dumps(whisper_words) if not isinstance(whisper_words, str) else whisper_words
+    # Fase 4: scoring calibrado + métricas de calidad.
+    # Estos campos requieren supabase_migration_ai_quality.sql — si las
+    # columnas no existen todavía, reintentamos el insert sin ellas.
+    _quality_keys = []
+    if score_llm:
+        data["score_llm"] = json.dumps(score_llm)
+        _quality_keys.append("score_llm")
+    if score_judge:
+        data["score_judge"] = json.dumps(score_judge)
+        _quality_keys.append("score_judge")
+    if verification_failed is not None:
+        data["verification_failed"] = verification_failed
+        _quality_keys.append("verification_failed")
+    if sub_coverage is not None:
+        data["sub_coverage"] = round(float(sub_coverage), 4)
+        _quality_keys.append("sub_coverage")
+    if words_per_sec is not None:
+        data["words_per_sec"] = round(float(words_per_sec), 3)
+        _quality_keys.append("words_per_sec")
+    if clip_quality_issues:
+        data["clip_quality_issues"] = json.dumps(clip_quality_issues)
+        _quality_keys.append("clip_quality_issues")
+    if clip_generation_error:
+        data["clip_generation_error"] = clip_generation_error[:500]
+        _quality_keys.append("clip_generation_error")
 
-        try:
-            _insert(data)
-        except Exception as e:
-            if _is_connection_error(e):
-                print(f"⚠️ save_content_result: conexión perdida, reconectando y reintentando...")
-                reset_supabase()
-                supabase = get_supabase()
-                if supabase:
-                    _insert(data)
-                else:
-                    raise RuntimeError("No se pudo reconectar a Supabase para guardar resultado")
-            elif _quality_keys and ("column" in str(e).lower() or "pgrst204" in str(e).lower()):
-                print(
-                    f"⚠️ save_content_result: columnas de calidad no existen aún "
-                    f"({_quality_keys}) — corré supabase_migration_ai_quality.sql. "
-                    f"Guardando sin esas columnas."
-                )
-                for k in _quality_keys:
-                    data.pop(k, None)
+    def _insert(payload):
+        supabase.table("content_results").insert(payload).execute()
+
+    try:
+        _insert(data)
+    except Exception as e:
+        if _is_connection_error(e):
+            print(f"⚠️ save_content_result: conexión perdida, reconectando y reintentando...")
+            reset_supabase()
+            supabase = get_supabase()
+            if supabase:
                 _insert(data)
             else:
-                raise
-    else:
-        from services.database import save_content_result as sqlite_save
-        metadata = json.dumps({
-            "moment_index": moment_index,
-            "start_time": start_time,
-            "end_time": end_time,
-            "hook": hook,
-            "emotional_trigger": emotional_trigger,
-            "clip_url": clip_url,
-            "pillar_type": pillar_type,
-            "scores": {"hook": score_hook, "retention": score_retention, "shareability": score_shareability}
-        })
-        sqlite_save(job_id, content_type, content, metadata)
-    
+                raise RuntimeError("No se pudo reconectar a Supabase para guardar resultado")
+        elif _quality_keys and ("column" in str(e).lower() or "pgrst204" in str(e).lower()):
+            print(
+                f"⚠️ save_content_result: columnas de calidad no existen aún "
+                f"({_quality_keys}) — falta la migración ai_quality (ver supabase/legacy). "
+                f"Guardando sin esas columnas."
+            )
+            for k in _quality_keys:
+                data.pop(k, None)
+            _insert(data)
+        else:
+            raise
+
     return result_id
 
 

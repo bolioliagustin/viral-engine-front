@@ -109,13 +109,6 @@ bash scripts/worker-logs.sh errors       # últimos errores/warnings
 bash scripts/worker-logs.sh docker       # fallback docker compose logs
 ```
 
-Windows (local):
-
-```powershell
-.\scripts\worker-logs.ps1 tail 100
-.\scripts\worker-logs.ps1 job abc123
-```
-
 Variables opcionales: `LOG_LEVEL=DEBUG`, `LOG_FORMAT=json`, `WORKER_LOG_DIR=/app/logs`.
 
 ---
@@ -327,7 +320,7 @@ Cuando el usuario edita un clip en el frontend (`EditClipDrawer`):
 
 ### Métricas de costo por job (`job_usage_events`)
 
-Migración: `supabase_migration_job_usage.sql`. Cada llamada LLM y cada Whisper
+Migración histórica: `supabase/legacy/supabase_migration_job_usage.sql`. Cada llamada LLM y cada Whisper
 genera una fila; al finalizar el job el worker escribe `jobs.usage_summary`.
 
 | Componente | Archivo |
@@ -398,7 +391,7 @@ legacy y su copy queda como borrador que la pasada B pisa.
 - `verification_failed` (bool): first Y last phrase no matchean el audio real
   — visible como badge "⚠ Verificar corte" en la card.
 - `sub_coverage` y `words_per_sec` se persisten como métricas de calidad.
-- Requiere `supabase_migration_ai_quality.sql`.
+- Migración histórica: `supabase/legacy/supabase_migration_ai_quality.sql`.
 
 ### Personalización (Fase 5)
 
@@ -516,7 +509,8 @@ worker/
 ├── main.py                    # Entry, watch_queue, process_job
 ├── config/
 │   ├── validate_env.py        # Startup validation
-│   └── logging_config.py
+│   ├── model_tiers.py / llm_chat.py / pricing.py
+│   └── logging.py             # print → logging con contexto de traza
 ├── models/
 │   └── schemas.py             # ViralMoment, AnalysisResult, Pydantic
 ├── services/
@@ -525,8 +519,8 @@ worker/
 │   ├── downloader.py          # yt-dlp, RapidAPI, partial download, proxies
 │   ├── transcriber.py         # Whisper Groq/OpenAI word-level
 │   ├── clip_generator.py      # FFmpeg 9:16 + subtítulos + overlay
-│   ├── clipper.py             # Legacy (supersedido por clip_generator)
 │   ├── supabase_client.py     # DB, R2 upload, créditos, progress
+│   ├── usage_tracker.py       # job_usage_events + usage_summary
 │   ├── storage_client.py      # Cloudflare R2 boto3
 │   ├── clip_edit_processor.py # Re-render cola clip_edits
 │   ├── transcript_cache.py
@@ -596,6 +590,5 @@ Un job se considera **exitoso ideal** cuando:
 
 ## 12. Referencias
 
-- Deploy VPS: [`deploy/SETUP-DEPLOY.md`](../deploy/SETUP-DEPLOY.md)
-- API backend: [`API_DOCUMENTATION.md`](../API_DOCUMENTATION.md)
+- Documento del proyecto: [`docs/PROYECTO.md`](../docs/PROYECTO.md) (API en §8, deploy en §10)
 - README general: [`README.md`](../README.md)
