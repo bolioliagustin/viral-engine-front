@@ -1,6 +1,6 @@
 # viral-engine — Documento de entendimiento del proyecto
 
-**Fecha:** 16 de septiembre de 2026 · **Estado del proyecto:** parado desde el 8-jul-2026, arrancando nueva etapa (beta cerrada) · **Autor del código:** Agustín Bolioli (único desarrollador) · **Vocabulario:** [`CONTEXT.md`](../CONTEXT.md) · **Decisiones:** [`docs/adr/`](adr/) · **Guía para agentes:** [`AGENTS.md`](../AGENTS.md)
+**Fecha:** 16 de septiembre de 2026 · **Estado del proyecto:** parado desde el 8-jul-2026, arrancando nueva etapa (beta cerrada) · **Autor del código:** Agustín Bolioli (único desarrollador) · **Vocabulario:** [`CONTEXT.md`](../CONTEXT.md) · **Decisiones:** [`docs/adr/`](adr/) · **Guía para agentes:** [`AGENTS.md`](../AGENTS.md) · **Calidad de clips (diagnóstico y plan):** [`PLAN_CALIDAD.md`](PLAN_CALIDAD.md)
 
 Este documento es la fuente única de entendimiento del proyecto: qué es, para quién, cómo funciona por dentro, en qué estado está y qué se decidió para la próxima etapa. Se escribió leyendo el 100 % del código (≈25 k líneas), las 15 migraciones SQL, los 127 commits y verificando la infraestructura en vivo. Cuando algo del código contradice a la documentación previa, manda el código y se señala.
 
@@ -614,7 +614,11 @@ Plantilla completa en [`.env.example`](../.env.example). Un solo `.env` en la ra
 | **2 Subida directa** | 4–6 | Upload multipart a R2 desde el navegador; worker con fuente "archivo" y transcript híbrido; endpoint admin de créditos; textos de pricing y email; UI de perfil si sobra tiempo | Un invitado sube un episodio de 60 min y recibe sus clips |
 | **3 Beta cerrada** | 7–10 | 5–10 invitados usando el producto; grupo de feedback; seguimiento semanal de la métrica | **≥90 % de jobs con todos sus clips en <15 min (videos ≤90 min) durante 2 semanas; 0 jobs zombie** → decidir apertura del cobro |
 
-### 15.3 Riesgos y mitigaciones
+### 15.3 Calidad de los clips (agregado el 17-sep-2026)
+
+Con el pipeline estable (3/3 corridas reales, 15/15 clips), el foco pasa a la calidad: el juez promedia **4.7/10** sobre 20 clips y ninguno llega a 7 en las tres métricas. El diagnóstico con evidencia (cortes a mitad de oración por resolución de captions, refinamiento que solo recorta, ranking ciego, juez que llega tarde, sin guardas de plausibilidad) y el plan en 8 líneas de trabajo paralelizables con una rueda de mejora continua están en [`PLAN_CALIDAD.md`](PLAN_CALIDAD.md). Las fases 1–3 de arriba siguen vigentes; la calidad corre en paralelo desde la Fase 1.
+
+### 15.4 Riesgos y mitigaciones
 
 | Riesgo | Mitigación |
 |---|---|

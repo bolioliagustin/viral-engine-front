@@ -1,0 +1,241 @@
+# Plan de calidad de clips — de 4.7 a "posteable"
+
+**Fecha:** 17 de septiembre de 2026 · **Estado de partida:** pipeline estable (3/3 corridas reales con 15/15 clips) pero con clips que el propio juez puntúa **4.7 de 10** en promedio y que el dueño del producto no publicaría · **Meta:** que un podcaster reciba clips que publica sin editar, y que cada mejora se mida antes y después.
+
+Complementa a [`PROYECTO.md`](PROYECTO.md) (§5 pipeline, §6 IA, §15 plan de etapa). Vocabulario en [`../CONTEXT.md`](../CONTEXT.md).
+
+---
+
+## 0. Resumen ejecutivo
+
+Analicé los **20 clips de los 4 jobs completados** (julio + los 3 de esta semana) con todos los datos que deja el pipeline: scores del juez y su razonamiento, scores de la Pasada A, flags de verificación, palabras Whisper de cada clip (inicio y final real), candidatos guardados en `analysis_cache`, transcripts de Supadata y logs del VPS.
+
+**El problema no es el modelo ni el prompt: es que los cortes están mal.** 18 de 20 clips empiezan a mitad de oración, y en la mayoría el remate que la IA eligió queda **fuera** del clip. El juez lo dice en 19 de 20 razonamientos ("tarda en aterrizar", "se corta a medias", "remate incompleto"). Hay tres causas de fondo, todas en el pipeline y no en la IA:
+
+1. **Resolución:** la Pasada A elige momentos sobre bloques de captions de 3 a 30 segundos. Las oraciones duran 2 a 8. El `start_time`/`end_time` numérico cae donde termina un bloque de captions, no donde termina la idea.
+2. **El refinamiento post-Whisper solo recorta, nunca extiende.** Cuando el remate quedó fuera del segmento descargado, no hay forma de recuperarlo; cuando los timestamps de Whisper vienen mal (pasó con `whisper-1`), el recorte destruye el clip (33 s → 9 s con 72 palabras apretadas).
+3. **El ranking de candidatos es ciego:** la Pasada A se autopuntúa 8-9 en todo (media 8.5 en las tres métricas, sin varianza), así que "elegir los 5 mejores de 11" es azar. El juez, que sí discrimina (2-7), corre **después** de descargar y no influye en qué se elige.
+
+La buena noticia: todo esto es corregible con cambios acotados en el worker, y el propio pipeline ya deja los datos para medir el antes y el después. El plan tiene **7 líneas de trabajo paralelizables**, una **rueda de mejora continua** (medir → cambiar → medir) y **objetivos numéricos**.
+
+---
+
+## 1. Evidencia
+
+### 1.1 Métricas sobre los 20 clips
+
+| Métrica | Valor | Lectura |
+|---|---|---|
+| Juez promedio (hook / retención / compartibilidad) | **4.85 / 4.45 / 4.90** → 4.73 | Muy por debajo de "posteable" (≥7) |
+| Pasada A autoevaluación | 8.5 / 8.5 / 8.55 | Inflada e inútil para rankear: sin varianza |
+| Clips con juez ≥7 en las tres métricas | **0 / 20** | Ningún clip "bueno" según la rúbrica |
+| `verification_failed` (frase o hook no coincide con el audio) | **15 / 20** | El usuario ve "⚠ Verificar corte" en el 75 % |
+| `late_hook` (el gancho aparece >3 s después del inicio) | 10 / 20 | El clip arranca antes de la idea |
+| `whisper_mismatch_last` (la última frase elegida no está en el clip) | 5 / 20 | El remate quedó fuera del segmento |
+| Clips sin ningún flag | 5 / 20 | |
+| Duración elegida → final | 34 s → 29 s de media | El refinamiento recorta un 15 % |
+| Densidad < 1.2 palabras/s (segmento sin habla o desincronizado) | **3 / 20** | Clips basura no detectados: "O R m Y TleK E", frases repetidas |
+| Densidad > 5 palabras/s (timestamps Whisper rotos) | 1 / 20 | Clip de 9 s con 72 palabras; subtítulos ilegibles |
+| Costo IA por job (Groq activo) | US$0.04 | Hay margen para gastar más en calidad |
+| Tiempo por job | 4–5 min | Idem |
+
+### 1.2 Lo que dice el juez (razonamientos, resumidos)
+
+Los 20 razonamientos repiten cuatro quejas:
+
+- **"Tarda en aterrizar" / "empieza con relleno"** (13 de 20): el clip arranca antes del gancho.
+- **"Se corta a medias" / "remate incompleto" / "queda colgado"** (11 de 20): el clip termina antes del cierre de la idea. Ejemplos reales de finales: *"de nuestro cliente le va a hacer a"*, *"Entonces, esto"*, *"Tercero,"*, *"Una vez que está"*.
+- **"El overlay/hook promete algo que el transcript no entrega"** (8 de 20): el hook lo escribe la Pasada B a partir del texto real, pero la promesa (la "frase exacta", el "cómo") está en la parte del audio que no entró en el clip.
+- **"Repeticiones / muletillas / genérico"** (6 de 20): momentos de bajo valor elegidos porque el ranking no discrimina.
+
+Inicios reales de clips (primeras palabras Whisper): *"el raro, cuándo hay tendrías de encontrar"*, *"y los seres humanos no vamos a pintar nada en"*, *"principalmente por esta frase de aquí que"*, *"mesionado durante hace un año El tema es que"*, *"en los de América, incluso hay uno"*, *"potencialidad de y ahí vamos a la potencialidad"*. Ninguno es el inicio de una idea.
+
+### 1.3 Cadena causal, con la prueba de cada eslabón
+
+| # | Causa | Prueba |
+|---|---|---|
+| C1 | **La Pasada A no ve timestamps a nivel de oración.** Supadata devuelve captions de ~3-4 s que cortan oraciones por la mitad (*"…subir tu \| código propio de frontend. Todo esto de \| una forma…"*), y `COMPACT_TRANSCRIPT` los agrupa en bloques de hasta 30 s / 500 caracteres. El prompt exige "usá EXACTAMENTE los timestamps de la transcripción". | Muestra del transcript en `transcription_cache`; `format_transcript_for_prompt_compact` en `transcriber.py`; en `analysis_cache` los `end_time` caen antes de la `last_phrase_in_audio` que el mismo modelo eligió (ej. Wild Project m1: eligió terminar en *"la vía de contagio más habitual"*, el clip terminó en *"ese polvito que estás barriendo"*). |
+| C2 | **El pipeline descarta la intención del modelo y se queda con el número.** El modelo entrega `first_phrase_in_audio` / `last_phrase_in_audio` (correctas: son texto real del transcript), pero el corte usa `start_time`/`end_time`. El ancla de primera frase solo mueve el inicio hacia adelante dentro del segmento ya descargado; nada busca la última frase para extender el final. | `_resolve_moment_video_source` + `refine_bounds_to_sentences` en `main.py`/`clip_generator.py`: solo recortan (`trim`), nunca extienden; el segmento se descarga con ±8 s de margen (`CLIP_KEYFRAME_MARGIN_SEC`) pero el pre-corte lo tira. |
+| C3 | **Sin guardas de plausibilidad sobre Whisper.** Si los timestamps vienen corridos (`whisper-1` con `prompt` largo), el snap cree que hay 24 s de silencio y recorta habla real; el filtro post-shift no descarta palabras y quedan 72 palabras en 9 s. Si el segmento no tiene habla (audio desincronizado), densidad 0.2 palabras/s y el clip pasa igual. | Log del VPS job `1b1007c4 m=1`: `Whisper: 73/73 words (density=2.21)` → `Snap trim: 33.0s → 9.0s (start=23.98)` → `Snap words: 73 → 72` → `densidad: 7.98 w/s`. Clip m5 del job de julio: texto *"O R m Y TleK E"*, densidad 0.23, sin flag. |
+| C4 | **Ranking ciego.** Sobre-generar 11 candidatos y quedarse con 5 por score propio no filtra nada porque todos los scores son 8-9. Los 6 descartados no se guardan (`analysis_cache` solo conserva los 5 finales), así que ni siquiera se puede evaluar si eran mejores. | `analysis_cache`: `hook=[9,8,8,8,8] retention=[8,9,8,8,9] share=[9,8,8,8,8]` en todos los videos. `rank_and_prune_candidates` en `moment_selector.py`. |
+| C5 | **El juez llega tarde.** Corre después de descargar, transcribir y escribir el copy; sus scores (los únicos calibrados) se guardan pero no cambian ninguna decisión. Un clip con juez 2/2/2 se renderiza, se sube y se cobra igual. | Orden en `main.py` §5.5: Whisper → Pasada B → Juez → render. Job Fazt m4: juez 2/2/2, entregado. |
+| C6 | **Groq roto durante meses** (clave inválida hasta el 17-sep): Whisper caía a `whisper-1`, que además de costar 9× tiene timestamps por palabra menos fiables (C3). | Logs `Groq falló (401)` en todos los clips hasta el fix; corregido en el VPS el 17-sep-2026. |
+
+**No es el modelo.** Con `gemini-3.5-flash` los momentos elegidos son razonables (los temas son buenos: "el error del Ferrari", "contagio entre humanos", "3 días sin programar"); lo que falla es dónde empieza y termina el clip, y cuáles de los candidatos se descartan. Cambiar de modelo antes de arreglar C1–C5 no movería el promedio.
+
+---
+
+## 2. Qué es calidad para el usuario
+
+El ICP (podcaster / coach hispanohablante) no mira scores: mira el clip y decide en 5 segundos si lo publica. Lo que decide, en orden:
+
+1. **Arranca con la idea** (primera frase = gancho, sin "entonces, eh, bueno") y **termina con el cierre** (última frase completa, con remate). Es el 80 % de la queja actual.
+2. **Es un momento que vale la pena** del episodio, no un tramo cualquiera; y los 5 clips son distintos entre sí.
+3. **Subtítulos correctos y sincronizados** (nombres propios, términos del nicho) y legibles.
+4. **Se ve profesional en vertical**: hoy el clip es el 16:9 completo, chico, sobre fondo desenfocado. Los productos de referencia (Opus Clip, Vizard, Klap) recortan al rostro del que habla. Para un podcast de dos personas esto es la diferencia entre "hecho con IA" y "hecho por un editor".
+5. **El overlay y el copy** dicen lo que el clip realmente muestra.
+6. Velocidad y que no falle (ya resuelto).
+
+Definición operativa que vamos a medir (nuevo término en `CONTEXT.md`): un clip es **posteable** cuando el usuario responde "sí" a "¿lo publicarías tal cual, sin editar?". Esa etiqueta humana es la fuente de verdad; el juez es el proxy automático que se calibra contra ella.
+
+---
+
+## 3. Objetivos de la etapa de calidad
+
+Medidos sobre el golden set (4 videos, 20 clips) y sobre los jobs reales de la beta:
+
+| Métrica | Hoy | Objetivo | Cómo se mide |
+|---|---|---|---|
+| Juez promedio (3 métricas) | 4.7 | **≥ 7.0** | `score_judge` en `content_results` |
+| Clips con juez ≥ 7 en las tres métricas | 0 % | **≥ 60 %** | idem |
+| Clips "posteables" según humano | sin medir | **≥ 70 %** | feedback en UI (W7) / planilla del golden set |
+| Clips que arrancan al inicio de una oración | ~10 % | **≥ 90 %** | primera palabra Whisper capitalizada y sin `late_hook` |
+| Clips cuya `last_phrase` está dentro del clip | 75 % | **≥ 95 %** | `whisper_mismatch_last` = 0 |
+| `verification_failed` | 75 % | **≤ 15 %** | flag |
+| Clips basura (densidad < 1.2 o > 5) | 20 % | **0 %** | guarda automática los reemplaza |
+| Delta juez vs Pasada A | 3.8 | ≤ 2.0 | señal de que el ranking mejoró |
+| Costo IA por job | US$0.04 | ≤ US$0.15 | `usage_summary` |
+| Tiempo por job (≤ 90 min de video) | 4–5 min | ≤ 10 min | `created_at` → `updated_at` |
+
+---
+
+## 4. Líneas de trabajo (paralelizables)
+
+Cada línea es un brief listo para un agente. **Contratos compartidos** (no se cambian sin PR que actualice `PROYECTO.md` §7/§8): esquema `ViralMoment` (`worker/models/schemas.py`), columnas de `content_results`, flags de `clip_quality_issues`, formato JSON del golden set (`worker/eval/`). Reglas de trabajo: [`../AGENTS.md`](../AGENTS.md).
+
+### W0 — Métricas primero: la rueda (agente "eval")
+
+*Sin esto, ninguna otra línea puede demostrar que mejoró algo.* Es la primera en arrancar y corre en paralelo con todas.
+
+- **Qué:** tier `e2e` del golden set que ejecute el pipeline real por clip (descarga + Whisper + Pasada B + juez, sin subir a R2) sobre los 4 videos y emita un JSON con: juez por clip y promedio, % con juez ≥7, flags, densidad, duración elegida vs final, primera/última frase real, costo y tiempo. Un comando: `python eval/run_golden_set.py --tier e2e --json > runs/<fecha>-<PROMPT_VERSION>.json`.
+- **Además:** guardar en `analysis_cache` **todos** los candidatos (no solo los 5 finales) con sus scores, para poder comparar rankings; script `eval/compare_runs.py a.json b.json` que imprima el delta por métrica; carpeta `worker/eval/runs/` versionada con el baseline de hoy.
+- **Baseline:** correr el tier `e2e` **antes** de tocar cualquier otra línea y commitear el JSON. Es la foto del "antes".
+- **Archivos:** `worker/eval/run_golden_set.py`, `worker/eval/eval_metrics.py`, `worker/services/analysis_cache.py` (guardar candidatos), nuevo `worker/eval/compare_runs.py`.
+- **Aceptación:** baseline commiteado; `compare_runs` funciona; el tier `e2e` corre en < 20 min para los 4 videos; documentado en `worker/eval/README.md`.
+
+### W1 — Cortes anclados a frases (agente "cortes") — **mayor impacto**
+
+- **Qué:** el corte deja de usar `start_time`/`end_time` como verdad y pasa a usar las frases que eligió el modelo. Por momento: (1) descargar el segmento con margen generoso (`start_time − 15 s`, `end_time + 20 s`); (2) Whisper (Groq, palabra por palabra) sobre **todo** el segmento con margen; (3) localizar `first_phrase_in_audio` y `last_phrase_in_audio` en las palabras (matching fuzzy, ya existe `find_phrase_start_in_words` / `phrase_anchor_in_clip`); (4) inicio = comienzo de la oración que contiene la primera frase (retroceder hasta la puntuación anterior o gap > 0.6 s), fin = final de la oración que contiene la última frase (avanzar hasta puntuación); (5) si la última frase no aparece en el margen, extender el margen una vez (+20 s) y reintentar; si sigue sin aparecer, marcar `payoff_not_found` y usar el mejor fin de oración disponible; (6) recién entonces pre-cortar y seguir con Pasada B, juez y render.
+- **Reglas duras:** duración final entre 15 y 60 s (si queda < 15 s, extender al siguiente fin de oración; si > 60 s, cortar en el fin de oración más cercano ≤ 60 s); nunca arrancar en minúscula si hay un inicio de oración ≤ 2 s antes.
+- **Archivos:** `worker/main.py` (sub-pipeline por momento, §5.5), `worker/services/validation.py`, `worker/services/clip_generator.py` (`refine_bounds_to_sentences` pasa a trabajar sobre el segmento con margen), `worker/services/downloader.py` (`CLIP_KEYFRAME_MARGIN_SEC` asimétrico).
+- **Aceptación:** en el tier `e2e`, `whisper_mismatch_last` ≤ 5 %, clips que arrancan en inicio de oración ≥ 90 %, `late_hook` ≤ 10 %; tests unitarios con palabras sintéticas (frase al principio, frase fuera del margen, frase repetida).
+- **Depende de:** W3 (guardas) conviene que entre antes o junto; W0 para medir.
+
+### W2 — El juez elige (agente "selección")
+
+- **Qué:** mover el juez **antes** de la decisión de qué renderizar. Flujo: Pasada A genera N candidatos (hoy `min(12, minutos)`); para los **N** (o al menos target + 3) se hace descarga con margen + Whisper + ancla de frases (W1) + juez sobre el texto real (**sin** Pasada B todavía, que es lo caro: ~US$0.007 por momento); se ordenan por juez (suma, con penalización si `verification_failed` o densidad anómala) y se renderizan solo los `target` mejores; Pasada B corre solo para los finalistas. Diversidad: descartar candidatos con > 30 % de solapamiento temporal o mismo `hook` semántico (comparación simple por palabras).
+- **Costo extra estimado:** +3 descargas per-clip (~2–4 MB, 5–10 s cada una), +3 Whisper Groq (US$0.0005 c/u), +3 juez (US$0.0003 c/u): **< US$0.01 y ~1 min por job**.
+- **Además:** guardar los scores del juez de todos los candidatos en `analysis_cache` (o tabla nueva `moment_candidates`) para que W0 pueda evaluar el ranking.
+- **Archivos:** `worker/main.py` (reordenar el loop por momento en dos fases: evaluar → renderizar), `worker/services/moment_selector.py` (`rank_and_prune_candidates` deja de podar por score propio), `worker/services/scorer.py`.
+- **Aceptación:** en el tier `e2e`, juez promedio de los 5 entregados ≥ el promedio del baseline + 1.5; ningún clip entregado con juez < 4 si existía un candidato mejor; costo por job ≤ US$0.15.
+- **Depende de:** W1 (ancla) para que el texto que juzga sea el del clip final; W0.
+
+### W3 — Guardas de sanidad (agente "guardas") — **rápido, entra primero**
+
+- **Qué:** (1) **plausibilidad de timestamps Whisper**: si la densidad de la región post-snap supera 5 palabras/s o el snap recorta > 40 % del clip, descartar el snap y usar límites por segmento (o re-transcribir con el otro proveedor); (2) **segmento sin habla**: densidad < 1.2 palabras/s o texto con < 8 palabras únicas o patrón repetido → marcar `bad_segment`, re-descargar con otro proxy/estrategia una vez y, si persiste, descartar el candidato (W2 elige otro); (3) **shift + filtro**: al desplazar la línea de tiempo tras un snap, descartar palabras con `end < 0` (hoy quedan y se aprietan); (4) **duración mínima post-refinamiento** 15 s; (5) hook anchor: nunca mover el inicio más del 40 % del clip (hoy el límite existe pero el snap por silencio no lo respeta).
+- **Archivos:** `worker/services/clip_generator.py` (`snap_trim_bounds`, `shift_words_timeline`, `filter_whisper_words`), `worker/main.py` (loop por momento), `worker/services/validation.py` (`build_clip_quality_issues` con los flags nuevos `bad_segment`, `whisper_timestamps_suspect`, `payoff_not_found`).
+- **Aceptación:** tests que reproduzcan el caso `1b1007c4 m=1` (73 palabras, timestamps corridos) y el caso "O R m Y TleK E"; en el tier `e2e`, 0 clips con densidad fuera de [1.2, 5].
+- **Depende de:** nada. Es el primer PR.
+
+### W4 — Transcript de alta resolución (agente "transcript") — fase 2, habilita la subida directa
+
+- **Qué:** reemplazar los captions de Supadata como insumo de la Pasada A por **Whisper del audio completo** (Groq, US$0.04/hora → US$0.05 por un podcast de 77 min; 216× tiempo real). Con palabras + puntuación reales, la Pasada A recibe un transcript con frases enteras y timestamps exactos, y C1 desaparece de raíz. Es además lo que necesita la subida directa (ADR 0007): un archivo del creador no tiene captions de YouTube.
+- **Qué hace falta:** descargar solo el audio (stream de audio por RapidAPI + proxy sticky, ~70 MB por hora a 128 kbps; ya existe `get_stream_urls` + `_download_bytes_sequential`); `_transcribe_chunked` debe usar Groq (hoy está clavado a OpenAI); trozos de 10 min con solape de 15 s (límite de tamaño de Groq); nuevo formato compacto para el prompt con oraciones completas `[mm:ss.s] Oración.`; `PROMPT_VERSION` v5; Supadata queda como fallback si la descarga de audio falla.
+- **Riesgo:** vuelve a poner una descarga de YouTube (audio) en el camino crítico antes de la selección; mitigado por el fallback a Supadata y porque el audio es 10× más chico que el video.
+- **Aceptación:** en el tier `e2e`, con Whisper full el `phrase_anchor_pass_rate` sube y la Pasada A entrega `start_time`/`end_time` que coinciden ± 1 s con sus propias frases; tiempo extra ≤ 90 s por hora de video.
+- **Depende de:** W0 para comparar; independiente de W1–W3 (se puede desarrollar en paralelo y activar con un flag `TRANSCRIPT_SOURCE=whisper|supadata`).
+
+### W5 — Reencuadre vertical (agente "visual") — producto, no scoring
+
+- **Qué:** detectar rostro/hablante y recortar el 16:9 a 9:16 centrado en él, en vez del 16:9 completo sobre fondo desenfocado. Primera versión: detección de rostros por muestreo (1 frame/s) con un detector liviano (OpenCV DNN o MediaPipe, sin GPU), suavizado de la posición, `crop` dinámico en FFmpeg; si hay 2 rostros estables (podcast), alternar por el que habla usando la energía de audio por canal o, más simple, encuadre que incluya a ambos. Fallback al fondo desenfocado actual si no se detecta rostro (pantallas, tutoriales).
+- **Archivos:** `worker/services/clip_generator.py` (`to_vertical_9_16` → nueva función `reframe_to_speaker`), nuevo `worker/services/reframe.py`, `requirements.txt`, Dockerfile (dependencias del detector).
+- **Aceptación:** en los 2 videos de podcast del golden set, ≥ 80 % de los clips con rostro centrado y estable (revisión humana); tiempo de render ≤ 2× el actual; opción por job `layout=speaker|blur`.
+- **Depende de:** nada técnico. Decisión de producto (§7).
+
+### W6 — Hook, overlay y copy fieles al clip (agente "copy")
+
+- **Qué:** (1) la Pasada B recibe además la primera y la última oración del clip final y el prompt exige que el hook sea una afirmación que **aparece** en el clip (no una promesa del tema); (2) el overlay (≤ 4 palabras) se valida contra el texto: al menos una palabra clave del overlay debe estar en las primeras 8 s del clip, si no se regenera; (3) el juez recibe el overlay y el hook finales (ya lo hace) y su `reasoning` se guarda para mostrarlo al usuario como "por qué este score".
+- **Archivos:** `worker/services/processor.py` (`generate_moment_copy_full`), `worker/services/content_validators.py`, `worker/services/scorer.py`.
+- **Aceptación:** en el tier `e2e`, quejas del juez del tipo "el overlay promete algo que el transcript no entrega" ≤ 10 % (se cuenta por palabras clave en el `reasoning`); `copy_clean_rate` ≥ 90 %.
+- **Depende de:** W1 (el clip final tiene que estar bien cortado para que el hook sea fiel).
+
+### W7 — Feedback humano en la interfaz (agentes "frontend" + "backend")
+
+- **Qué:** en cada `ViralMomentCard`, dos botones: **"Lo publicaría"** / **"No"** y, si es "No", un motivo de una lista (arranca mal · termina mal · momento flojo · subtítulos mal · se ve mal · copy malo). Se guarda en una tabla nueva `clip_feedback` (`content_result_id`, `user_id`, `posteable bool`, `motivo`, `created_at`) vía `POST /api/clips/:id/feedback`. Panel `/admin/usage` muestra % posteable por semana y por motivo. También mostrar el `reasoning` del juez en la card (hoy está oculto en un tooltip).
+- **Archivos:** `frontend/src/components/ViralMomentCard.tsx`, `backend/src/routes/clip-edits.js` (o nuevo `feedback.js`), migración Supabase CLI, `frontend/src/app/admin/usage/page.tsx`.
+- **Aceptación:** etiqueta guardada en < 1 s; en el admin, correlación juez vs humano visible; migración aplicada por CLI (ADR 0006).
+- **Depende de:** nada. Es lo que convierte a los 2 canarios y a la beta en fuente de datos.
+
+### W8 — Modelos y prompts (agente "IA") — **recién después de W1–W3**
+
+- **Qué:** con la rueda funcionando y los cortes arreglados, probar una variable por vez: `MODEL_ANALYSIS` (`gemini-3.5-flash` vs `gemini-3.5-pro` vs `gpt-5.4`), prompt de Pasada A con pedido explícito de "setup → remate" y ejemplos de buenos/malos momentos del golden set, `reasoning=medium`, y calibrar el juez contra las etiquetas humanas de W7 (si el juez y el humano no correlacionan, cambiar la rúbrica o el modelo juez).
+- **Aceptación:** cada experimento es un JSON en `eval/runs/` comparado con `compare_runs.py`; se adopta solo lo que sube juez promedio **y** % posteable sin subir el costo por encima del objetivo.
+
+---
+
+## 5. La rueda de mejora continua
+
+```
+      ┌──────────────── jobs reales de la beta ────────────────┐
+      │  content_results (juez, flags, densidad, duraciones)   │
+      │  clip_feedback (posteable sí/no + motivo)  ← W7        │
+      └──────────────┬─────────────────────────────────────────┘
+                     ▼
+   ┌─── golden set (4 → 8 videos, con etiquetas humanas por clip) ───┐
+   │   tier e2e: baseline.json  ← W0                                  │
+   └──────────────┬───────────────────────────────────────────────────┘
+                  ▼
+   cambio (una variable: corte, guarda, prompt, modelo)  →  PROMPT_VERSION++
+                  ▼
+   run e2e  →  compare_runs(baseline, nuevo)  →  ¿sube juez y posteable, no sube costo?
+                  ▼ sí                                   ▼ no
+   PR + deploy al VPS                              descartar, anotar en eval/runs/README
+                  ▼
+   una semana de jobs reales  →  panel admin (% posteable, juez, flags)  →  nuevo baseline
+```
+
+Cadencia propuesta: **una iteración por semana**. Lunes: baseline y elección de la variable; miércoles: run e2e y decisión; viernes: deploy y lectura de jobs reales. Cada run queda en `worker/eval/runs/` con fecha, `PROMPT_VERSION`, modelos y resultado, y un `README.md` con una línea por experimento (qué se cambió, qué pasó). El golden set crece con los clips que los usuarios etiquetan: cada clip con feedback humano es un caso de prueba nuevo.
+
+Regla de oro de la rueda: **no se cambia nada del pipeline de IA sin un run del tier e2e antes y después.** Lo que no se mide no se toca.
+
+---
+
+## 6. Secuencia y paralelización
+
+| Semana | En paralelo | Entrega |
+|---|---|---|
+| 1 | **W0** (eval e2e + baseline) · **W3** (guardas) · **W7** (feedback UI) | Baseline commiteado; 0 clips basura; los canarios pueden etiquetar |
+| 2–3 | **W1** (cortes anclados) · **W5** (reencuadre, en rama larga) · W7 sigue | Clips que empiezan y terminan en oración completa; primer run e2e comparado |
+| 3–4 | **W2** (juez elige) · **W6** (hook/copy fieles) | Juez promedio ≥ 6.5 en e2e; overlays que el clip cumple |
+| 5–6 | **W4** (Whisper full, con flag) · **W8** (experimentos de modelo) · W5 llega a beta | Juez ≥ 7; ≥ 60 % de clips ≥ 7; % posteable ≥ 70 % en los canarios |
+
+Reparto para agentes (un componente por agente, ramas `feat/<linea>-<tema>`, PR con CI verde):
+
+| Agente | Líneas | Archivos que toca | Con quién coordina |
+|---|---|---|---|
+| eval | W0, W8 | `worker/eval/*`, `analysis_cache.py` | todos leen su JSON |
+| guardas | W3 | `clip_generator.py` (snap/shift/filter), `validation.py` (flags), `main.py` (loop, mínimo) | cortes (mismos archivos: W3 entra primero y chico) |
+| cortes | W1 | `main.py` §5.5, `validation.py` (anclas), `downloader.py` (margen) | guardas, selección |
+| selección | W2 | `main.py` (dos fases), `moment_selector.py`, `scorer.py` | cortes (necesita el texto final) |
+| transcript | W4 | `yt_transcript.py`, `transcriber.py` (chunked Groq), `processor.py` (formato), flag `TRANSCRIPT_SOURCE` | eval |
+| visual | W5 | `clip_generator.py` (`to_vertical_9_16`), nuevo `reframe.py`, Dockerfile | nadie (función aislada) |
+| copy | W6 | `processor.py` (Pasada B), `content_validators.py` | cortes |
+| producto | W7 | frontend + backend + migración | eval (panel) |
+
+Conflictos previsibles: `main.py` es tocado por guardas, cortes y selección → PRs chicos, en ese orden, rebase frecuente. `clip_generator.py` es tocado por guardas (funciones de snap) y visual (función de render): funciones distintas, sin solapamiento real.
+
+---
+
+## 7. Decisiones pendientes (para Agustín)
+
+1. **Juez como métrica guía hasta tener etiquetas humanas.** El juez es un proxy: hoy coincide con tu impresión ("no son los mejores"), pero nadie lo calibró. Propuesta: usarlo como norte durante 4 semanas y calibrarlo con W7; si no correlaciona con lo que vos y los canarios etiquetan, se cambia la rúbrica, no las metas.
+2. **Presupuesto por job.** Las mejoras W1+W2 suben el costo de US$0.04 a ~US$0.08–0.15 y el tiempo de 4 a ~6–8 min. Propuesta: aceptar hasta US$0.15 (queda margen sobre los US$0.225 del crédito).
+3. **Reencuadre (W5): ¿entra en esta etapa?** Es lo que más cambia la percepción de "producto pro" para podcasts, pero es la línea más larga y no mueve el score del juez. Propuesta: sí, como rama larga de un agente aparte, con flag por job, para que llegue a la beta sin bloquear W1–W3.
+4. **Whisper del audio completo (W4): ¿reemplaza a Supadata?** Arregla la causa raíz C1 y es necesario para la subida directa, pero vuelve a depender de descargar audio de YouTube. Propuesta: desarrollarlo detrás de un flag y decidir con el run e2e.
+5. **Etiquetado del golden set.** Para que la rueda gire hace falta que alguien (vos, en la primera vuelta) etiquete los 20 clips actuales como posteable sí/no con motivo. Son 15 minutos y es el dato más valioso que tenemos hoy.
+
+---
+
+## Apéndice — Datos crudos
+
+Los datos de los 20 clips (scores, razonamientos del juez, palabras Whisper, flags) se extrajeron de Supabase el 17-sep-2026 con los scripts de esta sesión y quedan como baseline cualitativo. El baseline cuantitativo reproducible lo produce W0 (`worker/eval/runs/`).

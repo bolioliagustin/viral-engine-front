@@ -14,8 +14,12 @@ _Avoid_: video, proceso, trabajo, request
 Origen del video de un job: un link de YouTube o un archivo de video subido por el usuario. Un archivo puede venir acompañado del link del mismo video en YouTube para obtener el transcript.
 _Avoid_: input, origen, upload
 
+**Candidato**:
+Fragmento que la Pasada A propone como posible momento; solo los mejores según el Juez se convierten en momentos entregados.
+_Avoid_: momento (para los que no se entregan), opción, propuesta
+
 **Momento**:
-Fragmento del video (15–60 s) que la IA eligió como candidato viral, con su hook, overlay, scores y piezas de copy.
+Fragmento del video (15–60 s) que se entrega al usuario, con su hook, overlay, scores y piezas de copy.
 _Avoid_: clip (cuando se habla del fragmento elegido y no del archivo), viral moment, resultado
 
 **Clip**:
@@ -41,6 +45,10 @@ _Avoid_: re-render, regeneración, edit
 **Score**:
 Puntuación 1–10 de un momento en tres métricas: hook, retención y compartibilidad. El score que ve el usuario es el del Juez.
 _Avoid_: rating, nota, viralidad (para la tercera métrica usar "compartibilidad")
+
+**Posteable**:
+Etiqueta que pone una persona a un clip cuando lo publicaría tal cual, sin editar. Es la fuente de verdad de calidad; el score del Juez es su aproximación automática.
+_Avoid_: bueno, aprobado, viral, válido
 
 ### Pipeline de IA
 
