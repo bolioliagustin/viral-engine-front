@@ -8,6 +8,7 @@ Priority:
 """
 import re
 import os
+import time
 import requests
 from typing import Dict, Optional
 
@@ -99,11 +100,33 @@ def _segments_from_raw(raw_transcript: list, language: str) -> tuple[list, str]:
     return segments, " ".join(full_text_parts)
 
 
+# Errores transitorios: un job concurrente saturando la red/CPU del VPS (yt-dlp
+# per-clip + proxies) puede hacer que esta llamada tarde más de lo normal o
+# reciba un 429/5xx pasajero. Reintentamos antes de fallar el job entero —
+# un timeout de Supadata NO debería tirar abajo un job de 5 clips.
+_SUPADATA_MAX_ATTEMPTS = 3
+_SUPADATA_BACKOFF_SEC = 4
+_SUPADATA_TIMEOUT_SEC = 30
+
+
+def _supadata_request(video_url: str, api_key: str):
+    """Un intento de GET a Supadata. Puede lanzar requests.exceptions.*."""
+    return requests.get(
+        "https://api.supadata.ai/v1/youtube/transcript",
+        params={"url": video_url, "text": "false"},
+        headers={"x-api-key": api_key},
+        timeout=_SUPADATA_TIMEOUT_SEC,
+    )
+
+
 def _get_transcript_via_supadata(video_url: str, video_id: str) -> tuple[Dict, dict]:
     """
     Fetch transcript via Supadata API (supadata.ai).
     Works from any IP — Render, Railway, Fly.io, etc.
     Requires SUPADATA_API_KEY env var.
+
+    Reintenta ante timeout/conexión caída y 429/5xx (hasta _SUPADATA_MAX_ATTEMPTS,
+    con backoff). 401/404 no se reintentan — son errores deterministas.
     """
     api_key = os.getenv("SUPADATA_API_KEY")
     if not api_key:
@@ -111,21 +134,39 @@ def _get_transcript_via_supadata(video_url: str, video_id: str) -> tuple[Dict, d
 
     print(f"🌐 Fetching transcript via Supadata API for {video_id}...")
 
-    resp = requests.get(
-        "https://api.supadata.ai/v1/youtube/transcript",
-        params={"url": video_url, "text": "false"},
-        headers={"x-api-key": api_key},
-        timeout=30,
-    )
+    resp = None
+    last_error: Optional[Exception] = None
+    for attempt in range(1, _SUPADATA_MAX_ATTEMPTS + 1):
+        try:
+            resp = _supadata_request(video_url, api_key)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            last_error = e
+            if attempt < _SUPADATA_MAX_ATTEMPTS:
+                wait = _SUPADATA_BACKOFF_SEC * attempt
+                print(f"⚠️ Supadata {type(e).__name__} (intento {attempt}/{_SUPADATA_MAX_ATTEMPTS}) — retry en {wait}s")
+                time.sleep(wait)
+                continue
+            raise Exception(f"Supadata API error: {e} (tras {_SUPADATA_MAX_ATTEMPTS} intentos)") from e
 
-    if resp.status_code == 401:
-        raise Exception("Invalid SUPADATA_API_KEY — check your key at supadata.ai")
-    if resp.status_code == 404:
-        raise Exception("No transcript available for this video (Supadata: 404)")
-    if resp.status_code == 429:
-        raise Exception("Supadata rate limit reached — try again later")
-    if not resp.ok:
-        raise Exception(f"Supadata API error {resp.status_code}: {resp.text[:200]}")
+        if resp.status_code == 401:
+            raise Exception("Invalid SUPADATA_API_KEY — check your key at supadata.ai")
+        if resp.status_code == 404:
+            raise Exception("No transcript available for this video (Supadata: 404)")
+        if resp.status_code == 429 or resp.status_code >= 500:
+            last_error = Exception(f"Supadata {resp.status_code}: {resp.text[:200]}")
+            if attempt < _SUPADATA_MAX_ATTEMPTS:
+                wait = _SUPADATA_BACKOFF_SEC * attempt
+                print(f"⚠️ Supadata {resp.status_code} (intento {attempt}/{_SUPADATA_MAX_ATTEMPTS}) — retry en {wait}s")
+                time.sleep(wait)
+                continue
+            if resp.status_code == 429:
+                raise Exception("Supadata rate limit reached — try again later")
+            raise Exception(f"Supadata API error {resp.status_code}: {resp.text[:200]}")
+        if not resp.ok:
+            raise Exception(f"Supadata API error {resp.status_code}: {resp.text[:200]}")
+        break  # 2xx — listo
+    else:
+        raise Exception(f"Supadata API error: {last_error} (tras {_SUPADATA_MAX_ATTEMPTS} intentos)")
 
     data = resp.json()
     language_used = data.get("lang", "unknown")
