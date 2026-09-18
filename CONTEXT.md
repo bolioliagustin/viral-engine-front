@@ -38,6 +38,10 @@ _Avoid_: título, headline
 Texto de máximo 4 palabras en mayúsculas que se quema sobre el clip durante sus primeros segundos.
 _Avoid_: título del clip, hook corto, viral_overlay
 
+**Encuadre**:
+Cómo se lleva el video 16:9 original al Clip vertical 9:16: Fit (el video completo centrado sobre fondo desenfocado, el de siempre), Fill (recorte a pantalla completa centrado en una cara) o Split (dos caras, cada una recortada y apilada a pantalla completa). Se elige automáticamente por escena cuando `REFRAME_MODE=auto`.
+_Avoid_: layout, crop, reencuadre (reservado para el nombre de la feature en docs internos)
+
 **Edición**:
 Cambios que el usuario pide sobre un clip ya generado (overlay, estilo de subtítulos, corrección de palabras, recorte) y que producen un nuevo render de ese clip.
 _Avoid_: re-render, regeneración, edit
