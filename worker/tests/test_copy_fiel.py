@@ -148,6 +148,13 @@ class TestHookFiel:
     def test_hook_vacio_falla(self):
         assert cv.hook_is_faithful("", CLIP_TEXT) is False
 
+    def test_hook_reordenado_100_por_ciento_fiel_pasa(self):
+        # Mismas palabras, cláusula movida al frente — parafraseo natural
+        # 100% fiel que la versión anterior (subsecuencia en orden estricto)
+        # rechazaba por error.
+        reordered = "En el pit stop, el error del Ferrari le costó la carrera."
+        assert cv.hook_is_faithful(reordered, CLIP_TEXT) is True
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # generate_moment_copy_full — orquestación (regenerar → fallback + flag)

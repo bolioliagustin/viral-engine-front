@@ -26,6 +26,7 @@ para decidir si regenerar o caer a un fallback derivado del texto real.
 from __future__ import annotations
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -441,29 +442,28 @@ def overlay_is_faithful(overlay: str, clip_text_start: str) -> bool:
 
 def hook_is_faithful(hook: str, clip_text: str, *, max_miss_ratio: float = 0.25) -> bool:
     """
-    Subsecuencia difusa: las palabras normalizadas del hook tienen que
-    aparecer, en orden, dentro del texto del clip — tolerando que hasta
-    `max_miss_ratio` de ellas no matcheen literal (parafraseo leve).
-    Reemplaza comparar substring exacto (que un buen parafraseo siempre
-    rompe) sin necesitar un modelo de similaridad extra.
+    Cobertura difusa por bolsa de palabras: al menos `1 - max_miss_ratio`
+    de las palabras normalizadas del hook tienen que estar entre las del
+    clip (multiset — cada palabra del clip cubre como máximo una palabra
+    del hook, para que la repetición no infle el match). Tolera parafraseo
+    leve (1 de cada 4 palabras puede no matchear literal) y, a propósito,
+    NO exige orden: un buen parafraseo suele mover una cláusula al frente
+    ("en el pit stop, el error del Ferrari..." en vez de "el error del
+    Ferrari en el pit stop...") y sigue siendo 100% fiel. Reemplaza
+    comparar substring exacto (que cualquier parafraseo rompe) sin
+    necesitar un modelo de similaridad extra.
     """
     needle = tokenize(hook)
     if not needle:
         return False
-    haystack = tokenize(clip_text)
-    if not haystack:
+    available = Counter(tokenize(clip_text))
+    if not available:
         return False
 
-    hay_idx = 0
     misses = 0
     for word in needle:
-        found_at = None
-        for j in range(hay_idx, len(haystack)):
-            if haystack[j] == word:
-                found_at = j
-                break
-        if found_at is not None:
-            hay_idx = found_at + 1
+        if available[word] > 0:
+            available[word] -= 1
         else:
             misses += 1
 

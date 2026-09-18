@@ -376,7 +376,9 @@ modelo es `:free` o apunta a Gemini 2.0 (apagado jun 2026).
    y exige que el hook sea algo que se dice, no una promesa del tema. Después
    se valida contra el texto real (`services/content_validators.py`: overlay
    con al menos una palabra de los primeros ~8 s aproximados por cantidad de
-   palabras, hook por subsecuencia difusa con 25% de tolerancia); si falla se
+   palabras, hook por cobertura difusa de bolsa de palabras —sin exigir
+   orden, un parafraseo suele mover una cláusula— con 25% de tolerancia);
+   si falla se
    regenera una vez y si persiste cae a un fallback determinístico + flag
    (`overlay_no_fiel` / `hook_no_fiel`, ver abajo).
 
