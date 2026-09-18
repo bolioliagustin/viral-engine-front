@@ -95,6 +95,8 @@ def evaluate_video(video: dict, *, with_copy: bool = False, json_mode: bool = Fa
 
     from services.processor import analyze_with_openrouter, get_video_category
     from services.validation import (
+        CLIP_MAX_DURATION_SEC,
+        CLIP_MIN_DURATION_SEC,
         validate_durations,
         filter_overlapping_moments,
         evaluate_moment_phrase_metrics,
@@ -148,13 +150,21 @@ def evaluate_video(video: dict, *, with_copy: bool = False, json_mode: bool = Fa
     moments = analysis.viral_moments
     result["moments_selected"] = len(moments)
 
+    # El tope sale de validation.py (CLIP_MIN/MAX_DURATION_SEC, 15–120 s desde
+    # W2-B), no de literales: con 10/60 acá los tiers `analysis` y `full`
+    # truncaban momentos que el pipeline real deja pasar y `moments_truncated`
+    # contaba de más (la corrida de analysis de W4 reportó un
+    # duration_untruncated_rate=0.50 falso, con 4 momentos de 62–93 s).
     truncated = 0
     for m in moments:
         if m.start_time is not None and m.end_time is not None:
-            if (m.end_time - m.start_time) > 60:
+            if (m.end_time - m.start_time) > CLIP_MAX_DURATION_SEC:
                 truncated += 1
     valid = validate_durations(
-        list(moments), min_duration=10, max_duration=60, transcript=transcript
+        list(moments),
+        min_duration=CLIP_MIN_DURATION_SEC,
+        max_duration=CLIP_MAX_DURATION_SEC,
+        transcript=transcript,
     )
     valid = filter_overlapping_moments(valid, max_overlap_ratio=0.5)
     result["moments_valid"] = len(valid)
