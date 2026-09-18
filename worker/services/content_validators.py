@@ -16,9 +16,17 @@ Design:
 Public API:
     clean_moment(moment_dict, *, expected_tweets=7) -> ValidationStats
     clean_analysis(result_dict) -> ValidationStats   # aggregate over all moments
+
+W6 (docs/PLAN_CALIDAD.md §4): el juez castiga hook y overlay cuando prometen
+algo que el clip no dice — son títulos sobre el TEMA, no frases reales. Acá
+viven los chequeos de fidelidad (¿el overlay/hook aparecen dichos en el
+clip?) que usa la Pasada B (`services/processor.py::generate_moment_copy_full`)
+para decidir si regenerar o caer a un fallback derivado del texto real.
 """
 from __future__ import annotations
 import re
+import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -324,3 +332,163 @@ def clean_analysis(result_dict: dict, regenerate_fn=None, max_retries: int = 1) 
             else:
                 agg.merge(clean_moment(m))
     return agg
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W6 — Fidelidad de hook y overlay contra el texto real del clip
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Sin dependencias nuevas (nada de spaCy/nltk): stopwords español a mano.
+# Lista corta a propósito — solo lo necesario para que "al menos una palabra
+# con carga semántica" no cuente artículos/preposiciones/conjunciones como
+# match válido.
+SPANISH_STOPWORDS: frozenset[str] = frozenset({
+    "a", "al", "algo", "algunas", "algunos", "ante", "antes", "aqui", "asi",
+    "aun", "aunque", "bien", "cada", "casi", "como", "con", "contra", "cual",
+    "cuando", "de", "del", "desde", "donde", "dos", "el", "él", "ella",
+    "ellas", "ellos", "en", "entre", "era", "es", "esa", "esas", "ese",
+    "esos", "esta", "estas", "este", "esto", "estos", "fue", "fueron", "ha",
+    "hace", "hacia", "han", "hasta", "hay", "la", "las", "le", "les", "lo",
+    "los", "mas", "más", "me", "mi", "mis", "mucho", "muy", "nada", "ni",
+    "no", "nos", "nosotros", "nuestra", "nuestro", "o", "os", "otra",
+    "otras", "otro", "otros", "para", "pero", "poco", "por", "porque",
+    "pues", "que", "qué", "quien", "quién", "se", "sea", "segun", "según",
+    "ser", "si", "sí", "sin", "sobre", "solo", "sólo", "somos", "son", "soy",
+    "su", "sus", "tambien", "también", "tan", "te", "ti", "tiene", "tienen",
+    "todo", "toda", "todos", "todas", "tu", "tú", "tus", "un", "una", "uno",
+    "unos", "unas", "vamos", "van", "ver", "vez", "y", "ya", "yo",
+})
+
+# Velocidad de habla estimada — mismo orden de magnitud que la densidad
+# plausible que usa worker/eval/eval_metrics.py (1.2-5.0 w/s). Se usa SOLO
+# como proxy de "primeros 8 s" cuando la función que valida fidelidad recibe
+# texto plano sin timestamps por palabra (generate_moment_copy_full recibe
+# clip_text: str, no clip_words — main.py no se toca en este cambio).
+WORDS_PER_SECOND_ESTIMATE = 2.8
+
+_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+")
+
+
+def _strip_accents(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def normalize_token(word: str) -> str:
+    """minúscula + sin acentos + sin puntuación — para comparar palabras."""
+    word = _strip_accents(word.lower())
+    word = _PUNCT_RE.sub("", word)
+    return word.strip()
+
+
+def tokenize(text: str) -> list[str]:
+    """Palabras normalizadas en orden, vacías descartadas."""
+    return [t for t in (normalize_token(w) for w in (text or "").split()) if t]
+
+
+def content_words(text: str) -> list[str]:
+    """Tokens normalizados sin stopwords — las que tienen "carga semántica"."""
+    return [w for w in tokenize(text) if w not in SPANISH_STOPWORDS]
+
+
+def clip_text_head_approx(text: str, seconds: float = 8.0) -> str:
+    """
+    Aproxima "los primeros N segundos" del clip a partir de la cantidad de
+    palabras (sin timestamps por palabra disponibles acá). Si el clip es más
+    corto que N segundos completos, devuelve el texto entero.
+    """
+    words = (text or "").split()
+    n = max(1, round(seconds * WORDS_PER_SECOND_ESTIMATE))
+    return " ".join(words[:n])
+
+
+def split_sentences(text: str) -> list[str]:
+    """Oraciones no vacías, separadas por . ! ? …"""
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = _SENTENCE_SPLIT_RE.split(text)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def first_sentence(text: str) -> str:
+    """
+    Primera oración del clip. Sin puntuación de cierre (texto sin Whisper o
+    con timestamps corridos), degrada al texto completo — es exactamente el
+    comportamiento anterior a W6 (la Pasada B solo veía el texto entero).
+    """
+    sentences = split_sentences(text)
+    return sentences[0] if sentences else (text or "").strip()
+
+
+def last_sentence(text: str) -> str:
+    """Última oración del clip. Misma degradación que `first_sentence`."""
+    sentences = split_sentences(text)
+    return sentences[-1] if sentences else (text or "").strip()
+
+
+def overlay_is_faithful(overlay: str, clip_text_start: str) -> bool:
+    """
+    True si al menos una palabra con carga semántica del overlay aparece
+    entre las palabras (normalizadas) de los primeros segundos del clip.
+    """
+    overlay_words = set(content_words(overlay))
+    if not overlay_words:
+        return False
+    start_words = set(tokenize(clip_text_start))
+    return bool(overlay_words & start_words)
+
+
+def hook_is_faithful(hook: str, clip_text: str, *, max_miss_ratio: float = 0.25) -> bool:
+    """
+    Cobertura difusa por bolsa de palabras: al menos `1 - max_miss_ratio`
+    de las palabras normalizadas del hook tienen que estar entre las del
+    clip (multiset — cada palabra del clip cubre como máximo una palabra
+    del hook, para que la repetición no infle el match). Tolera parafraseo
+    leve (1 de cada 4 palabras puede no matchear literal) y, a propósito,
+    NO exige orden: un buen parafraseo suele mover una cláusula al frente
+    ("en el pit stop, el error del Ferrari..." en vez de "el error del
+    Ferrari en el pit stop...") y sigue siendo 100% fiel. Reemplaza
+    comparar substring exacto (que cualquier parafraseo rompe) sin
+    necesitar un modelo de similaridad extra.
+    """
+    needle = tokenize(hook)
+    if not needle:
+        return False
+    available = Counter(tokenize(clip_text))
+    if not available:
+        return False
+
+    misses = 0
+    for word in needle:
+        if available[word] > 0:
+            available[word] -= 1
+        else:
+            misses += 1
+
+    return (misses / len(needle)) <= max_miss_ratio
+
+
+def derive_overlay_from_text(text: str, *, max_words: int = 4) -> str:
+    """
+    Fallback determinístico cuando el modelo no logra un overlay fiel tras
+    reintentar: las `max_words` palabras con carga semántica más salientes
+    (más largas primero, orden original como desempate) de los primeros
+    segundos del clip, en mayúsculas.
+    """
+    head = clip_text_head_approx(text)
+    words = content_words(head)
+    if not words:
+        # Sin palabras de contenido (texto muy corto o puras stopwords):
+        # cae a las primeras palabras crudas, mejor que un overlay vacío.
+        raw = [normalize_token(w) or w for w in (text or "").split()[:max_words]]
+        words = [w for w in raw if w]
+    # Únicas, preservando la primera aparición, ordenadas por longitud desc.
+    seen: dict[str, int] = {}
+    for i, w in enumerate(words):
+        seen.setdefault(w, i)
+    ranked = sorted(seen, key=lambda w: (-len(w), seen[w]))[:max_words]
+    # Presentar en el orden en que aparecen en el clip, no por longitud.
+    ranked.sort(key=lambda w: seen[w])
+    return " ".join(ranked).upper() if ranked else "MOMENTO DESTACADO"

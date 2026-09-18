@@ -155,6 +155,15 @@ class ViralMoment(BaseModel):
     verification_failed: Optional[bool] = None
     # Sprint 2: Fidelity & Verification
     verification: Optional[Verification] = None  # Validates AI didn't hallucinate
+    # W6 (docs/PLAN_CALIDAD.md §4): flags de fidelidad de copy contra el texto
+    # real del clip, seteados por generate_moment_copy_full (services/processor.py)
+    # — "overlay_no_fiel" / "hook_no_fiel" cuando el fallback determinístico
+    # tuvo que reemplazar lo que devolvió el modelo. Vocabulario compartido
+    # con clip_quality_issues (incomplete_tail, late_hook, whisper_mismatch_*,
+    # clip_not_rendered) que arma main.py al persistir el momento; main.py
+    # mergea ambos con build_clip_quality_issues(...) + (moment.
+    # clip_quality_issues or []) en _deliver_moment.
+    clip_quality_issues: Optional[List[str]] = None
     
     # Validators to convert float to int for timestamps
     @field_validator('start_time', 'end_time', mode='before')

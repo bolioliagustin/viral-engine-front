@@ -1760,6 +1760,11 @@ def _deliver_moment(
         except Exception as e_rescue:
             print(f"   ⚠️ Copy rescue falló (no fatal): {str(e_rescue)[:100]}")
 
+    # W6: overlay_no_fiel / hook_no_fiel los setea generate_moment_copy_full
+    # en moment.clip_quality_issues (Pasada B arriba, o el rescate recién
+    # corrido) — se mergean acá con los flags de W1/W2-C/W3.
+    clip_quality_issues = clip_quality_issues + (getattr(moment, "clip_quality_issues", None) or [])
+
     # Extract scores if available
     scores = moment.scores if hasattr(moment, 'scores') and moment.scores else None
     pillar_raw = moment.pillar_type if hasattr(moment, 'pillar_type') else None
