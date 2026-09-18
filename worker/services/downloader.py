@@ -762,12 +762,18 @@ def find_local_full_media(video_id: str) -> str | None:
 
 def download_audio_only(video_url: str, video_id: str) -> str:
     """
-    Descarga SOLO el audio del video (yt-dlp `bestaudio`, ~70 MB por hora) a
-    `downloads/{video_id}_audio_only.<ext>`, para el Transcript completo de W4
-    (docs/PLAN_CALIDAD.md §4). Reutiliza cookies, cascada de player_client y
-    proxy de `_build_ydl_opts`; si falla y hay más de un proxy, reintenta una
-    vez con el siguiente. Si ya existe un archivo local con el audio completo
-    (`find_local_full_media`), lo devuelve sin descargar.
+    Descarga SOLO el audio del video para el Transcript completo de W4
+    (docs/PLAN_CALIDAD.md §4) a `downloads/{video_id}_audio_only.<ext>`.
+    Si ya existe un archivo local con el audio completo
+    (`find_local_full_media`), lo devuelve sin descargar. Tres estrategias:
+
+    A. yt-dlp `bestaudio` (audio DASH, ~70 MB/h) con cookies, cascada de
+       player_client y proxy de `_build_ydl_opts`.
+    B. Stream URLs (`get_stream_urls`: yt-dlp+proxy o RapidAPI) → descarga
+       secuencial del `audio_url` por el proxy sticky. Es el camino del VPS.
+    C. yt-dlp progresivo más chico con audio (`worst[acodec!=none]`). Es lo
+       único que YouTube ofrece sin cookies ni PO token (formato 18, 360p,
+       ~5 MB/min); el audio se extrae al partir en tramos. Camino de la Mac.
     """
     existing = find_local_full_media(video_id)
     if existing:
@@ -775,15 +781,11 @@ def download_audio_only(video_url: str, video_id: str) -> str:
         return existing
 
     DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    proxies = _get_proxy_list()
-    attempts = [proxies[0] if proxies else None]
-    if len(proxies) > 1:
-        attempts.append(proxies[1])
+    errors: list[str] = []
 
-    last_err: Exception | None = None
-    for attempt, proxy in enumerate(attempts, start=1):
+    def _ytdlp(fmt: str, label: str) -> str | None:
         ydl_opts = _build_ydl_opts({
-            'format': 'bestaudio[ext=m4a]/bestaudio/best[height<=360]',
+            'format': fmt,
             'outtmpl': str(DOWNLOADS_DIR / f'{video_id}_audio_only.%(ext)s'),
             'ffmpeg_location': FFMPEG_LOCATION,
             'quiet': True,
@@ -791,21 +793,48 @@ def download_audio_only(video_url: str, video_id: str) -> str:
             'nocheckcertificate': True,
             'noprogress': True,
             'http_headers': {'User-Agent': _DEFAULT_UA},
-        }, proxy_url=proxy)
+        })
         try:
-            print(f"⬇️ Descargando solo audio de {video_id} (intento {attempt}/{len(attempts)})...")
+            print(f"⬇️ Audio completo de {video_id} vía yt-dlp ({label})...")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.extract_info(video_url, download=True)
             found = find_local_full_media(video_id)
             if not found:
-                raise FileNotFoundError(f"yt-dlp terminó pero no encontré {video_id}_audio_only.*")
-            size_mb = Path(found).stat().st_size / (1024 * 1024)
-            print(f"✅ Audio completo: {Path(found).name} ({size_mb:.1f} MB)")
+                raise FileNotFoundError("yt-dlp terminó sin dejar el archivo")
+            print(f"✅ Audio completo ({label}): {Path(found).name} "
+                  f"({Path(found).stat().st_size / (1 << 20):.1f} MB)")
             return found
         except Exception as e:
-            last_err = e
-            print(f"⚠️ Descarga de audio falló ({type(e).__name__}: {str(e)[:120]})")
-    raise RuntimeError(f"No se pudo descargar el audio de {video_id}: {last_err}")
+            errors.append(f"{label}: {type(e).__name__}: {str(e)[:120]}")
+            print(f"⚠️ {label} falló ({type(e).__name__}: {str(e)[:120]})")
+            return None
+
+    # A. audio DASH
+    found = _ytdlp('bestaudio[ext=m4a]/bestaudio', 'bestaudio')
+    if found:
+        return found
+
+    # B. stream URL de audio por proxy sticky (VPS: yt-dlp+proxy o RapidAPI)
+    if _get_proxy_list() or os.getenv("RAPIDAPI_KEY"):
+        try:
+            print(f"⬇️ Audio completo de {video_id} vía stream URL + proxy sticky...")
+            urls = get_stream_urls(video_url, video_id)
+            out = DOWNLOADS_DIR / f"{video_id}_audio_only.m4a"
+            _download_bytes_sequential(
+                urls["audio_url"], out, label="audio completo",
+                sticky_proxy=urls.get("resolve_proxy"),
+            )
+            return str(out)
+        except Exception as e:
+            errors.append(f"stream: {type(e).__name__}: {str(e)[:120]}")
+            print(f"⚠️ stream URL de audio falló ({type(e).__name__}: {str(e)[:120]})")
+
+    # C. progresivo más chico con audio (Mac sin cookies: formato 18)
+    found = _ytdlp('worst[acodec!=none][vcodec!=none]/worst', 'progresivo mínimo')
+    if found:
+        return found
+
+    raise RuntimeError(f"No se pudo descargar el audio de {video_id}: " + " | ".join(errors))
 
 
 def download_clip_ytdlp(

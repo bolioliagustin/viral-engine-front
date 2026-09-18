@@ -124,6 +124,26 @@ class TestAlignPunctuation:
         out = tl.align_punctuation(words, segments)
         assert [w["word"] for w in out] == ["Hola,", "mundo."]
 
+    def test_rich_words_win_over_degraded_segment_text(self):
+        """Caso real de Groq (podcast_general_01, 17:23): `words[]` trae
+        'sarampión.' y 'empezó' pero el `text` del segmento perdió acentos y
+        puntuación ('sarampi El COVID El COVID cuando empez'). La palabra manda;
+        del token solo se toma lo que falta (mayúscula inicial, signos)."""
+        words = _words_from_text("ese es el r0 del sarampión. el covid. el covid cuando empezó en wuhan")
+        for w, tok in zip(words, "Ese es el R0 del sarampión. El COVID. El COVID cuando empezó en Wuhan".split()):
+            w["word"] = tok
+        segments = [{"id": 0, "start": 0, "end": 9, "text": "Ese es el R0 del sarampi El COVID El COVID cuando empez en Wuhan"}]
+        out = tl.align_punctuation(words, segments)
+        assert [w["word"] for w in out] == "Ese es el R0 del sarampión. El COVID. El COVID cuando empezó en Wuhan".split()
+
+    def test_merge_word_and_token(self):
+        assert tl._merge_word_and_token("ese", "Ese.") == "Ese."          # palabra pelada: toma mayúscula y signo
+        assert tl._merge_word_and_token("Ese", "Ese.") == "Ese."          # le faltaba el punto
+        assert tl._merge_word_and_token("sarampión.", "sarampi") == "sarampión."  # token degradado
+        assert tl._merge_word_and_token("qué", "¿Qué") == "¿Qué"          # signo inicial + mayúscula
+        assert tl._merge_word_and_token("covid", "COVID,") == "COVID,"
+        assert tl._merge_word_and_token("inmunización", "inmunizaci") == "inmunización"
+
     def test_has_punctuation_detects_unpunctuated_provider(self):
         assert tl.has_punctuation([{"text": "Hola. ¿Qué tal? Bien."}])
         assert not tl.has_punctuation([{"text": " ".join(["palabra"] * 200)}])
@@ -155,13 +175,19 @@ class TestBuildLines:
         assert [ln["text"] for ln in lines] == ["una idea sin puntuación", "y otra idea después"]
         assert tl.lines_punctuation_rate(lines) == 0.0
 
-    def test_lines_split_on_segment_change_and_can_be_disabled(self):
-        words = _words_from_text("primera parte segunda parte")
+    def test_lines_split_on_segment_change_only_at_clause_end(self):
+        # Los segmentos de Whisper cortan oraciones por la mitad: por defecto
+        # un cambio de segmento no cierra la Línea; si se activa, cierra solo
+        # cuando la palabra terminaba una cláusula.
+        words = _words_from_text("primera parte, segunda parte tercera parte")
+        words[1]["word"] = "parte,"
         for i, w in enumerate(words):
-            w["segment"] = 0 if i < 2 else 1
-        assert [ln["text"] for ln in tl.build_lines(words)] == ["primera parte", "segunda parte"]
-        assert [ln["text"] for ln in tl.build_lines(words, split_on_segment_change=False)] == [
-            "primera parte segunda parte",
+            w["segment"] = 0 if i < 2 else (1 if i < 4 else 2)
+        assert [ln["text"] for ln in tl.build_lines(words)] == [
+            "primera parte, segunda parte tercera parte",
+        ]
+        assert [ln["text"] for ln in tl.build_lines(words, split_on_segment_change=True)] == [
+            "primera parte,", "segunda parte tercera parte",
         ]
 
     def test_lines_ignore_silence_tokens_and_keep_segments_shape(self):
@@ -216,6 +242,17 @@ class TestBuildFullTranscript:
         assert t["duration"] == 60.0 and t["language"] == "es"
         assert tl.has_full_transcript(t)
         json.dumps(t)  # cacheable
+
+    def test_build_full_transcript_runs_punctuation_hook_after_alignment(self):
+        seen = {}
+
+        def _hook(ws):
+            seen["words"] = [w["word"] for w in ws]
+            return ws
+
+        t = tl.build_full_transcript(self._raw(), source="whisper_full", model="m", punctuate_runs=_hook)
+        assert seen["words"][0] == "La" and seen["words"][6] == "sarampión."  # ya alineadas
+        assert len(t["lines"]) == 3
 
     def test_has_full_transcript_false_for_captions(self):
         assert not tl.has_full_transcript({"segments": [{"text": "x"}]})
@@ -332,6 +369,24 @@ class TestMergeChunks:
              "segments": [], "language": "es", "duration": 15}
         merged = transcriber.merge_chunk_transcripts([(0.0, a), (10.0, b)], overlap_sec=5.0)
         assert [w["word"] for w in merged["words"]] == ["antes", "costura", "despues"]
+
+    def test_merge_and_build_keep_provider_word_order_despite_time_jitter(self):
+        # Groq: "universo" con start anterior a "Star" por jitter; el orden del
+        # texto manda (ordenar por tiempo daba "Star universo Wars").
+        a = {"words": [_w("tipo", 1.0, 1.3), _w("Star", 1.5, 1.8), _w("universo", 1.45, 1.9), _w("Wars", 1.9, 2.2)],
+             "segments": [{"id": 0, "start": 1.0, "end": 2.2, "text": "tipo Star universo Wars"}],
+             "language": "es", "duration": 3}
+        merged = transcriber.merge_chunk_transcripts([(0.0, a)], overlap_sec=5.0)
+        assert [w["word"] for w in merged["words"]] == ["tipo", "Star", "universo", "Wars"]
+        t = tl.build_full_transcript(merged, source="whisper_full", model="m")
+        assert t["lines"][0]["text"] == "tipo Star universo Wars"
+
+    def test_repeated_words_far_from_seams_are_kept(self):
+        # "qué es lo que" tiene dos "que" a < 0,5 s: lejos de la costura no se deduplica
+        a = {"words": [_w("qué", 1.0, 1.1), _w("es", 1.1, 1.2), _w("lo", 1.2, 1.3), _w("que", 1.3, 1.4), _w("puede", 1.4, 1.7)],
+             "segments": [], "language": "es", "duration": 3}
+        merged = transcriber.merge_chunk_transcripts([(0.0, a), (10.0, {"words": [], "segments": [], "duration": 3})], overlap_sec=5.0)
+        assert [w["word"] for w in merged["words"]] == ["qué", "es", "lo", "que", "puede"]
 
     def test_single_chunk_passthrough(self):
         a = self._chunk("hola mundo", t0=0.0)
@@ -466,7 +521,7 @@ class TestTranscriptSourceFlag:
              patch.object(yt_transcript, "get_video_metadata", return_value={"id": "v", "title": "Wild", "duration": 0}):
             t, info = yt_transcript._get_transcript_via_whisper_full("https://youtu.be/abc12345678", "abc12345678")
 
-        assert tfa.call_args.kwargs["prompt"] == "Wild"
+        assert tfa.call_args.kwargs["prompt"] is None  # el título como prompt hace alucinar a Whisper
         assert [ln["text"] for ln in t["lines"]] == ["Hola a todos.", "Hoy hablamos del sarampión."]
         assert t["source"] == "whisper_full" and t["model"] == "whisper-large-v3-turbo"
         assert t["cost_usd"] == 0.0013 and t["n_chunks"] == 1
@@ -517,6 +572,35 @@ class TestUsageTask:
         assert events[0]["task"] == "transcript_full" and events[0]["event_type"] == "whisper"
         assert events[0]["estimated_cost_usd"] == pytest.approx(4638.0 / 3600 * 0.04, rel=1e-3)
         assert events[1]["task"] == "whisper"
+
+    def test_unpunctuated_runs_detects_long_stretches(self):
+        words = _words_from_text("Hola. " + " ".join(["palabra"] * 50) + " fin. Corto. " + " ".join(["x"] * 10))
+        words[0]["word"] = "Hola."
+        words[51]["word"] = "fin."
+        words[52]["word"] = "Corto."
+        runs = tl.unpunctuated_runs(words, min_run_words=40)
+        assert runs == [(1, 52)]
+        assert tl.unpunctuated_runs(_words_from_text(" ".join(["x"] * 100)), min_run_words=40) == [(0, 100)]
+
+    def test_punctuate_unpunctuated_runs_touches_only_the_runs(self):
+        words = _words_from_text("Hola. " + " ".join(["palabra"] * 45) + " fin. Chau.")
+        words[0]["word"], words[46]["word"], words[47]["word"] = "Hola.", "fin.", "Chau."
+        client = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=MagicMock(content=" ".join(["Palabra."] * 45) + " Fin."))]
+        resp.usage = None
+        client.chat.completions.create.return_value = resp
+        out = tl.punctuate_unpunctuated_runs(words, min_run_words=40, client=client, model="cheap")
+        assert len(out) == len(words)
+        assert out[0]["word"] == "Hola." and out[-1]["word"] == "Chau."
+        assert out[1]["word"] == "Palabra." and out[46]["word"] == "Fin."
+        assert client.chat.completions.create.call_count == 1
+        # sin tramos largos no se llama al modelo
+        client.reset_mock()
+        short = _words_from_text("Hola. Chau.")
+        short[0]["word"], short[1]["word"] = "Hola.", "Chau."
+        assert tl.punctuate_unpunctuated_runs(short, client=client) == short
+        assert not client.chat.completions.create.called
 
     def test_punctuate_with_llm_aligns_and_survives_failure(self):
         words = _words_from_text("hola a todos hoy hablamos del sarampión")

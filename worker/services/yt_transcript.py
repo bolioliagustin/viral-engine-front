@@ -316,7 +316,7 @@ def _get_transcript_via_whisper_full(
     from services.transcript_cache import get_cached_transcript, save_transcript
     from services.transcriber import full_transcript_model, transcribe_full_audio
     from services.transcript_lines import (
-        build_full_transcript, has_punctuation, punctuate_words_with_llm,
+        build_full_transcript, punctuate_unpunctuated_runs,
         lines_punctuation_rate, silence_stats,
     )
 
@@ -329,7 +329,14 @@ def _get_transcript_via_whisper_full(
         print(f"✅ Transcript whisper_full desde cache ({len(cached['lines'])} líneas, {len(cached.get('words') or [])} tokens)")
         try:
             from services.usage_tracker import record_cache_hit
-            record_cache_hit("transcript_full", model=model, metadata={"source": "transcription_cache"})
+            from config.pricing import estimate_whisper_cost_usd
+            avoided = estimate_whisper_cost_usd(
+                "groq" if model != "whisper-1" else "openai", float(cached.get("duration") or 0),
+            )
+            record_cache_hit(
+                "transcript_full", model=model,
+                metadata={"source": "transcription_cache", "cost_avoided_usd": avoided},
+            )
         except Exception:
             pass
         if not video_info.get("duration") and cached.get("duration"):
@@ -342,19 +349,25 @@ def _get_transcript_via_whisper_full(
     lang = (language or "").strip().lower() or None
     if lang and len(lang) > 2:
         lang = lang.split("-")[0]
-    prompt = (video_info.get("title") or "").strip() or None
 
-    raw = transcribe_full_audio(audio_path, prompt=prompt, language=lang)
+    # Sin `prompt`: medido en podcast_general_01 (Groq), con el título como
+    # prompt Whisper alucinó el título en 0–5 s, se saltó los primeros 30 s de
+    # habla y devolvió segmentos 3× más largos (37 vs 117 en 10 min). El
+    # vocabulario de marca sigue entrando en la Transcripción del clip.
+    raw = transcribe_full_audio(audio_path, prompt=None, language=lang)
     provider = "/".join(raw.get("providers") or [])
+    whisper_lang = raw.get("language") or lang
 
-    align = True
-    if raw.get("segments") and not has_punctuation(raw["segments"]):
-        print("   ⚠️ El proveedor no trajo puntuación: puntuando con el modelo barato por tramos")
-        raw["words"] = punctuate_words_with_llm(raw["words"], language=raw.get("language") or lang)
-        align = False
+    # Respaldo: los tramos que Whisper dejó sin puntuar (modo degradado, o un
+    # proveedor que no puntúa) se puntúan con el modelo barato. Desactivable
+    # con TRANSCRIPT_PUNCTUATE_FALLBACK=false.
+    punctuate_runs = None
+    if (os.getenv("TRANSCRIPT_PUNCTUATE_FALLBACK") or "true").strip().lower() not in ("false", "0", "no"):
+        punctuate_runs = lambda ws: punctuate_unpunctuated_runs(ws, language=whisper_lang)
 
     transcript = build_full_transcript(
-        raw, source="whisper_full", model=model, provider=provider, align=align,
+        raw, source="whisper_full", model=model, provider=provider,
+        punctuate_runs=punctuate_runs,
     )
     for key in ("audio_seconds", "cost_usd", "elapsed_sec", "n_chunks"):
         if key in raw:

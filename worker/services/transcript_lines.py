@@ -8,16 +8,18 @@ palabra con puntuación, mayúsculas y tokens de silencio con duración
 (docs/ANALISIS_OPUS_CLIP.md §2.1); este módulo produce ese transcript.
 
 Todo lo de acá es puro (sin red ni disco) salvo la sección "Respaldo" del
-final, que llama al modelo barato cuando el proveedor de Whisper no trajo
-puntuación. Entrada: el resultado crudo de Whisper (`words[]` sin puntuación
-y `segments[]` con `text` puntuado). Salida:
+final, que llama al modelo barato sobre los tramos que Whisper dejó sin
+puntuar. Entrada: el resultado crudo de Whisper (`words[]` y `segments[]`
+con `text` puntuado; Groq trae las palabras ya puntuadas, OpenAI peladas).
+Salida:
 
-- `words`: palabras con la puntuación y mayúsculas pegadas desde el texto de
-  los segmentos, más tokens `__silence` (start/end) en los huecos ≥ 0,3 s.
-  Los consumidores actuales de palabras (subtítulos, anclas de W1, guardas de
-  W3) deben pasar por `words_without_silence()`.
+- `words`: palabras con puntuación y mayúsculas (las que faltaban se pegan
+  desde el texto de los segmentos), más tokens `__silence` (start/end) en los
+  huecos ≥ 0,3 s. Los consumidores actuales de palabras (subtítulos, anclas
+  de W1, guardas de W3) deben pasar por `words_without_silence()`.
 - `lines`: Líneas (oraciones) con start/end y texto. Una Línea termina en
-  . ? ! …, en una pausa > 0,8 s o en un cambio de segmento de Whisper.
+  . ? ! … o en una pausa ≥ 1,5 s (opcionalmente, en un cambio de segmento de
+  Whisper que coincide con un fin de cláusula: ver `build_lines`).
 - `wpm`: palabras por minuto sobre la duración total del audio.
 
 Vocabulario (CONTEXT.md): Transcript, Línea, Pasada A.
@@ -32,7 +34,7 @@ from typing import Dict, List, Optional
 
 SILENCE_TOKEN = "__silence"
 SILENCE_MIN_GAP_SEC = 0.3     # hueco mínimo entre palabras para marcar silencio (Opus: desde 0,07 s; nosotros 0,3)
-LINE_PAUSE_SEC = 0.8          # pausa que cierra una Línea aunque no haya puntuación
+LINE_PAUSE_SEC = 1.5          # pausa que cierra una Línea aunque no haya puntuación (ver build_lines)
 LINE_SOFT_MAX_WORDS = 60      # a partir de acá, una coma también cierra la Línea
 LINE_HARD_MAX_WORDS = 120     # sin puntuación ni pausa: corte forzado
 SENTENCE_END_CHARS = ".?!…"
@@ -135,16 +137,36 @@ def _tokens_from_text(text: str, segment_index: int | None = None) -> List[tuple
     return tokens
 
 
+def _merge_word_and_token(word_text: str, token: str) -> str:
+    """
+    Combina la palabra de `words[]` con el token de `segments[].text` que le
+    corresponde (misma palabra normalizada). La palabra manda: Groq devuelve
+    `words[]` ya con puntuación y mayúsculas y su `text` a veces viene
+    degradado (sin acentos, sin puntuación); OpenAI devuelve palabras peladas
+    y `text` puntuado. Del token se toma solo lo que a la palabra le falta:
+    signos iniciales/finales y la mayúscula (si no cambia la longitud, o sea
+    sin acentos perdidos).
+    """
+    wl, wc, wt = _split_token(word_text)
+    tl_, tc, tt = _split_token(token)
+    core = wc
+    if wc and tc and wc.islower() and not tc.islower() and len(tc) == len(wc):
+        core = tc
+    return (wl or tl_) + core + (wt or tt)
+
+
 def align_punctuated_tokens(words: List[dict], tokens: List[tuple]) -> List[dict]:
     """
     Alinea una secuencia de tokens puntuados ((segment_index, token)) sobre
-    `words` (misma secuencia de palabras, sin puntuación). Devuelve copias de
-    las palabras con `word` reemplazado por el token puntuado (mayúsculas y
-    signos incluidos) y `segment` = índice del segmento del que salió.
+    `words` (misma secuencia de palabras). Devuelve copias de las palabras
+    con la puntuación y mayúsculas que les faltaban tomadas del token
+    (`_merge_word_and_token`) y `segment` = índice del segmento del que salió.
 
     Usa SequenceMatcher sobre la forma normalizada: tolera palabras que
     Whisper escribió distinto en `words` y en `segments[].text` (números,
-    guiones) sin desalinear el resto.
+    guiones, acentos perdidos) sin desalinear el resto. En un bloque
+    `replace` la palabra se conserva tal cual (el token no es fiable) y solo
+    se le asigna el segmento.
     """
     out = [dict(w) for w in (words or [])]
     if not out or not tokens:
@@ -158,17 +180,12 @@ def align_punctuated_tokens(words: List[dict], tokens: List[tuple]) -> List[dict
         if tag == "equal":
             for k in range(i2 - i1):
                 si, tok = tokens[j1 + k]
-                out[i1 + k]["word"] = tok
+                out[i1 + k]["word"] = _merge_word_and_token(out[i1 + k].get("word") or "", tok)
                 if si is not None:
                     out[i1 + k]["segment"] = si
         elif tag == "replace" and (i2 - i1) == (j2 - j1):
-            # Mismo largo: misma palabra escrita distinto (ej. "veinte" vs "20").
-            # Copiamos el token solo si se parecen; si no, conservamos la palabra.
             for k in range(i2 - i1):
-                si, tok = tokens[j1 + k]
-                a, b = src[i1 + k], dst[j1 + k]
-                if a and b and SequenceMatcher(None, a, b).ratio() >= 0.6:
-                    out[i1 + k]["word"] = tok
+                si, _tok = tokens[j1 + k]
                 if si is not None:
                     out[i1 + k]["segment"] = si
 
@@ -232,17 +249,27 @@ def build_lines(
     pause_sec: float = LINE_PAUSE_SEC,
     soft_max_words: int = LINE_SOFT_MAX_WORDS,
     hard_max_words: int = LINE_HARD_MAX_WORDS,
-    split_on_segment_change: bool = True,
+    split_on_segment_change: bool = False,
 ) -> List[dict]:
     """
     Agrupa las palabras (sin silencios) en Líneas: cada una con `id`, `start`,
     `end`, `text` y `n_words`, compatible con el shape de `segments` que ya
     consumen validation.py y main.py.
 
-    Una Línea termina cuando la palabra cierra oración (. ? ! …), cuando la
-    pausa hasta la siguiente palabra es ≥ `pause_sec`, o cuando cambia el
-    segmento de Whisper (si `split_on_segment_change`). Como red: a partir de
+    Una Línea termina cuando la palabra cierra oración (. ? ! …) o cuando la
+    pausa hasta la siguiente palabra es ≥ `pause_sec`. Con
+    `split_on_segment_change` también cierra al cambiar el segmento de Whisper
+    si la palabra terminaba una cláusula (, ; :). Como red: a partir de
     `soft_max_words` una coma también cierra, y en `hard_max_words` se corta.
+
+    Umbrales medidos en podcast_general_01 (Groq, sin prompt; % de Líneas que
+    terminan en . ? ! … / % que arrancan en mayúscula): pausa 0,8 s → 88 % /
+    85 % (parte oraciones por la mitad: en conversación hay pausas de 1 s
+    dentro de una frase); 1,2 s → 96 % / 91 %; 1,5 s → 98 % / 93 %; sin
+    pausa → 99 % / 94 %. Se queda en 1,5 s como red para tramos que ni
+    Whisper ni el respaldo puntuaron. Cortar por cambio de segmento restaba
+    3–4 puntos (los segmentos de Whisper cortan oraciones por la mitad), por
+    eso está apagado.
     """
     ws = words_without_silence(words)
     lines: List[dict] = []
@@ -274,6 +301,7 @@ def build_lines(
                 close = True
             elif (
                 split_on_segment_change
+                and _ends_clause(text)
                 and w.get("segment") is not None
                 and nxt.get("segment") is not None
                 and w["segment"] != nxt["segment"]
@@ -319,8 +347,9 @@ def build_full_transcript(
     model: str,
     provider: str | None = None,
     duration_sec: float | None = None,
-    split_on_segment_change: bool = True,
+    split_on_segment_change: bool = False,
     align: bool = True,
+    punctuate_runs=None,
 ) -> Dict:
     """
     Arma el Transcript de alta resolución a partir del resultado crudo de
@@ -329,15 +358,21 @@ def build_full_transcript(
     consume `transcript["segments"]` (clasificador, validate_durations,
     validate_against_transcript, prompt de contexto de Whisper) vea oraciones
     enteras sin cambiar de firma. `align=False` si las palabras ya traen la
-    puntuación pegada (p. ej. tras `punctuate_words_with_llm`).
+    puntuación pegada. `punctuate_runs` (opcional, `words -> words`) corre
+    después de alinear y antes de armar Líneas: es el respaldo para los tramos
+    que Whisper dejó sin puntuar (`punctuate_unpunctuated_runs`).
     """
+    # Se respeta el orden en que vino la secuencia de palabras: los tiempos
+    # por palabra de Groq tienen jitter en los bordes de segmento y ordenar
+    # por `start` reordenaba palabras ("Star universo Wars").
     words = [w for w in (raw.get("words") or []) if (w.get("word") or "").strip()]
     words = words_without_silence(words)
-    words.sort(key=lambda w: float(w.get("start", 0)))
     segments = raw.get("segments") or []
 
     if align and segments:
         words = align_punctuation(words, segments)
+    if punctuate_runs is not None:
+        words = punctuate_runs(words)
 
     lines = build_lines(words, split_on_segment_change=split_on_segment_change)
     duration = float(duration_sec or raw.get("duration") or (lines[-1]["end"] if lines else 0))
@@ -389,6 +424,29 @@ def format_lines_for_prompt(lines: List[dict]) -> str:
 
 
 # ── Respaldo: puntuación con el modelo barato ───────────────────────────────
+UNPUNCTUATED_RUN_MIN_WORDS = 40   # tramo sin . ? ! … que se manda a puntuar
+
+
+def unpunctuated_runs(words: List[dict], min_run_words: int = UNPUNCTUATED_RUN_MIN_WORDS) -> List[tuple]:
+    """
+    Tramos [i, j) de palabras consecutivas sin ningún fin de oración de al
+    menos `min_run_words` palabras: es donde Whisper entró en su modo
+    degradado (sin puntuación, minúsculas). Un proveedor que no puntúa nada
+    es el caso extremo: un solo tramo con todo el transcript.
+    """
+    runs: List[tuple] = []
+    start = 0
+    ws = words_without_silence(words)
+    for i, w in enumerate(ws):
+        if ends_sentence(w.get("word")):
+            if i + 1 - start >= min_run_words:
+                runs.append((start, i + 1))
+            start = i + 1
+    if len(ws) - start >= min_run_words:
+        runs.append((start, len(ws)))
+    return runs
+
+
 _PUNCTUATE_SYSTEM = (
     "Sos un corrector de transcripciones. Recibís texto sin puntuación y "
     "devolvés EXACTAMENTE las mismas palabras, en el mismo orden, agregando "
@@ -451,4 +509,47 @@ def punctuate_words_with_llm(
         except Exception as e:
             print(f"   ⚠️ Puntuación de respaldo falló en el tramo {b // batch_words + 1} ({str(e)[:80]}); queda sin puntuar")
             out.extend(dict(w) for w in batch)
+    return out
+
+
+def punctuate_unpunctuated_runs(
+    words: List[dict],
+    *,
+    min_run_words: int = UNPUNCTUATED_RUN_MIN_WORDS,
+    language: str | None = None,
+    client=None,
+    model: str | None = None,
+    max_parallel: int = 4,
+) -> List[dict]:
+    """
+    Respaldo por tramo: puntúa con el modelo barato solo los tramos de
+    ≥ `min_run_words` palabras sin fin de oración (`unpunctuated_runs`) y
+    deja el resto intacto. Devuelve la lista completa (sin silencios).
+    """
+    ws = words_without_silence(words)
+    runs = unpunctuated_runs(ws, min_run_words)
+    if not runs:
+        return ws
+    n_words = sum(j - i for i, j in runs)
+    print(f"   ✍️ Puntuación de respaldo: {len(runs)} tramos sin puntuar ({n_words} palabras)")
+    if client is None:
+        from openai import OpenAI
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+    if model is None:
+        from config.model_tiers import get_model
+        model = get_model("classifier")
+
+    # Los tramos son independientes: en paralelo (cada llamada tarda ~5 s).
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(max_parallel, len(runs))) as pool:
+        punctuated = list(pool.map(
+            lambda r: punctuate_words_with_llm(ws[r[0]:r[1]], language=language, client=client, model=model),
+            runs,
+        ))
+    out = list(ws)
+    for (i, j), new_words in zip(runs, punctuated):
+        out[i:j] = new_words
     return out

@@ -384,6 +384,49 @@ FULL_MAX_PARALLEL = 3         # tramos en paralelo (rate limits de Groq)
 FULL_SEAM_BAND_SEC = 0.25     # ± alrededor de la costura: ambos tramos aportan, se deduplica
 
 
+# Whisper devuelve `language` como nombre ("spanish"), pero el parámetro
+# `language` de la API exige ISO-639-1 ("es"). Lista de idiomas de Whisper.
+_WHISPER_LANGUAGE_CODES = {
+    "english": "en", "chinese": "zh", "german": "de", "spanish": "es", "russian": "ru",
+    "korean": "ko", "french": "fr", "japanese": "ja", "portuguese": "pt", "turkish": "tr",
+    "polish": "pl", "catalan": "ca", "dutch": "nl", "arabic": "ar", "swedish": "sv",
+    "italian": "it", "indonesian": "id", "hindi": "hi", "finnish": "fi", "vietnamese": "vi",
+    "hebrew": "he", "ukrainian": "uk", "greek": "el", "malay": "ms", "czech": "cs",
+    "romanian": "ro", "danish": "da", "hungarian": "hu", "tamil": "ta", "norwegian": "no",
+    "thai": "th", "urdu": "ur", "croatian": "hr", "bulgarian": "bg", "lithuanian": "lt",
+    "latin": "la", "maori": "mi", "malayalam": "ml", "welsh": "cy", "slovak": "sk",
+    "telugu": "te", "persian": "fa", "latvian": "lv", "bengali": "bn", "serbian": "sr",
+    "azerbaijani": "az", "slovenian": "sl", "kannada": "kn", "estonian": "et",
+    "macedonian": "mk", "breton": "br", "basque": "eu", "icelandic": "is", "armenian": "hy",
+    "nepali": "ne", "mongolian": "mn", "bosnian": "bs", "kazakh": "kk", "albanian": "sq",
+    "swahili": "sw", "galician": "gl", "marathi": "mr", "punjabi": "pa", "sinhala": "si",
+    "khmer": "km", "shona": "sn", "yoruba": "yo", "somali": "so", "afrikaans": "af",
+    "occitan": "oc", "georgian": "ka", "belarusian": "be", "tajik": "tg", "sindhi": "sd",
+    "gujarati": "gu", "amharic": "am", "yiddish": "yi", "lao": "lo", "uzbek": "uz",
+    "faroese": "fo", "haitian creole": "ht", "pashto": "ps", "turkmen": "tk", "nynorsk": "nn",
+    "maltese": "mt", "sanskrit": "sa", "luxembourgish": "lb", "myanmar": "my", "tibetan": "bo",
+    "tagalog": "tl", "malagasy": "mg", "assamese": "as", "tatar": "tt", "hawaiian": "haw",
+    "lingala": "ln", "hausa": "ha", "bashkir": "ba", "javanese": "jv", "sundanese": "su",
+    "cantonese": "yue", "burmese": "my", "valencian": "ca", "flemish": "nl", "haitian": "ht",
+    "letzeburgesch": "lb", "pushto": "ps", "panjabi": "pa", "moldavian": "ro", "moldovan": "ro",
+    "sinhalese": "si", "castilian": "es",
+}
+
+
+def iso_language_code(lang: str | None) -> str | None:
+    """'Spanish' / 'spanish' / 'es-419' / 'es' → 'es'; None si no se reconoce."""
+    if not lang:
+        return None
+    t = str(lang).strip().lower()
+    if not t:
+        return None
+    if len(t) <= 3 and "-" not in t:
+        return t
+    if "-" in t and len(t.split("-")[0]) <= 3:
+        return t.split("-")[0]
+    return _WHISPER_LANGUAGE_CODES.get(t)
+
+
 def full_transcript_model() -> str:
     """Modelo con el que se cachea el Transcript completo: Groq si hay clave, si no whisper-1."""
     return "whisper-large-v3-turbo" if os.getenv("GROQ_API_KEY") else "whisper-1"
@@ -396,6 +439,39 @@ def _shift_items(items: List[Dict], offset: float) -> List[Dict]:
         it2["start"] = round(float(it2.get("start", 0)) + offset, 3)
         it2["end"] = round(float(it2.get("end", it2["start"])) + offset, 3)
         out.append(it2)
+    return out
+
+
+def _dedupe_seam_words(words: List[Dict], seams: List[float], band_sec: float, window: int = 6) -> List[Dict]:
+    """
+    Saca los duplicados de la banda de la costura SIN reordenar por tiempo
+    (los tiempos por palabra de Groq tienen jitter en los bordes de segmento y
+    ordenar por `start` cambiaba el orden del texto). Solo mira las palabras
+    cuyo centro cae a ≤ `band_sec` + 0,5 s de una costura: una de ellas se
+    descarta si repite (sin puntuación ni mayúsculas) a una de las últimas
+    `window` palabras con start a < 0,5 s. Lejos de las costuras no se toca
+    nada: "qué es lo que" tiene dos "que" a < 0,5 s y son legítimos.
+    """
+    from services.transcript_lines import _norm
+    reach = band_sec + 0.5
+
+    def _near_seam(w: Dict) -> bool:
+        mid = (float(w.get("start", 0)) + float(w.get("end", 0))) / 2
+        return any(abs(mid - seam) <= reach for seam in seams)
+
+    out: List[Dict] = []
+    for w in words:
+        if _near_seam(w):
+            w_norm = _norm(w.get("word", ""))
+            w_start = float(w.get("start", 0))
+            if any(
+                _near_seam(prev)
+                and w_norm == _norm(prev.get("word", ""))
+                and abs(w_start - float(prev.get("start", 0))) < 0.5
+                for prev in out[-window:]
+            ):
+                continue
+        out.append(w)
     return out
 
 
@@ -442,7 +518,7 @@ def merge_chunk_transcripts(
             if _keep(sg, k):
                 all_segments.append(sg)
 
-    all_words = _deduplicate_words(all_words)
+    all_words = _dedupe_seam_words(all_words, seams, seam_band_sec)
     all_segments = _deduplicate_segments(all_segments)
     for i, sg in enumerate(all_segments):
         sg["id"] = i
@@ -506,15 +582,14 @@ def transcribe_full_audio(
         )
 
     try:
-        lang = language
+        lang = iso_language_code(language)
         start_idx = 0
         if not lang:
             results[0] = _one(0, None)
-            lang = results[0].get("language") or None
-            if lang and len(lang) > 2:
-                lang = lang.split("-")[0].lower()
+            detected = results[0].get("language") or None
+            lang = iso_language_code(detected)
             start_idx = 1
-            print(f"   🌐 Idioma detectado en el tramo 1: {lang or 'desconocido'}")
+            print(f"   🌐 Idioma detectado en el tramo 1: {detected!r} → {lang or 'sin fijar'}")
 
         pending = list(range(start_idx, len(chunks)))
         if pending:
@@ -542,6 +617,7 @@ def transcribe_full_audio(
         estimate_whisper_cost_usd((r or {}).get("provider") or "groq", float((r or {}).get("duration") or 0))
         for r in results
     )
+    merged["language"] = iso_language_code(merged.get("language")) or merged.get("language")
     merged.update({
         "providers": providers,
         "audio_seconds": round(audio_seconds, 1),
