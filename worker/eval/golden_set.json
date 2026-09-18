@@ -60,6 +60,7 @@
         "whisper_mismatch_last_rate_max": null,
         "clips_rendered_rate_min": null,
         "total_cost_usd_max": null,
+        "duration_final_avg_max": null,
         "min_clips_total": 15
       },
       "thresholds_blocking": false

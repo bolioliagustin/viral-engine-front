@@ -128,7 +128,7 @@ def run_tests():
         ("duracion_negativa", 100, 50, "end menor a start"),
         ("duracion_cero", 50, 50, "start == end"),
         ("muy_corto", 10, 12, "menor a 3s"),
-        ("muy_largo", 0, 200, "mayor a 180s"),
+        ("muy_largo", 0, 250, "mayor a 240s"),
         ("fuera_de_rango", 999, 1010, "end excede duracion del video"),
     ]
     for name, start, end, desc in error_cases:

@@ -19,6 +19,10 @@ from services.validation import (  # noqa: E402
     sentence_bounds_around,
     compute_clip_bounds,
     build_clip_quality_issues,
+    CLIP_MAX_DURATION_SEC,
+    verification_failed_from_flags,
+    hook_delay_metrics,
+    is_late_hook,
 )
 
 
@@ -127,6 +131,28 @@ class TestLocatePhrase:
         assert locate_phrase([], FIRST) is None
         assert locate_phrase(WIDE, "") is None
 
+    def test_h_muda_hantavirus_vs_antavirus(self):
+        # W2-C: Whisper y la Pasada A difieren en la "h" muda del español
+        # ("hantavirus" transcribe como "antavirus") — no debe contar como
+        # palabra distinta.
+        words = _speak("el contagio de antavirus persona a persona es raro", 0.0)
+        r = locate_phrase(words, "el contagio de hantavirus persona a persona")
+        assert r is not None
+        assert r["score"] == 1.0
+
+    def test_r_cero_vs_r0_con_umbral_largo(self):
+        # W2-C: frase larga (≥6 palabras) tolera 1 de cada 3 distinta — cubre
+        # variantes de transcripción de números/siglas ("R0" vs "R cero").
+        words = _speak("y ese es exactamente el R0 del sarampion que mencionabamos antes", 0.0)
+        r = locate_phrase(words, "ese es exactamente el R cero del sarampión")
+        assert r is not None
+
+    def test_umbral_largo_no_relaja_frases_cortas(self):
+        # Frases < LOCATE_LONG_PHRASE_WORDS se quedan en el umbral estricto
+        # (1 de 4): 2 de 4 palabras distintas no debería matchear.
+        words = _speak("el gato negro corre rapido", 0.0)
+        assert locate_phrase(words, "el perro blanco corre") is None
+
 
 # ── sentence_bounds_around ───────────────────────────────────────────────────
 
@@ -176,7 +202,7 @@ class TestComputeClipBounds:
         assert r["start_rel"] == pytest.approx(first_w["start"] - 0.25, abs=0.01)
         payoff_end = WIDE[locate_phrase(WIDE, PAYOFF, prefer="last")["end_idx"]]["end"]
         assert r["end_rel"] == pytest.approx(payoff_end + 0.40, abs=0.01)
-        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 60.0
+        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 120.0
         assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
         assert r["evidence"]["extend_recommended"] is False
 
@@ -199,7 +225,7 @@ class TestComputeClipBounds:
         assert r["evidence"]["extend_recommended"] is True
         # Fin de respaldo: primer fin de oración en o después del end_time numérico
         assert r["evidence"]["end_source"] in ("sentence_after_hint", "last_fitting_sentence")
-        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 60.0
+        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 120.0
         # y sigue arrancando en la primera frase
         assert r["evidence"]["start_source"] == "first_phrase"
 
@@ -278,9 +304,11 @@ class TestComputeClipBounds:
         assert r["flags"] == []
 
     def test_long_clip_moves_start_forward_before_dropping_payoff(self):
-        # Primera frase + 65 s hasta el remate (> 60 s): antes que perder la
-        # última frase se mueve el START al siguiente inicio de oración
-        # (decisión del brief W1); la primera frase queda afuera y se flaggea.
+        # Primera frase + 65 s hasta el remate (> max_s=60, explícito para
+        # ejercitar el truncado sin depender del tope por defecto del sistema,
+        # que W2-B subió a 120s): antes que perder la última frase se mueve
+        # el START al siguiente inicio de oración (decisión del brief W1); la
+        # primera frase queda afuera y se flaggea.
         sentences = [(FIRST, 0.0)] + [
             (f"Oración de relleno número {i} que dura lo suficiente para sumar tiempo.", 0.4)
             for i in range(7)
@@ -290,6 +318,7 @@ class TestComputeClipBounds:
         r = compute_clip_bounds(
             words, FIRST, PAYOFF,
             seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+            max_s=60.0,
         )
         payoff_end = words[locate_phrase(words, PAYOFF, prefer="last")["end_idx"]]["end"]
         assert 15.0 <= r["end_rel"] - r["start_rel"] <= 60.0
@@ -305,17 +334,56 @@ class TestComputeClipBounds:
     def test_long_clip_without_room_cuts_end_and_flags(self):
         # Una sola oración larguísima (sin puntuación ni gaps) de 80 s con la
         # primera frase al inicio y el remate al final: no hay inicio de oración
-        # al que mover el start → se corta a ≤ 60 s y se flaggea el remate perdido.
+        # al que mover el start → se corta a ≤ max_s y se flaggea el remate
+        # perdido. max_s=60 explícito para ejercitar el truncado (el tope por
+        # defecto del sistema es 120s desde W2-B).
         text = FIRST[:-1] + " " + " ".join(f"relleno{i}" for i in range(90)) + " " + PAYOFF
         words = _speak(text, 0.0, wps=1.5)
         dur = words[-1]["end"] + 1.0
         r = compute_clip_bounds(
             words, FIRST, PAYOFF,
             seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+            max_s=60.0,
         )
         assert r["end_rel"] - r["start_rel"] <= 60.0
         assert "payoff_not_found" in r["flags"]
         assert r["evidence"].get("payoff_dropped_for_max") is True
+
+    def test_95s_candidate_is_not_truncated_by_120s_cap(self):
+        # W2-B (docs/PLAN_CALIDAD.md §8-9, análisis Opus Clip): con el tope
+        # viejo (60s) este candidato bien formado —planteo, desarrollo y
+        # remate en ~96s— se truncaba y perdía el remate. Con
+        # CLIP_MAX_DURATION_SEC=120 pasa entero, sin flags.
+        fillers = [
+            (f"Desarrollo del argumento numero {i} con varias palabras para sumar tiempo real.", 0.4)
+            for i in range(10)
+        ]
+        sentences = [(FIRST, 0.0)] + fillers + [(PAYOFF, 0.4)]
+        words = _segment(sentences, wps=1.5)
+        content_duration = words[-1]["end"] - words[0]["start"]
+        assert 90.0 < content_duration < 110.0  # el fixture realmente supera los 60s viejos
+        dur = words[-1]["end"] + 2.0
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["flags"] == []
+        assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
+        clip_duration = r["end_rel"] - r["start_rel"]
+        assert 90.0 < clip_duration <= CLIP_MAX_DURATION_SEC
+
+    def test_validate_durations_keeps_95s_moment_with_new_default(self):
+        # Mismo caso a nivel de validate_durations (Step 3.5 en main.py):
+        # ya no pasa min_duration=10/max_duration=60 a mano, usa los defaults
+        # CLIP_MIN/MAX_DURATION_SEC (15/120) — un momento de 95s bien formado
+        # llega intacto, no se recorta a 60.
+        from services.validation import validate_durations
+        from types import SimpleNamespace
+
+        moment = SimpleNamespace(start_time=100.0, end_time=195.0, hook="idea completa de 95s")
+        kept = validate_durations([moment])
+        assert len(kept) == 1
+        assert kept[0].end_time == 195.0  # sin recortar
 
     def test_never_start_lowercase_if_sentence_start_within_2s(self):
         # La "primera frase" empieza en minúscula a mitad de oración corta:
@@ -378,6 +446,66 @@ class TestComputeClipBounds:
         assert r["start_rel"] == 15.0
         assert r["end_rel"] == 50.0
         assert set(r["flags"]) == {"hook_not_found", "payoff_not_found"}
+
+
+# ── W2-C: verification_failed = SOLO hook_not_found / payoff_not_found ──────
+# docs/PLAN_CALIDAD.md §9. late_hook/incomplete_tail quedan informativos: el
+# clip ancla al INICIO DE ORACIÓN de la primera frase, no a su primera
+# palabra, así que unas palabras/segundos de contexto antes del hook citado
+# son normales (antes disparaban verification_failed en falso).
+
+class TestVerificationSemanticsW2C:
+
+    def test_hook_con_contexto_previo_no_es_late_hook_ni_verification_failed(self):
+        # Caso real que motivó el cambio: podcast_general_01, candidato
+        # 1010-1050s (mismo tema que el clip mejor puntuado de Opus Clip
+        # sobre este video). La oración que contiene la primera frase citada
+        # arranca ~8 palabras / ~5s antes de esa frase.
+        first_phrase = "ciencia que también se hizo muy famoso"
+        words = _segment([
+            ("Porque esto se calcula con base en la " + first_phrase + ".", 0.0),
+            ("Un desarrollo que conecta la idea del medio con el resto.", 0.4),
+            (PAYOFF, 0.4),
+        ], wps=1.5)
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, first_phrase, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["flags"] == []
+        assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is False
+
+        delay_sec, words_before = hook_delay_metrics(
+            words, float(r["start_rel"]), r["evidence"].get("first_phrase_rel_start")
+        )
+        assert delay_sec is not None and 0 < delay_sec < 8.0
+        assert words_before is not None and words_before <= 12
+        assert is_late_hook(delay_sec, words_before) is False
+
+    def test_payoff_not_found_marca_verification_failed(self):
+        r = _bounds(WIDE, FIRST, "esta frase quedó fuera del segmento descargado")
+        assert "payoff_not_found" in r["flags"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is True
+
+    def test_hook_not_found_marca_verification_failed(self):
+        r = _bounds(WIDE, "frase que no está en el audio", PAYOFF)
+        assert "hook_not_found" in r["flags"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is True
+
+    def test_is_late_hook_por_muchas_palabras_aunque_pocos_segundos(self):
+        # Muletillas rápidas: muchas palabras cortas antes del hook aunque el
+        # tiempo total no llegue a 8s — igual cuenta como late_hook.
+        assert is_late_hook(4.0, 13) is True
+        assert is_late_hook(4.0, 12) is False
+        assert is_late_hook(9.0, 2) is True
+        assert is_late_hook(None, None) is False
 
 
 # ── Sin Verificación → flujo legacy intacto ─────────────────────────────────

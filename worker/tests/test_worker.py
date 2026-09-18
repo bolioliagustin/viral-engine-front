@@ -769,21 +769,34 @@ class TestMomentSelector:
         assert candidate_count(120, target_moment_count(120)) >= 3
 
     def test_rank_and_prune_keeps_best_in_chrono_order(self):
+        # W2: ya no poda a `target`, conserva target+EVAL_POOL_EXTRA (pool de
+        # evaluación) — el juez decide el target final en main.py.
+        from services.moment_selector import rank_and_prune_candidates, EVAL_POOL_EXTRA
+        target = 2
+        pool_size = target + EVAL_POOL_EXTRA
+        result = {
+            "viral_moments": [
+                {"start_time": 10 * i, "scores": {"hook": s, "retention": s, "shareability": s}}
+                for i, s in enumerate([5, 9, 8, 2, 7, 6, 1], start=1)
+            ]
+        }
+        pruned = rank_and_prune_candidates(result, target=target)
+        moments = pruned["viral_moments"]
+        assert len(moments) == pool_size
+        # se descartan los 2 peores por auto-score (start_time 40 → score 2, y
+        # start_time 70 → score 1); el resto queda en orden cronológico
+        assert [m["start_time"] for m in moments] == [10, 20, 30, 50, 60]
+
+    def test_rank_and_prune_keeps_all_if_pool_not_exceeded(self):
         from services.moment_selector import rank_and_prune_candidates
         result = {
             "viral_moments": [
                 {"start_time": 10, "scores": {"hook": 5, "retention": 5, "shareability": 5}},
-                {"start_time": 100, "scores": {"hook": 9, "retention": 9, "shareability": 9}},
                 {"start_time": 50, "scores": {"hook": 8, "retention": 8, "shareability": 8}},
-                {"start_time": 200, "scores": {"hook": 2, "retention": 2, "shareability": 2}},
             ]
         }
         pruned = rank_and_prune_candidates(result, target=2)
-        moments = pruned["viral_moments"]
-        assert len(moments) == 2
-        # top 2 por score (100 y 50), en orden cronológico
-        assert moments[0]["start_time"] == 50
-        assert moments[1]["start_time"] == 100
+        assert len(pruned["viral_moments"]) == 2
 
     def test_content_pieces_optional_for_pass_a(self):
         from models.schemas import ViralMoment
