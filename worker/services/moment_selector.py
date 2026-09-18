@@ -10,6 +10,7 @@ score preliminar, rankeamos y nos quedamos con los top N (N según duración,
 igual que el pipeline legacy). Esto reemplaza la densidad fija "video >5min
 = 5 momentos" por selección competitiva entre candidatos.
 """
+import copy
 import json
 import os
 import time
@@ -149,8 +150,6 @@ def rank_and_prune_candidates(
     (los momentos se muestran al usuario en orden de aparición).
     """
     moments = result_dict.get("viral_moments") or []
-    if len(moments) <= target:
-        return result_dict
 
     def _score(m: dict) -> float:
         s = m.get("scores") or {}
@@ -168,6 +167,17 @@ def rank_and_prune_candidates(
             except (TypeError, ValueError):
                 base = 0.0
         return base - _segment_boundary_penalty(m, transcript)
+
+    # Todos los candidatos de la Pasada A (con el score usado para rankear)
+    # viajan en `candidates_all` hasta analysis_cache, para poder comparar el
+    # ranking con el juez después. AnalysisResult ignora la clave.
+    result_dict["candidates_all"] = [
+        {**copy.deepcopy(m), "rank_score": round(_score(m), 2)} if isinstance(m, dict) else m
+        for m in moments
+    ]
+
+    if len(moments) <= target:
+        return result_dict
 
     ranked = sorted(moments, key=_score, reverse=True)[:target]
     dropped = len(moments) - len(ranked)

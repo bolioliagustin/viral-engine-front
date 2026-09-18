@@ -1,5 +1,5 @@
 {
-  "_doc": "Golden set por tiers. Ver worker/eval/README.md. Correr: python eval/run_golden_set.py --tier smoke|analysis|full",
+  "_doc": "Golden set por tiers. Ver worker/eval/README.md. Correr: python eval/run_golden_set.py --tier smoke|analysis|full|e2e",
   "thresholds": {
     "_doc": "Defaults globales; cada tier en 'tiers' puede sobreescribir.",
     "category_accuracy_min": 0.75,
@@ -16,7 +16,9 @@
   "tiers": {
     "smoke": {
       "_doc": "~2-4 min, 1 video, pre-deploy rápido (clasificador + pasada A).",
-      "video_ids": ["claude_hacks_regression_01"],
+      "video_ids": [
+        "claude_hacks_regression_01"
+      ],
       "include_copy": false,
       "thresholds": {
         "category_accuracy_min": 1.0,
@@ -44,6 +46,23 @@
         "judge_llm_delta_max": 4.0,
         "judge_response_rate_min": 0.9
       }
+    },
+    "e2e": {
+      "_doc": "~10-25 min. Pipeline real por clip (main.process_job con EVAL_DRY_RUN=1): descarga, Whisper, snap, Pasada B, juez, render; nada se persiste ni se sube. Umbrales = objetivos de PLAN_CALIDAD §3; thresholds_blocking=false hasta que las líneas W1-W3 del PLAN_CALIDAD entren. Corre los videos habilitados con 'e2e' en tiers, en el orden del array (el largo, user_recommended_01, va último).",
+      "include_copy": true,
+      "thresholds": {
+        "judge_avg_min": 7.0,
+        "judge_all_ge7_rate_min": 0.6,
+        "verification_failed_rate_max": 0.15,
+        "density_out_of_range_rate_max": 0.0,
+        "capitalized_start_rate_min": 0.9,
+        "late_hook_rate_max": null,
+        "whisper_mismatch_last_rate_max": null,
+        "clips_rendered_rate_min": null,
+        "total_cost_usd_max": null,
+        "min_clips_total": 15
+      },
+      "thresholds_blocking": false
     }
   },
   "videos": [
@@ -52,7 +71,11 @@
       "url": "https://www.youtube.com/watch?v=Lqq78q17jDY",
       "youtube_id": "Lqq78q17jDY",
       "enabled": true,
-      "tiers": ["analysis", "full"],
+      "tiers": [
+        "analysis",
+        "full",
+        "e2e"
+      ],
       "note": "Podcast/charla de negocios en español — golden set post-Groq",
       "expected_category": "podcast",
       "subtitle_regression": {
@@ -71,7 +94,11 @@
       "url": "https://www.youtube.com/watch?v=XxoVRjTySsM",
       "youtube_id": "XxoVRjTySsM",
       "enabled": true,
-      "tiers": ["analysis", "full"],
+      "tiers": [
+        "analysis",
+        "full",
+        "e2e"
+      ],
       "note": "Podcast general — caso prioritario",
       "expected_category": "podcast",
       "test_focus": [
@@ -81,23 +108,16 @@
       ]
     },
     {
-      "id": "user_recommended_01",
-      "url": "https://www.youtube.com/watch?v=MaXgAEI4Vm8",
-      "youtube_id": "MaXgAEI4Vm8",
-      "enabled": true,
-      "tiers": ["analysis", "full"],
-      "note": "Benchmark calidad target del usuario",
-      "expected_category": "podcast",
-      "test_focus": [
-        "Calidad publicable sin editar"
-      ]
-    },
-    {
       "id": "claude_hacks_regression_01",
       "url": "https://www.youtube.com/watch?v=KXKzgeHOr7A",
       "youtube_id": "KXKzgeHOr7A",
       "enabled": true,
-      "tiers": ["smoke", "analysis", "full"],
+      "tiers": [
+        "smoke",
+        "analysis",
+        "full",
+        "e2e"
+      ],
       "note": "Regresión: cortes a mitad de frase, ghost words, verification",
       "expected_category": "business",
       "test_focus": [
@@ -107,11 +127,30 @@
       ]
     },
     {
+      "id": "user_recommended_01",
+      "url": "https://www.youtube.com/watch?v=MaXgAEI4Vm8",
+      "youtube_id": "MaXgAEI4Vm8",
+      "enabled": true,
+      "tiers": [
+        "analysis",
+        "full",
+        "e2e"
+      ],
+      "note": "Benchmark calidad target del usuario (108 min: va último en e2e; ~25 min de presupuesto)",
+      "expected_category": "podcast",
+      "test_focus": [
+        "Calidad publicable sin editar"
+      ]
+    },
+    {
       "id": "business_spanish_02",
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "tiers": ["analysis", "full"],
+      "tiers": [
+        "analysis",
+        "full"
+      ],
       "note": "PENDIENTE: monólogo/keynote business ES 10-30 min",
       "expected_category": "business"
     },
@@ -120,7 +159,10 @@
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "tiers": ["analysis", "full"],
+      "tiers": [
+        "analysis",
+        "full"
+      ],
       "note": "PENDIENTE: tutorial educativo ES",
       "expected_category": "business"
     },
@@ -129,7 +171,10 @@
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "tiers": ["analysis", "full"],
+      "tiers": [
+        "analysis",
+        "full"
+      ],
       "note": "PENDIENTE: podcast EN — idioma de salida",
       "expected_category": "podcast"
     },
@@ -138,7 +183,10 @@
       "url": "",
       "youtube_id": "",
       "enabled": false,
-      "tiers": ["analysis", "full"],
+      "tiers": [
+        "analysis",
+        "full"
+      ],
       "note": "PENDIENTE: video >1h — ranking 12→5 candidatos",
       "expected_category": "podcast"
     }

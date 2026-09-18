@@ -413,12 +413,27 @@ python worker/eval/run_golden_set.py           # análisis-only
 python worker/eval/run_golden_set.py --tier full   # + pasada B + juez
 python worker/eval/run_golden_set.py --tier smoke  # pre-deploy (~1 video)
 python worker/eval/run_golden_set.py --json    # output para CI
+
+# Tier e2e: pipeline real por clip en dry-run (nada se persiste ni se sube)
+cd worker && EVAL_DRY_RUN=1 ENVIRONMENT=development \
+  python eval/run_golden_set.py --tier e2e --json \
+  2>eval/runs/<fecha>-<PROMPT_VERSION>.log >eval/runs/<fecha>-<PROMPT_VERSION>.json
+python eval/compare_runs.py eval/runs/<baseline>.json eval/runs/<nuevo>.json
 ```
 
-Ver **`worker/eval/README.md`** para tiers, plan de trabajo y comandos VPS.
+Ver **`worker/eval/README.md`** para tiers, plan de trabajo y comandos VPS, y
+**`worker/eval/runs/README.md`** para el historial de corridas e2e.
 
 Corre el golden set (`worker/eval/golden_set.json`) y sale con exit code 1 si
 alguna métrica queda bajo los `thresholds` — usable antes de deploy.
+
+**`EVAL_DRY_RUN=1`** (solo para el eval): `main.process_job` corre completo
+(descarga, Whisper, snap, Pasada B, juez, render FFmpeg) pero
+`services/supabase_client.py` no escribe `jobs` ni `content_results` (los
+acumula en `DRY_RUN_JOBS` / `DRY_RUN_RESULTS`), R2 devuelve `dryrun://…`, el
+crédito no se descuenta y `usage_tracker` no inserta eventos pero deja el
+rollup en `DRY_RUN_ROLLUPS`. Las lecturas y escrituras de cache siguen igual.
+Nunca lo actives en el worker de la cola.
 
 ---
 
