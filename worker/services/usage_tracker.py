@@ -28,6 +28,17 @@ def _should_persist() -> bool:
 # Rollup en memoria durante el job (evita re-query al finalizar)
 _job_rollups: dict[str, dict[str, Any]] = {}
 
+# Modo dry-run (EVAL_DRY_RUN=1, ver services/supabase_client.is_dry_run):
+# los eventos no se insertan en job_usage_events pero el rollup sí se
+# acumula, y finalize_job_usage lo deja acá (por job_id) en vez de escribir
+# jobs.usage_summary, para que el tier e2e del golden set lea el costo.
+DRY_RUN_ROLLUPS: dict[str, dict[str, Any]] = {}
+
+
+def _is_dry_run() -> bool:
+    from services.supabase_client import is_dry_run
+    return is_dry_run()
+
 
 def _get_rollup(job_id: str) -> dict[str, Any]:
     if job_id not in _job_rollups:
@@ -91,6 +102,9 @@ def _insert_event(event: dict[str, Any]) -> None:
         return
 
     _update_rollup(job_id, event)
+
+    if _is_dry_run():
+        return
 
     try:
         from services.supabase_client import get_supabase
@@ -281,19 +295,31 @@ def record_cache_hit(
     _insert_event(event)
 
 
-def finalize_job_usage(job_id: str) -> None:
-    """Escribe rollup en jobs.usage_summary y limpia acumulador en memoria."""
+def finalize_job_usage(job_id: str) -> Optional[dict[str, Any]]:
+    """
+    Escribe rollup en jobs.usage_summary y limpia acumulador en memoria.
+    Devuelve el rollup (None si no hubo eventos). En dry-run no escribe:
+    lo deja en DRY_RUN_ROLLUPS[job_id] y lo devuelve.
+    """
     if not job_id:
-        return
+        return None
 
     rollup = _job_rollups.pop(job_id, None)
     if not rollup or rollup.get("event_count", 0) == 0:
-        return
+        return None
 
     rollup["total_cost_usd"] = round(rollup["total_cost_usd"], 6)
 
+    if _is_dry_run():
+        DRY_RUN_ROLLUPS[job_id] = rollup
+        print(
+            f"   📊 usage_summary (dry-run, no persistido): ${rollup['total_cost_usd']:.4f} "
+            f"({rollup['event_count']} eventos)"
+        )
+        return rollup
+
     if not _should_persist():
-        return
+        return rollup
 
     try:
         from services.supabase_client import get_supabase
@@ -308,3 +334,4 @@ def finalize_job_usage(job_id: str) -> None:
         )
     except Exception as e:
         print(f"⚠️ usage_tracker: no se pudo guardar usage_summary ({e})")
+    return rollup
