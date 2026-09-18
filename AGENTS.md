@@ -36,4 +36,6 @@ SaaS que convierte un video (link de YouTube o archivo del creador) en clips ver
 - `content_results` tiene **tres filas por momento** (una por pieza de copy) con los metadatos repetidos; el frontend agrupa por `moment_index`.
 - Gemini 3.x y GPT-5.x: se omite `temperature` y los tokens de razonamiento consumen `max_tokens` (`worker/config/llm_chat.py` ya lo resuelve; no lo bypassees).
 - URLs de googlevideo van atadas a la IP que las resolvió: el proxy que resuelve es el que descarga (sticky). Cambiar de proxy a mitad de descarga da 403.
+- **Render local en la Mac**: el `ffmpeg` de Homebrew viene sin libass, así que el filtro `ass=` (subtítulos y overlay) falla y el clip no se genera. Usá `ffmpeg-full` apuntando `FFMPEG_PATH=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg` y `FFPROBE_PATH=/opt/homebrew/opt/ffmpeg-full/bin/ffprobe` en el `.env` de la raíz (el `ffmpeg` de Debian del VPS sí trae libass). Instalar `ffmpeg-full` rompe el `ffmpeg` estándar (dylib de x265): si pasa, `brew reinstall ffmpeg`.
+- **Nada de instalar paquetes del sistema** (brew, apt, cambios de PATH global) desde un agente: rompe el entorno compartido de los demás worktrees. Si falta una herramienta, pedila y esperá.
 - Comentarios, logs y prompts del worker están en español; mantené el idioma del archivo que tocás.
