@@ -29,11 +29,38 @@ class ClipDownloadResult:
     download_end: float
 
 
-def _clip_keyframe_margin_sec() -> float:
+# Márgenes de descarga por clip (W1, PLAN_CALIDAD §4): asimétricos porque el
+# remate que eligió la Pasada A suele quedar DESPUÉS de su end_time (los
+# captions cortan la oración) y el gancho un poco ANTES de su start_time.
+# El segmento ancho se transcribe entero y el corte final se decide por frases.
+CLIP_MARGIN_BEFORE_DEFAULT_SEC = 15.0
+CLIP_MARGIN_AFTER_DEFAULT_SEC = 20.0
+
+
+def _env_float(name: str) -> float | None:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
     try:
-        return max(0.0, float(os.getenv("CLIP_KEYFRAME_MARGIN_SEC", "8")))
+        return max(0.0, float(raw))
     except ValueError:
-        return 8.0
+        return None
+
+
+def _clip_margins_sec() -> tuple[float, float]:
+    """(margen antes, margen después) en segundos.
+
+    Precedencia: CLIP_MARGIN_BEFORE_SEC / CLIP_MARGIN_AFTER_SEC > el alias
+    legacy CLIP_KEYFRAME_MARGIN_SEC (simétrico, setea ambos) > defaults 15/20.
+    """
+    legacy = _env_float("CLIP_KEYFRAME_MARGIN_SEC")
+    before = _env_float("CLIP_MARGIN_BEFORE_SEC")
+    after = _env_float("CLIP_MARGIN_AFTER_SEC")
+    if before is None:
+        before = legacy if legacy is not None else CLIP_MARGIN_BEFORE_DEFAULT_SEC
+    if after is None:
+        after = legacy if legacy is not None else CLIP_MARGIN_AFTER_DEFAULT_SEC
+    return before, after
 
 
 def _download_parallel_workers() -> int:
@@ -724,11 +751,17 @@ def download_clip_ytdlp(
     output_path: str,
     *,
     keyframe_margin_sec: float | None = None,
+    margin_before_sec: float | None = None,
+    margin_after_sec: float | None = None,
     video_duration: float | None = None,
     proxy_url: str | None = None,
 ) -> ClipDownloadResult:
     """
     Descarga SOLO el segmento necesario para un clip usando yt-dlp con proxy.
+
+    Márgenes: `margin_before_sec` / `margin_after_sec` (default
+    `_clip_margins_sec()`); `keyframe_margin_sec` es el alias legacy simétrico.
+    `download_start` / `download_end` del resultado reflejan el rango real.
 
     yt-dlp con download_ranges descarga solo los segmentos DASH que cubren
     el rango pedido (~50MB para 35s) usando Python requests internamente
@@ -742,9 +775,15 @@ def download_clip_ytdlp(
     """
     from yt_dlp.utils import download_range_func
 
-    margin = _clip_keyframe_margin_sec() if keyframe_margin_sec is None else max(0.0, keyframe_margin_sec)
-    dl_start = max(0.0, float(start_sec) - margin)
-    dl_end = float(end_sec) + margin
+    before, after = _clip_margins_sec()
+    if keyframe_margin_sec is not None:
+        before = after = max(0.0, keyframe_margin_sec)
+    if margin_before_sec is not None:
+        before = max(0.0, margin_before_sec)
+    if margin_after_sec is not None:
+        after = max(0.0, margin_after_sec)
+    dl_start = max(0.0, float(start_sec) - before)
+    dl_end = float(end_sec) + after
     if video_duration and video_duration > 0:
         dl_end = min(dl_end, float(video_duration))
 

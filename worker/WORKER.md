@@ -226,19 +226,24 @@ flowchart TD
 
 1. `clip_paths_cache` (per-clip paralelo)
 2. `muxed_video_path` (upfront/full)
-3. `download_clip_ytdlp` con margen ±8s (`CLIP_KEYFRAME_MARGIN_SEC`)
+3. `download_clip_ytdlp` con margen −15 s / +20 s (`CLIP_MARGIN_BEFORE_SEC` / `CLIP_MARGIN_AFTER_SEC`; `CLIP_KEYFRAME_MARGIN_SEC` = alias simétrico legacy)
 4. `download_clip_apify` si `USE_APIFY_FALLBACK=true`
 5. Stream partial solo si clip está en primer 20% del video
 6. Deep-link YouTube
 
 **Validación anti-desfase:** `verify_phrases_after_snap` marca `verification_failed` si hay phrase mismatch (cache de análisis stale), cola incompleta o hook tardío. **Re-descarga** solo si la cobertura Whisper es &lt;90% (`STRICT_SYNC_VALIDATION=true`, hasta `CLIP_SYNC_RETRIES`). Phrase mismatch con cobertura alta **no** re-descarga — re-descargar no arregla análisis viejo.
 
+**Cortes anclados a frases (W1):** por momento, el orden es **segmento ancho → Whisper → frases → límites → corte final**. Se pre-corta `[start_time − 15, end_time + 20]` de la fuente, se transcribe entero con Whisper word-level (`_transcribe_with_guards`), `compute_clip_bounds` (`services/validation.py`, función pura) localiza `first/last_phrase_in_audio` (`locate_phrase`, fuzzy) y corta de inicio de oración de la primera a fin de oración de la última (`sentence_bounds_around`), 15–60 s. Si la última frase no está y el segmento no llega al final del video, se re-descarga UNA vez con +25 s (`margin_extended`). Flags: `hook_not_found`, `payoff_not_found`, `margin_extended`, `subs_disabled_timestamps` (dos proveedores Whisper con timestamps sospechosos → clip sin subtítulos). Sin frases de Verificación corre el flujo numérico anterior (`_refine_bounds_legacy`). Tests: `tests/test_cortes.py`.
+
+**Guardas de sanidad sobre Whisper (W3):** `assess_whisper_words` corre sobre las palabras del segmento ancho (o del clip, en el flujo legacy) antes de decidir límites. `timestamps_suspect` (densidad efectiva &gt;5 w/s o hueco inicial &gt;40 % con densidad normal) → se re-transcribe una vez con el otro proveedor; si persiste, clip sin subtítulos (`subs_disabled_timestamps`). `bad_segment` (densidad &lt;1,2 w/s, &lt;8 palabras únicas, texto repetido) → una re-descarga con otro proxy y, si persiste, clip **sin subtítulos** + flag. `enforce_min_duration` revierte límites si el refinamiento deja el clip &lt;15 s (`min_duration_reverted`). Tests: `tests/test_guards.py`.
+
 **Variables de entorno:**
 
 ```env
 DOWNLOAD_STRATEGY=auto
 DOWNLOAD_PARALLEL_WORKERS=3
-CLIP_KEYFRAME_MARGIN_SEC=8
+CLIP_MARGIN_BEFORE_SEC=15
+CLIP_MARGIN_AFTER_SEC=20
 DOWNLOAD_PHASE_BUDGET_SEC=600
 CLIP_SYNC_RETRIES=2
 STRICT_SYNC_VALIDATION=true
@@ -391,6 +396,11 @@ legacy y su copy queda como borrador que la pasada B pisa.
 - `verification_failed` (bool): first Y last phrase no matchean el audio real
   — visible como badge "⚠ Verificar corte" en la card.
 - `sub_coverage` y `words_per_sec` se persisten como métricas de calidad.
+- `clip_quality_issues` (jsonb): `incomplete_tail`, `late_hook`,
+  `whisper_mismatch_first|last`, `clip_not_rendered`, `clip_generation_failed`
+  las guardas W3 `timestamps_suspect`, `bad_segment`, `min_duration_reverted`
+  y los cortes W1 `hook_not_found`, `payoff_not_found`, `margin_extended`,
+  `subs_disabled_timestamps` (ver `build_clip_quality_issues` en `services/validation.py`).
 - Migración histórica: `supabase/legacy/supabase_migration_ai_quality.sql`.
 
 ### Personalización (Fase 5)
@@ -407,12 +417,27 @@ python worker/eval/run_golden_set.py           # análisis-only
 python worker/eval/run_golden_set.py --tier full   # + pasada B + juez
 python worker/eval/run_golden_set.py --tier smoke  # pre-deploy (~1 video)
 python worker/eval/run_golden_set.py --json    # output para CI
+
+# Tier e2e: pipeline real por clip en dry-run (nada se persiste ni se sube)
+cd worker && EVAL_DRY_RUN=1 ENVIRONMENT=development \
+  python eval/run_golden_set.py --tier e2e --json \
+  2>eval/runs/<fecha>-<PROMPT_VERSION>.log >eval/runs/<fecha>-<PROMPT_VERSION>.json
+python eval/compare_runs.py eval/runs/<baseline>.json eval/runs/<nuevo>.json
 ```
 
-Ver **`worker/eval/README.md`** para tiers, plan de trabajo y comandos VPS.
+Ver **`worker/eval/README.md`** para tiers, plan de trabajo y comandos VPS, y
+**`worker/eval/runs/README.md`** para el historial de corridas e2e.
 
 Corre el golden set (`worker/eval/golden_set.json`) y sale con exit code 1 si
 alguna métrica queda bajo los `thresholds` — usable antes de deploy.
+
+**`EVAL_DRY_RUN=1`** (solo para el eval): `main.process_job` corre completo
+(descarga, Whisper, snap, Pasada B, juez, render FFmpeg) pero
+`services/supabase_client.py` no escribe `jobs` ni `content_results` (los
+acumula en `DRY_RUN_JOBS` / `DRY_RUN_RESULTS`), R2 devuelve `dryrun://…`, el
+crédito no se descuenta y `usage_tracker` no inserta eventos pero deja el
+rollup en `DRY_RUN_ROLLUPS`. Las lecturas y escrituras de cache siguen igual.
+Nunca lo actives en el worker de la cola.
 
 ---
 

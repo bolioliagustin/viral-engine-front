@@ -70,6 +70,12 @@ def save_analysis(
     """
     Guarda un AnalysisResult al cache. Upsert por la unique key
     (video_id, model, tone, prompt_version).
+
+    `result` es el dict crudo de la Pasada A: además de `viral_moments`
+    (los finales) puede traer `candidates_all` (todos los candidatos con su
+    `rank_score`, ver moment_selector.rank_and_prune_candidates). Se guarda
+    tal cual dentro del JSON de `result`, sin cambio de esquema; al leerlo,
+    AnalysisResult(**cached) ignora la clave extra.
     """
     supabase = get_supabase()
     if not supabase:
