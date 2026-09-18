@@ -12,6 +12,7 @@ const compression = require('compression');
 const jobsRouter = require('./routes/jobs');
 const billingRouter = require('./routes/billing');
 const clipEditsRouter = require('./routes/clip-edits');
+const feedbackRouter = require('./routes/feedback');
 const adminUsageRouter = require('./routes/admin-usage');
 const logger = require('./lib/logger');
 
@@ -63,6 +64,7 @@ app.use(express.json({
 app.use('/', jobsRouter);
 app.use('/', billingRouter);
 app.use('/', clipEditsRouter);
+app.use('/', feedbackRouter);
 app.use('/admin', adminUsageRouter);
 
 // Root route

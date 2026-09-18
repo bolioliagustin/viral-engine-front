@@ -120,3 +120,62 @@ export async function getUserCredits() {
 
     return response.json();
 }
+
+// ─── Clip feedback ("¿lo publicarías tal cual?" — W7, docs/PLAN_CALIDAD.md §2) ──
+
+export type FeedbackMotivo =
+    | "arranca_mal"
+    | "termina_mal"
+    | "momento_flojo"
+    | "subtitulos_mal"
+    | "se_ve_mal"
+    | "copy_malo"
+    | "otro";
+
+export interface ClipFeedback {
+    id: string;
+    content_result_id: string;
+    user_id: string;
+    posteable: boolean;
+    motivo: FeedbackMotivo | null;
+    comentario: string | null;
+    created_at: string;
+}
+
+/**
+ * Última etiqueta del usuario para este clip, o null si todavía no etiquetó.
+ * Devuelve null también ante cualquier error de red — no debe romper el
+ * render de la card si el usuario no tiene sesión o el backend no responde.
+ */
+export async function getClipFeedback(contentResultId: string): Promise<ClipFeedback | null> {
+    try {
+        const response = await apiFetch(`/api/clips/${contentResultId}/feedback`);
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.feedback ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Guarda una etiqueta "lo publicaría / no lo publicaría" para un clip.
+ * Se guarda historial completo (no reemplaza etiquetas previas).
+ */
+export async function submitClipFeedback(
+    contentResultId: string,
+    payload: { posteable: boolean; motivo?: FeedbackMotivo | null; comentario?: string }
+): Promise<ClipFeedback> {
+    const response = await apiFetch(`/api/clips/${contentResultId}/feedback`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: "Unknown error" }));
+        throw new Error(error.message || error.error || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.feedback;
+}
