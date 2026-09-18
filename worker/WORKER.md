@@ -371,6 +371,14 @@ modelo es `:free` o apunta a Gemini 2.0 (apagado jun 2026).
    desde el texto REAL del clip recortado. Corre antes de `generate_clip` para
    que el overlay quemado sea el final. Si el clip cae a fallback de YouTube,
    hay un "copy rescue" con el slice del transcript.
+   **Fidelidad (W6):** el prompt recibe la primera y la última oración reales
+   del clip (derivadas de `clip_text`; sin puntuación caen al texto completo)
+   y exige que el hook sea algo que se dice, no una promesa del tema. Después
+   se valida contra el texto real (`services/content_validators.py`: overlay
+   con al menos una palabra de los primeros ~8 s aproximados por cantidad de
+   palabras, hook por subsecuencia difusa con 25% de tolerancia); si falla se
+   regenera una vez y si persiste cae a un fallback determinístico + flag
+   (`overlay_no_fiel` / `hook_no_fiel`, ver abajo).
 
 Con `TWO_PASS_ANALYSIS=false` (o si la pasada A falla) se usa el mega-prompt
 legacy y su copy queda como borrador que la pasada B pisa.
@@ -400,7 +408,10 @@ legacy y su copy queda como borrador que la pasada B pisa.
   `whisper_mismatch_first|last`, `clip_not_rendered`, `clip_generation_failed`
   las guardas W3 `timestamps_suspect`, `bad_segment`, `min_duration_reverted`
   y los cortes W1 `hook_not_found`, `payoff_not_found`, `margin_extended`,
-  `subs_disabled_timestamps` (ver `build_clip_quality_issues` en `services/validation.py`).
+  `subs_disabled_timestamps` (ver `build_clip_quality_issues` en `services/validation.py`),
+  más los flags de fidelidad de copy (W6) `overlay_no_fiel` y `hook_no_fiel`
+  — estos dos los setea `generate_moment_copy_full` en `moment.clip_quality_issues`;
+  falta mergearlos en la lista que arma `main.py` antes de `save_content_result`.
 - Migración histórica: `supabase/legacy/supabase_migration_ai_quality.sql`.
 
 ### Personalización (Fase 5)

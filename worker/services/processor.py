@@ -797,6 +797,19 @@ def generate_moment_copy_full(
     viral_overlay. Mutates moment in-place. El copy previo (si existía, del
     mega-prompt) queda como fallback si esta pasada falla.
 
+    W6 (docs/PLAN_CALIDAD.md §4): el juez castigaba hook y overlay por
+    prometer el TEMA del momento en vez de citar algo que la persona
+    realmente dice. Acá se verifica fidelidad contra `clip_text` (única
+    fuente de texto real que recibe esta función — no hay timestamps por
+    palabra disponibles sin tocar main.py, así que "primeros 8 s" se
+    aproxima por cantidad de palabras, ver
+    `content_validators.clip_text_head_approx`): si el overlay o el hook no
+    aparecen dichos en el clip, se regenera UNA vez con una corrección
+    explícita en el prompt; si sigue sin ser fiel, se cae a un fallback
+    determinístico (overlay derivado del texto real, hook = primera
+    oración) y se marca el flag correspondiente en
+    `moment.clip_quality_issues` ("overlay_no_fiel" / "hook_no_fiel").
+
     Returns True si el copy se regeneró OK.
     """
     if not clip_text or not clip_text.strip():
@@ -807,6 +820,15 @@ def generate_moment_copy_full(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
         )
+
+    from services.content_validators import (
+        clip_text_head_approx,
+        derive_overlay_from_text,
+        first_sentence,
+        hook_is_faithful,
+        last_sentence,
+        overlay_is_faithful,
+    )
 
     model = get_model("copy")
     hook_draft = getattr(moment, 'hook', '') or ''
@@ -822,12 +844,23 @@ def generate_moment_copy_full(
     }
     tone_desc = tone_map.get((tone or "profesional").lower(), tone_map["profesional"])
 
-    prompt = f"""Eres un copywriter viral senior. Genera el paquete COMPLETO de copy para este clip, usando SOLO el texto real del audio (no inventes contenido que no esté en el transcript).
+    # W6: bordes reales del clip (derivados de clip_text; si no hay
+    # puntuación de oración detectable, ambos caen al texto completo —
+    # comportamiento equivalente al de antes de W6).
+    clip_start_sentence = first_sentence(clip_text)
+    clip_end_sentence = last_sentence(clip_text)
+    clip_head = clip_text_head_approx(clip_text)
+
+    def _build_prompt(fidelity_correction: str = "") -> str:
+        return f"""Eres un copywriter viral senior. Genera el paquete COMPLETO de copy para este clip, usando SOLO el texto real del audio (no inventes contenido que no esté en el transcript).
 
 {lang_instruction}
 
 CLIP TRANSCRIPT (texto exacto del audio del clip final):
 {clip_text[:4000]}
+
+INICIO REAL DEL CLIP (primera oración — el hook y el overlay tienen que anclar acá): "{clip_start_sentence}"
+CIERRE REAL DEL CLIP (última oración — el remate del copy tiene que recogerlo): "{clip_end_sentence}"
 
 CONTEXTO:
 - Creador: {user_name} ({user_title})
@@ -838,58 +871,109 @@ CONTEXTO:
 - Overlay borrador: {overlay_draft}
 
 REGLAS POR PIEZA:
-1. twitter_thread: EXACTAMENTE 7 tweets separados por \\n\\n. Sin prefijos "Tweet 1:", sin [Link], sin hashtags de relleno. Cada tweet 180-280 chars y funciona solo fuera del hilo. Estructura: hook contraintuitivo → dolor específico → giro → prueba/mecanismo → aplicación práctica → remate que escala → CTA con pregunta abierta.
-2. linkedin_post: 800-1200 caracteres. Hook de 3 líneas antes del "ver más", párrafos de máx 2-3 líneas, bullets si aplica, pregunta de engagement al final. Sin pedir likes.
+1. twitter_thread: EXACTAMENTE 7 tweets separados por \\n\\n. Sin prefijos "Tweet 1:", sin [Link], sin hashtags de relleno. Cada tweet 180-280 chars y funciona solo fuera del hilo. Estructura: hook contraintuitivo → dolor específico → giro → prueba/mecanismo → aplicación práctica → remate que escala (recogiendo el CIERRE REAL) → CTA con pregunta abierta.
+2. linkedin_post: 800-1200 caracteres. Hook de 3 líneas antes del "ver más", párrafos de máx 2-3 líneas, bullets si aplica, pregunta de engagement al final que conecte con el CIERRE REAL. Sin pedir likes.
 3. tiktok_caption: 1-2 líneas coloquiales + 3-4 hashtags relevantes al tema.
-4. hook: frase gancho del momento (1-2 líneas, forma larga) fiel al contenido real del clip.
-5. viral_overlay: MÁXIMO 4 PALABRAS EN MAYÚSCULAS. Cartel TikTok que frena el scroll en <1s (ej: "NADIE TE DICE ESTO"). NO resume el clip.
+4. hook: una afirmación que la persona REALMENTE DICE en el clip (parafraseo leve permitido, inventar una promesa que el transcript no cumple NO). Ancla al INICIO REAL de arriba.
+5. viral_overlay: MÁXIMO 4 PALABRAS EN MAYÚSCULAS. Al menos una palabra tiene que salir del INICIO REAL del clip (arriba). Cartel TikTok que frena el scroll en <1s (ej: "NADIE TE DICE ESTO"). NO resume el tema del clip con palabras que la persona no dijo.
 
-PROHIBIDO: clichés de IA ("en el mundo de hoy", "descubre cómo", "es importante destacar", "sumérgete").
+PROHIBIDO: clichés de IA ("en el mundo de hoy", "descubre cómo", "es importante destacar", "sumérgete").{fidelity_correction}
 
 Responde SOLO JSON:
 {{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "..."}}"""
 
-    try:
-        response = client.chat.completions.create(
-            **build_chat_kwargs(
-                "copy",
-                model,
-                [
-                    {"role": "system", "content": "Copywriter viral senior. Respondes solo JSON válido."},
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-                timeout=60,
+    def _request_copy(fidelity_correction: str = "") -> Optional[dict]:
+        try:
+            response = client.chat.completions.create(
+                **build_chat_kwargs(
+                    "copy",
+                    model,
+                    [
+                        {"role": "system", "content": "Copywriter viral senior. Respondes solo JSON válido."},
+                        {"role": "user", "content": _build_prompt(fidelity_correction)},
+                    ],
+                    response_format={"type": "json_object"},
+                    timeout=60,
+                )
+            )
+            log_llm_usage("copy", model, response)
+            raw = response.choices[0].message.content if response.choices else None
+            if not raw or not raw.strip():
+                print("   ⚠️ Pasada B: LLM devolvió vacío")
+                return None
+            try:
+                return json.loads(raw.strip())
+            except json.JSONDecodeError:
+                from json_repair import repair_json
+                return json.loads(repair_json(raw.strip()))
+        except Exception as e:
+            print(f"   ⚠️ Pasada B falló: {str(e)[:150]}")
+            return None
+
+    data = _request_copy()
+    if data is None:
+        return False
+
+    # ── W6: fidelidad de hook y overlay contra el texto real ────────────────
+    overlay_candidate = data.get("viral_overlay") or overlay_draft
+    hook_candidate = data.get("hook") or hook_draft
+
+    overlay_ok = not overlay_candidate or overlay_is_faithful(overlay_candidate, clip_head)
+    hook_ok = not hook_candidate or hook_is_faithful(hook_candidate, clip_text)
+
+    if not overlay_ok or not hook_ok:
+        print(
+            f"   🔄 Copy fidelity retry (overlay_ok={overlay_ok}, hook_ok={hook_ok}) "
+            f"— regenerando con corrección de fidelidad"
+        )
+        retry_data = _request_copy(
+            fidelity_correction=(
+                "\n\nCORRECCIÓN OBLIGATORIA: el intento anterior usó un hook o un "
+                "overlay que NO aparece dicho en el clip — prometían el TEMA, no una "
+                f"frase real. El hook tiene que ser una afirmación cercana al INICIO "
+                f'REAL ("{clip_start_sentence}"). El overlay tiene que usar al menos '
+                f'una palabra de los primeros segundos del clip: "{clip_head}".'
             )
         )
-        log_llm_usage("copy", model, response)
-        raw = response.choices[0].message.content if response.choices else None
-        if not raw or not raw.strip():
-            print("   ⚠️ Pasada B: LLM devolvió vacío")
-            return False
+        if retry_data is not None:
+            data = retry_data
+            overlay_candidate = data.get("viral_overlay") or overlay_candidate
+            hook_candidate = data.get("hook") or hook_candidate
+            overlay_ok = not overlay_candidate or overlay_is_faithful(overlay_candidate, clip_head)
+            hook_ok = not hook_candidate or hook_is_faithful(hook_candidate, clip_text)
 
-        try:
-            data = json.loads(raw.strip())
-        except json.JSONDecodeError:
-            from json_repair import repair_json
-            data = json.loads(repair_json(raw.strip()))
+    quality_issues: list[str] = []
+    if overlay_candidate and not overlay_ok:
+        fallback = derive_overlay_from_text(clip_head)
+        print(f"   ⚠️ Overlay no fiel tras reintento — fallback derivado del texto real: {fallback!r}")
+        overlay_candidate = fallback
+        quality_issues.append("overlay_no_fiel")
+    if hook_candidate and not hook_ok:
+        print("   ⚠️ Hook no fiel tras reintento — fallback a la primera oración del clip")
+        hook_candidate = clip_start_sentence
+        quality_issues.append("hook_no_fiel")
 
-        cp = moment.content_pieces
-        if data.get("twitter_thread"):
-            cp.twitter_thread = data["twitter_thread"]
-        if data.get("linkedin_post"):
-            cp.linkedin_post = data["linkedin_post"]
-        if data.get("tiktok_caption"):
-            cp.tiktok_caption = data["tiktok_caption"]
-        if data.get("hook"):
-            moment.hook = data["hook"]
-        if data.get("viral_overlay"):
-            moment.viral_overlay = data["viral_overlay"]
-        print(f"   ✅ Pasada B: copy completo generado desde texto real ({len(clip_text)} chars, model={model})")
-        return True
-    except Exception as e:
-        print(f"   ⚠️ Pasada B falló: {str(e)[:150]}")
-        return False
+    cp = moment.content_pieces
+    if data.get("twitter_thread"):
+        cp.twitter_thread = data["twitter_thread"]
+    if data.get("linkedin_post"):
+        cp.linkedin_post = data["linkedin_post"]
+    if data.get("tiktok_caption"):
+        cp.tiktok_caption = data["tiktok_caption"]
+    if hook_candidate:
+        moment.hook = hook_candidate
+    if overlay_candidate:
+        moment.viral_overlay = overlay_candidate
+
+    if quality_issues:
+        existing = list(getattr(moment, "clip_quality_issues", None) or [])
+        for issue in quality_issues:
+            if issue not in existing:
+                existing.append(issue)
+        moment.clip_quality_issues = existing
+
+    print(f"   ✅ Pasada B: copy completo generado desde texto real ({len(clip_text)} chars, model={model})")
+    return True
 
 
 # Keep old function name for backwards compatibility

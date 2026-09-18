@@ -129,7 +129,13 @@ Puntúa contra la rúbrica. Responde SOLO JSON."""
             if val is None:
                 return None
             scores[key] = max(1, min(10, int(round(float(val)))))
-        scores["reasoning"] = str(data.get("reasoning") or "")[:500]
+        # W6: el reasoning se muestra completo en la UI ("Por qué este
+        # score", ViralMomentCard). 500 chars cortaba la 2da frase a mitad
+        # de palabra en textos normales; el límite de 400 tokens en
+        # TASK_MAX_TOKENS["judge"] (config/model_tiers.py) ya acota el
+        # tamaño total de la respuesta — este cap es solo una red de
+        # seguridad, no debería activarse en uso normal.
+        scores["reasoning"] = str(data.get("reasoning") or "")[:2000]
         return scores
     except Exception as e:
         print(f"   ⚠️ Judge falló (conservamos scores del análisis): {str(e)[:120]}")
