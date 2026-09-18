@@ -22,3 +22,6 @@ proxies.txt
 proxies-raw.txt
 supabase/.temp/
 supabase/.branches/
+
+# Datos crudos de la competencia (cuenta personal + MP4 de 188 MB)
+opus_test/

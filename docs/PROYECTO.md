@@ -1,6 +1,6 @@
 # viral-engine — Documento de entendimiento del proyecto
 
-**Fecha:** 16 de septiembre de 2026 · **Estado del proyecto:** parado desde el 8-jul-2026, arrancando nueva etapa (beta cerrada) · **Autor del código:** Agustín Bolioli (único desarrollador) · **Vocabulario:** [`CONTEXT.md`](../CONTEXT.md) · **Decisiones:** [`docs/adr/`](adr/) · **Guía para agentes:** [`AGENTS.md`](../AGENTS.md) · **Calidad de clips (diagnóstico y plan):** [`PLAN_CALIDAD.md`](PLAN_CALIDAD.md)
+**Fecha:** 16 de septiembre de 2026 · **Estado del proyecto:** parado desde el 8-jul-2026, arrancando nueva etapa (beta cerrada) · **Autor del código:** Agustín Bolioli (único desarrollador) · **Vocabulario:** [`CONTEXT.md`](../CONTEXT.md) · **Decisiones:** [`docs/adr/`](adr/) · **Guía para agentes:** [`AGENTS.md`](../AGENTS.md) · **Calidad de clips (diagnóstico y plan):** [`PLAN_CALIDAD.md`](PLAN_CALIDAD.md) · **Competencia (Opus Clip, mismo video):** [`ANALISIS_OPUS_CLIP.md`](ANALISIS_OPUS_CLIP.md)
 
 Este documento es la fuente única de entendimiento del proyecto: qué es, para quién, cómo funciona por dentro, en qué estado está y qué se decidió para la próxima etapa. Se escribió leyendo el 100 % del código (≈25 k líneas), las 15 migraciones SQL, los 127 commits y verificando la infraestructura en vivo. Cuando algo del código contradice a la documentación previa, manda el código y se señala.
 

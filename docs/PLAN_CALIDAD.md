@@ -236,6 +236,24 @@ Conflictos previsibles: `main.py` es tocado por guardas, cortes y selección →
 
 ---
 
+## 8. Lo que aprendimos de Opus Clip (18-sep-2026)
+
+Agustín corrió el mismo video de `podcast_general_01` por Opus Clip y guardó la respuesta completa; el análisis está en `docs/ANALISIS_OPUS_CLIP.md`. Lo que cambia para este plan:
+
+- **Confirma el núcleo:** los clips de Opus terminan al 100 % en fin de oración sobre un transcript puntuado por palabra, y su juez tampoco discrimina (32–37 sobre 40). W1 (cortes anclados) y W2 (el juez elige) son el camino correcto; **W4 (transcript puntuado con silencios) sube de prioridad** porque es la base de los cortes, los subtítulos y el "quitar silencios".
+- **Tope de duración:** 7 de sus 10 mejores clips superan nuestros 60 s (su #1 dura 96 s). Propuesta: tope 120 s con objetivo por género (podcast 30–90 s). Decisión de Agustín (§7, punto 6).
+- **Cantidad y presentación:** 42 clips con score curvado 83–99 y letras A–D contra nuestros 5 con 4–6 sobre 10. Nueva línea **W9 — muchos clips, ranking relativo, preview liviano y HD a pedido** (ver §6 del análisis). Decisión de Agustín (§7, punto 7).
+- **Encuadre y subtítulos:** layout de dos caras apiladas y subtítulos de 1–3 palabras con palabra clave resaltada. W5 se acota (paneles/caras por escena, sin seguimiento cuadro a cuadro) y se agrega un estilo de subtítulos v2 en `clip_generator`.
+- **Copy:** título + descripción + hashtags por clip, además de las tres piezas actuales.
+- **No copiar:** el juez "A para todos" como métrica interna; solo como capa de presentación separada del ranking.
+
+Decisiones nuevas para §7:
+
+6. **Tope de duración 60 → 120 s.** Cambia `validate_durations`, la Pasada A y los límites de W1; sube ~2× el tamaño de descarga y el render por clip. Propuesta: sí, ahora, porque sin esto el ranking de W2 nunca va a poder elegir la idea completa.
+7. **¿Cuántos clips entregamos y cómo?** Hoy 1/3/5 renderizados en HD. Propuesta: todos los candidatos viables como preview a baja resolución con score relativo, y HD + copy completo al descargar (lazy). Cambia el modelo de créditos: hay que decidir si el crédito se cobra por job o por clip descargado.
+
+---
+
 ## Apéndice — Datos crudos
 
 Los datos de los 20 clips (scores, razonamientos del juez, palabras Whisper, flags) se extrajeron de Supabase el 17-sep-2026 con los scripts de esta sesión y quedan como baseline cualitativo. El baseline cuantitativo reproducible lo produce W0 (`worker/eval/runs/`).
