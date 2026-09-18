@@ -275,7 +275,7 @@ Entry point: [`worker/main.py`](../worker/main.py). Documentación previa del au
 
 | Paso | `current_step` / progreso | Módulo | Qué pasa |
 |---|---|---|---|
-| 1–2 Transcript | `downloading` 10 → 40 | `services/yt_transcript.py` | Supadata (`/v1/youtube/transcript`) → segmentos con timestamps; fallback `youtube-transcript-api` solo fuera de producción. Metadatos por oEmbed (título, autor; **duración = 0**, se infiere del último segmento + 5 s). Guarda en `transcription_cache` (nunca se lee después, §13) |
+| 1–2 Transcript | `downloading` 10 → 40 | `services/yt_transcript.py` | Fuente según `TRANSCRIPT_SOURCE` (W4, default `supadata`): Supadata (`/v1/youtube/transcript`) → segmentos con timestamps; fallback `youtube-transcript-api` solo fuera de producción. Con `whisper_full` / `hybrid`, Whisper del audio completo (ver el párrafo debajo de la tabla). Metadatos por oEmbed (título, autor; **duración = 0**, se infiere del último segmento + 5 s). Guarda en `transcription_cache` (se lee para el Transcript de W4; para captions sigue sin leerse en el pipeline, §13) |
 | 3 Análisis | `analyzing` 50 → 65 | `services/processor.py` | Perfil del usuario (`display_name`, `professional_title`) + tono → `analyze_with_openrouter`: cache `analysis_cache` (clave `video_id + modelo + tono + PROMPT_VERSION=v4`) → clasificador (cache `category_cache`) → transcript compacto (~50 % menos tokens) → **Pasada A** (`moment_selector.py`) → saneo del JSON (json_repair, arrays de 1 elemento, `surgical_clipping` → `start_time/end_time`, `shareability` faltante) → validadores de contenido → `AnalysisResult` (Pydantic) → guarda en cache |
 | 3.5 Filtro | — | `services/validation.py` | `validate_durations` (10–60 s; el truncado a 60 s snapea al fin de segmento) · `filter_overlapping_moments` (>50 % → descarta) · `validate_against_transcript` (frases citadas). Si no queda ningún momento, el job falla |
 | 4 Descarga | `downloading` 70 → 80 | `main.py` + `services/downloader.py` | Selector de estrategia (§5.4) y descarga upfront o per-clip. Exige `RAPIDAPI_KEY` en producción |
@@ -283,6 +283,8 @@ Entry point: [`worker/main.py`](../worker/main.py). Documentación previa del au
 | 6 Cierre | `completed` 100 | `supabase_client.py`, `usage_tracker.py` | `UPDATE jobs completed` → `deduct_user_credit` (RPC) → `usage_summary` → limpieza de archivos. Si cualquier paso lanza excepción: `failed` + `error_message`, sin descuento |
 
 Los pasos `transcribing` y `clipping` que muestra la pantalla de progreso del frontend **nunca los emite el worker** (usa `downloading` dos veces): detalle cosmético a corregir.
+
+**Transcript de alta resolución (W4, [`PLAN_CALIDAD.md`](PLAN_CALIDAD.md) §4 y §9; causa C1).** Con `TRANSCRIPT_SOURCE=whisper_full` el paso 1–2 deja de depender de los captions: `downloader.download_audio_only` baja solo el audio (yt-dlp `bestaudio` → stream URL de audio por proxy sticky en el VPS → progresivo mínimo, que es lo único que YouTube ofrece sin cookies: formato 18, 360p, ~5 MB/min), `transcriber.transcribe_full_audio` lo parte con ffmpeg en tramos de 10 min con 5 s de solape y los transcribe con la misma cascada que el clip (Groq `whisper-large-v3-turbo` → OpenAI `whisper-1`, `verbose_json` con palabras, hasta 3 tramos en paralelo; el primero se transcribe solo para fijar el idioma), `merge_chunk_transcripts` une los tramos cortando en la mitad del solape por tiempo (sin reordenar palabras: los tiempos por palabra de Groq tienen jitter) y `transcript_lines.build_full_transcript` produce el Transcript: `words` con puntuación y mayúsculas (Groq las trae en las palabras; lo que falta se pega desde `segments[].text`) y tokens `__silence` con start/end en los huecos ≥ 0,3 s; `lines` = Líneas (oraciones con `start`/`end`/`text`: terminan en `. ? ! …` o en una pausa ≥ 1,5 s; los tramos de ≥ 40 palabras que Whisper dejó sin puntuar se puntúan con el modelo del clasificador, `TRANSCRIPT_PUNCTUATE_FALLBACK`); `wpm`; y `segments` = las Líneas, así que el clasificador, `validate_durations`, `validate_against_transcript` y el prompt de contexto de Whisper ven oraciones enteras sin cambiar de firma. La Pasada A recibe una Línea por renglón, `[mm:ss] Oración.` (el `mm` puede pasar de 59), en vez de los bloques `[s-e]: texto` de captions; el resto del prompt no cambia. `hybrid` = captions para el clasificador y las validaciones numéricas + Líneas de Whisper para la Pasada A (ADR 0007). Si el audio no baja o Whisper falla, el job sigue con captions (`source_fallback_from`). Whisper no recibe el título como `prompt`: medido, alucinaba el título, se saltaba los primeros 30 s y devolvía segmentos 3× más largos. Los consumidores de palabras (subtítulos, anclas W1, guardas W3) trabajan sobre la Transcripción del clip, que no trae silencios; cualquier consumidor del Transcript completo debe pasar por `transcript_lines.words_without_silence()`. Medido en `podcast_general_01` (77 min): 27 s de Whisper + ~20 s de puntuación de respaldo, US$0.052 + ~US$0.003, 13.460 palabras, 730 Líneas (98 % terminan en puntuación, 96 % arrancan en mayúscula, mediana 15 palabras / 4,8 s), 464 silencios ≥ 0,3 s (8 % del video), 174 wpm; el prompt de la Pasada A pesa lo mismo que el compacto de captions (80 k vs 79 k chars) con 4× más resolución (730 Líneas vs 176 bloques). Con `supadata` (default) nada de esto corre. Usage tracker: eventos `task=transcript_full` (y `punctuate`); cache de la Pasada A separada por fuente (`analysis_cache.effective_prompt_version()`: `v6` / `v6+whisper_full` / `v6+hybrid`). Tests: `tests/test_transcript_full.py`.
 
 ### 5.4 Estrategias de descarga de video (el punto crítico)
 
@@ -351,8 +353,9 @@ Pasos 1-5 (evaluación) y 6-10 (entrega) del corte por momento:
 
 | Cache | Dónde | Clave | Ahorra | Estado |
 |---|---|---|---|---|
-| Transcript | `transcription_cache` | `video_id` | Llamada a Supadata | **Se escribe pero no se lee** en el pipeline (solo en `eval/`) |
-| Análisis | `analysis_cache` | `video_id + model + tone + prompt_version` | Pasada A (~30–60 s y ~US$0.14) | Activo; invalidar subiendo `PROMPT_VERSION` en `analysis_cache.py` o con `worker/scripts/invalidate-analysis-cache.py` |
+| Transcript (captions) | `transcription_cache` | `video_id` | Llamada a Supadata | **Se escribe pero no se lee** en el pipeline (solo en `eval/`) |
+| Transcript completo (W4) | `transcription_cache` + copia local `downloads/{video_id}_transcript_{fuente}_{modelo}.json` | `video_id:whisper_full:whisper-large-v3-turbo` (clave compuesta en la columna `video_id`, sin migración) | Descarga de audio + Whisper (~US$0.05 y ~1 min por 77 min) | Activo: se lee antes de transcribir (`transcript_cache.get_cached_transcript(video_id, source, model)`) |
+| Análisis | `analysis_cache` | `video_id + model + tone + prompt_version` (`prompt_version` lleva sufijo `+whisper_full` / `+hybrid` según `TRANSCRIPT_SOURCE`, W4) | Pasada A (~30–60 s y ~US$0.14) | Activo; invalidar subiendo `PROMPT_VERSION` en `analysis_cache.py` o con `worker/scripts/invalidate-analysis-cache.py` |
 | Categoría | `category_cache` | `video_id + model` | Clasificador | Activo |
 | Raw clip + words | R2 `raw_clips/` + `content_results.raw_clip_url/whisper_words` | por momento | Re-descarga y Whisper en ediciones | Activo |
 
@@ -375,6 +378,7 @@ Cada llamada LLM (vía `log_llm_usage`), cada Whisper, cada fase de descarga y c
 | Resolución de clip | 720×1280 | `main.py`, `clip_edit_processor.py` |
 | Overlay | 3,5 s, arriba, ≤4 palabras | `clip_generator.py` |
 | Whisper por trozos | audio >20 min, trozos de 2 min | `transcriber.py` |
+| Transcript completo (W4) | tramos de 10 min + 5 s de solape, ≤3 en paralelo; silencio ≥ 0,3 s; Línea cierra en `. ? ! …` o pausa ≥ 1,5 s; respaldo de puntuación en tramos ≥ 40 palabras | `transcriber.py`, `transcript_lines.py` |
 | Presupuesto de descarga | 600 s | env |
 | Memoria del contenedor | 10 GB | `docker-compose*.yml` |
 | Tope de duración de video | **ninguno** (2 h solo en código legacy) | — |
@@ -531,6 +535,7 @@ Plantilla completa en [`.env.example`](../.env.example). Un solo `.env` en la ra
 | Frontend | `NEXT_PUBLIC_API_URL` | Sí |
 | Worker: IA | `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `MODEL_*`, `MODEL_*_REASONING`, `LOG_LLM_USAGE`, `TWO_PASS_ANALYSIS`, `COMPACT_TRANSCRIPT`, `ENABLE_ENTERTAINMENT_CATEGORY` | Las dos primeras sí |
 | Worker: YouTube | `SUPADATA_API_KEY`, `RAPIDAPI_KEY`, `USE_RAPIDAPI_DOWNLOAD`, `WEBSHARE_PROXY_FILE|LIST|URL`, `YOUTUBE_COOKIES`, `DOWNLOAD_*`, `CLIP_*`, `STRICT_SYNC_VALIDATION`, `YTDLP_CLIP_FALLBACK`, `USE_APIFY_FALLBACK`, `APIFY_TOKEN` | En producción: Supadata, RapidAPI y proxies |
+| Worker: transcript (W4) | `TRANSCRIPT_SOURCE=supadata\|whisper_full\|hybrid` (default `supadata`; fuente del Transcript que ve la Pasada A, §5.3), `TRANSCRIPT_PUNCTUATE_FALLBACK=true` (puntuar con el modelo barato los tramos que Whisper dejó sin puntuar) | No |
 | Worker: salida | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Sí para clips |
 | Worker: runtime | `ENVIRONMENT` (`production` cambia defaults de descarga), `MAX_WORKERS`, `FFMPEG_PATH`/`FFPROBE_PATH` (opcional), `LOG_LEVEL`, `LOG_FORMAT`, `WORKER_LOG_DIR`, `SENTRY_DSN_WORKER`, `PERSIST_USAGE_EVENTS`, `PRICING_OVERRIDES_JSON`, `PORT` (solo Render) | No |
 
@@ -733,12 +738,13 @@ bash deploy/format-proxies.sh proxies-raw.txt > proxies.txt      # convertir pro
 │   ├── context/job_context.py     contextvars job/usuario/momento/edición
 │   ├── models/schemas.py          Pydantic: ViralMoment, AnalysisResult
 │   ├── services/
-│   │   ├── yt_transcript.py       Supadata / youtube-transcript-api + oEmbed
+│   │   ├── yt_transcript.py       Fuente del Transcript (TRANSCRIPT_SOURCE): Supadata / youtube-transcript-api / Whisper completo + oEmbed
 │   │   ├── processor.py           Clasificador, mega-prompt legacy, Pasada B
 │   │   ├── moment_selector.py     Pasada A
 │   │   ├── scorer.py              Juez + ROI
 │   │   ├── downloader.py          yt-dlp, RapidAPI, proxies, partial download, Apify
-│   │   ├── transcriber.py         Whisper Groq/OpenAI, transcript compacto
+│   │   ├── transcriber.py         Whisper Groq/OpenAI, transcript compacto, audio completo por tramos (W4)
+│   │   ├── transcript_lines.py    W4: puntuación sobre palabras, Líneas, silencios, wpm, formato [mm:ss]
 │   │   ├── clip_generator.py      FFmpeg: corte, 9:16, SRT/ASS, overlay, generate_clip
 │   │   ├── validation.py          Duraciones, solapamiento, verificación de frases, anclas
 │   │   ├── content_validators.py  Limpieza y validación del copy

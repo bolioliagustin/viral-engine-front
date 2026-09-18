@@ -64,6 +64,7 @@ Al iniciar (`python main.py` o Docker):
 | `OPENAI_API_KEY` | Sí | Whisper fallback |
 | `GROQ_API_KEY` | Recomendada | Whisper preferido (más rápido) |
 | `SUPADATA_API_KEY` | Sí en VPS/cloud | Transcripts (IPs datacenter) |
+| `TRANSCRIPT_SOURCE` | No (default `supadata`) | `whisper_full` / `hybrid`: Transcript por Whisper del audio completo (W4) |
 | `R2_*` | Sí para clips | Upload a Cloudflare R2 |
 | `WEBSHARE_PROXY_FILE` | Sí en VPS | Proxies residenciales YouTube |
 | `USE_RAPIDAPI_DOWNLOAD` | Recomendada | URLs de stream cuando yt-dlp falla |
@@ -173,6 +174,41 @@ Metadata vía oEmbed (título, autor)
 
 **Ideal:** Supadata responde en < 5s con 100% de videos públicos.  
 **Sin descarga de video** en este paso — solo texto.
+
+**Transcript de alta resolución (W4, `TRANSCRIPT_SOURCE`, docs/PLAN_CALIDAD.md §4 y §9):**
+la Pasada A no puede cortar en oraciones sobre captions de 3–30 s sin puntuación (causa C1).
+Con `TRANSCRIPT_SOURCE=whisper_full` el paso 1–2 pasa a ser:
+
+```
+YouTube URL
+    ↓
+downloader.download_audio_only (bestaudio → stream de audio por proxy sticky → progresivo mínimo)
+    ↓
+transcriber.transcribe_full_audio: tramos de 10 min + 5 s de solape (ffmpeg),
+  Groq whisper-large-v3-turbo → OpenAI whisper-1, verbose_json con palabras, ≤3 en paralelo
+    ↓
+transcriber.merge_chunk_transcripts: une los tramos cortando en la mitad del solape (sin duplicar palabras)
+    ↓
+transcript_lines.build_full_transcript:
+  words  = palabras con puntuación y mayúsculas + tokens `__silence` (huecos ≥ 0,3 s)
+  lines  = Líneas (oración con start/end; termina en . ? ! … o pausa ≥ 1,5 s;
+           los tramos ≥ 40 palabras sin puntuar se puntúan con el modelo del clasificador)
+  segments = lines  (los consumidores actuales no cambian de firma)
+  wpm
+    ↓
+Cache en transcription_cache por (video_id, fuente, modelo) + copia local en downloads/
+```
+
+La Pasada A recibe `[mm:ss] Oración.` por renglón en vez de bloques (`processor.py`); el
+clasificador, `validate_durations` y `validate_against_transcript` ven las Líneas como
+`segments`. `hybrid` = captions para clasificador/validaciones + Líneas de Whisper para la
+Pasada A. Si el audio no baja o Whisper falla → captions (`source_fallback_from`). Los
+consumidores del Transcript completo deben usar `transcript_lines.words_without_silence()`;
+la Transcripción del clip (Step 5) no trae silencios. El cache de la Pasada A se separa por
+fuente (`analysis_cache.effective_prompt_version()` → `v6+whisper_full`). Usage:
+`task=transcript_full`. Medido en podcast_general_01 (77 min): ~50 s, US$0.055, 730 Líneas,
+98 % terminan en puntuación, 464 silencios, 174 wpm; segunda corrida desde cache en 1 s.
+Tests: `tests/test_transcript_full.py`. Con `supadata` (default) nada cambia.
 
 ### Step 3: Análisis IA
 
@@ -320,7 +356,7 @@ Cuando el usuario edita un clip en el frontend (`EditClipDrawer`):
 
 | Cache | Tabla | Evita |
 |-------|-------|-------|
-| Transcript | `transcription_cache` | Re-fetch Supadata mismo video |
+| Transcript | `transcription_cache` | Re-fetch Supadata mismo video; W4: `video_id:whisper_full:<modelo>` evita bajar el audio y Whisper |
 | Análisis IA | `analysis_cache` | Re-llamar Gemini mismo video |
 | Categoría | `category_cache` | Re-clasificar podcast/business |
 | Raw clip | R2 `raw_clips/` | Re-descargar segmento en re-edits |
@@ -544,7 +580,8 @@ worker/
 │   ├── yt_transcript.py       # Supadata + transcript cache
 │   ├── processor.py           # Clasificación + Gemini análisis
 │   ├── downloader.py          # yt-dlp, RapidAPI, partial download, proxies
-│   ├── transcriber.py         # Whisper Groq/OpenAI word-level
+│   ├── transcriber.py         # Whisper Groq/OpenAI word-level + audio completo por tramos (W4)
+│   ├── transcript_lines.py    # W4: puntuación sobre palabras, Líneas, silencios, wpm, [mm:ss]
 │   ├── clip_generator.py      # FFmpeg 9:16 + subtítulos + overlay
 │   ├── supabase_client.py     # DB, R2 upload, créditos, progress
 │   ├── usage_tracker.py       # job_usage_events + usage_summary
