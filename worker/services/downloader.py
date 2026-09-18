@@ -744,6 +744,99 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
     return str(video_path)
 
 
+def find_local_full_media(video_id: str) -> str | None:
+    """
+    Si ya hay un archivo local con el audio completo del video (audio solo,
+    video completo o muxeado de una descarga previa), devuelve su path para
+    no volver a YouTube. Lo usa el Transcript completo de W4.
+    """
+    candidates = list(DOWNLOADS_DIR.glob(f"{video_id}_audio_only.*"))
+    for name in (f"{video_id}_video.mp4", f"{video_id}_video.webm", f"{video_id}_video.mkv",
+                 f"{video_id}_muxed.mp4"):
+        candidates.append(DOWNLOADS_DIR / name)
+    for path in candidates:
+        if path.exists() and path.stat().st_size > 0 and not path.name.endswith(".part"):
+            return str(path)
+    return None
+
+
+def download_audio_only(video_url: str, video_id: str) -> str:
+    """
+    Descarga SOLO el audio del video para el Transcript completo de W4
+    (docs/PLAN_CALIDAD.md §4) a `downloads/{video_id}_audio_only.<ext>`.
+    Si ya existe un archivo local con el audio completo
+    (`find_local_full_media`), lo devuelve sin descargar. Tres estrategias:
+
+    A. yt-dlp `bestaudio` (audio DASH, ~70 MB/h) con cookies, cascada de
+       player_client y proxy de `_build_ydl_opts`.
+    B. Stream URLs (`get_stream_urls`: yt-dlp+proxy o RapidAPI) → descarga
+       secuencial del `audio_url` por el proxy sticky. Es el camino del VPS.
+    C. yt-dlp progresivo más chico con audio (`worst[acodec!=none]`). Es lo
+       único que YouTube ofrece sin cookies ni PO token (formato 18, 360p,
+       ~5 MB/min); el audio se extrae al partir en tramos. Camino de la Mac.
+    """
+    existing = find_local_full_media(video_id)
+    if existing:
+        print(f"♻️ Audio completo ya disponible en local: {Path(existing).name}")
+        return existing
+
+    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    errors: list[str] = []
+
+    def _ytdlp(fmt: str, label: str) -> str | None:
+        ydl_opts = _build_ydl_opts({
+            'format': fmt,
+            'outtmpl': str(DOWNLOADS_DIR / f'{video_id}_audio_only.%(ext)s'),
+            'ffmpeg_location': FFMPEG_LOCATION,
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            'noprogress': True,
+            'http_headers': {'User-Agent': _DEFAULT_UA},
+        })
+        try:
+            print(f"⬇️ Audio completo de {video_id} vía yt-dlp ({label})...")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(video_url, download=True)
+            found = find_local_full_media(video_id)
+            if not found:
+                raise FileNotFoundError("yt-dlp terminó sin dejar el archivo")
+            print(f"✅ Audio completo ({label}): {Path(found).name} "
+                  f"({Path(found).stat().st_size / (1 << 20):.1f} MB)")
+            return found
+        except Exception as e:
+            errors.append(f"{label}: {type(e).__name__}: {str(e)[:120]}")
+            print(f"⚠️ {label} falló ({type(e).__name__}: {str(e)[:120]})")
+            return None
+
+    # A. audio DASH
+    found = _ytdlp('bestaudio[ext=m4a]/bestaudio', 'bestaudio')
+    if found:
+        return found
+
+    # B. stream URL de audio por proxy sticky (VPS: yt-dlp+proxy o RapidAPI)
+    if _get_proxy_list() or os.getenv("RAPIDAPI_KEY"):
+        try:
+            print(f"⬇️ Audio completo de {video_id} vía stream URL + proxy sticky...")
+            urls = get_stream_urls(video_url, video_id)
+            out = DOWNLOADS_DIR / f"{video_id}_audio_only.m4a"
+            _download_bytes_sequential(
+                urls["audio_url"], out, label="audio completo",
+                sticky_proxy=urls.get("resolve_proxy"),
+            )
+            return str(out)
+        except Exception as e:
+            errors.append(f"stream: {type(e).__name__}: {str(e)[:120]}")
+            print(f"⚠️ stream URL de audio falló ({type(e).__name__}: {str(e)[:120]})")
+
+    # C. progresivo más chico con audio (Mac sin cookies: formato 18)
+    found = _ytdlp('worst[acodec!=none][vcodec!=none]/worst', 'progresivo mínimo')
+    if found:
+        return found
+
+    raise RuntimeError(f"No se pudo descargar el audio de {video_id}: " + " | ".join(errors))
+
+
 def download_clip_ytdlp(
     youtube_url: str,
     start_sec: float,

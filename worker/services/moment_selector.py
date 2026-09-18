@@ -277,6 +277,7 @@ Identifica los {num_candidates} MEJORES momentos candidatos del video. Sé exige
 
 REGLAS DE TIMING (CRÍTICAS):
 - Usa EXACTAMENTE los timestamps de la transcripción (no los inventes).
+- start_time y end_time se devuelven SIEMPRE en segundos absolutos desde el inicio del video (un número, sin formato): las marcas del transcript son referencia de lectura, y si alguna viene como [mm:ss] hay que convertirla (mm × 60 + ss).
 - Un momento es una idea completa: planteo, desarrollo y remate. Entre 20 y {CLIP_MAX_DURATION_SEC:.0f} segundos. En podcasts y entrevistas lo normal es 40-90 s; en videos cortos de un solo hablante, 20-60 s. Cortá siempre donde termina una oración.
 - El momento debe empezar donde empieza la IDEA (setup) y terminar donde termina (remate). No cortes a mitad de frase.
 - Momentos NO solapados (máximo 20% de overlap entre candidatos).

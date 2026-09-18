@@ -87,7 +87,7 @@ def _update_rollup(job_id: str, event: dict[str, Any]) -> None:
             r["by_provider"].get(provider, 0.0) + cost, 6
         )
 
-    if task == "whisper" and event.get("audio_seconds"):
+    if task in ("whisper", "transcript_full") and event.get("audio_seconds"):
         secs = float(event["audio_seconds"])
         r["whisper_seconds"] = round(r["whisper_seconds"] + secs, 3)
         if provider and not event.get("cache_hit"):
@@ -139,7 +139,10 @@ def _base_event(
     return {
         "job_id": job_id,
         "user_id": ctx.get("user_id"),
-        "event_type": "llm_chat" if task not in ("whisper", "download") else task,
+        "event_type": (
+            "llm_chat" if task not in ("whisper", "transcript_full", "download")
+            else ("whisper" if task == "transcript_full" else task)
+        ),
         "provider": provider,
         "task": task,
         "model": model,
@@ -217,12 +220,15 @@ def record_whisper_usage(
     moment_index: int | None = None,
     cache_hit: bool = False,
     metadata: dict[str, Any] | None = None,
+    task: str = "whisper",
 ) -> None:
-    """Registra transcripción Whisper con duración y costo estimado."""
+    """Registra transcripción Whisper con duración y costo estimado.
+    `task="transcript_full"` para los tramos del Transcript completo de W4
+    (mismo precio por segundo de audio; distinto rubro en el rollup)."""
     cost = 0.0 if cache_hit else estimate_whisper_cost_usd(provider, audio_seconds)
 
     event = _base_event(
-        task="whisper",
+        task=task,
         provider=provider,
         model=model,
         moment_index=moment_index,

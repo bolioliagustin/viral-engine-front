@@ -56,7 +56,9 @@ def _load_golden_set() -> dict:
 
 
 def _get_transcript(video: dict):
-    from services.yt_transcript import get_video_id, get_video_metadata, get_youtube_transcript
+    from services.yt_transcript import (
+        get_video_id, get_video_metadata, get_youtube_transcript, transcript_source,
+    )
     from services.transcript_cache import get_cached_transcript
 
     video_id = video.get("youtube_id") or get_video_id(video.get("url") or "")
@@ -64,7 +66,11 @@ def _get_transcript(video: dict):
         _log("   ❌ Sin youtube_id ni URL válida")
         return None
 
-    cached = get_cached_transcript(video_id)
+    # W4: con TRANSCRIPT_SOURCE=whisper_full|hybrid la cache de captions no
+    # sirve (la Pasada A tiene que ver las Líneas), así que el transcript se
+    # pide por el camino normal, que lee su propia cache por fuente+modelo.
+    source = transcript_source()
+    cached = get_cached_transcript(video_id) if source == "supadata" else None
     if cached:
         _log(f"   ✅ Transcript desde cache ({len(cached.get('segments') or [])} segments)")
         video_info = get_video_metadata(video_id)
@@ -73,7 +79,7 @@ def _get_transcript(video: dict):
             video_info["duration"] = float(segs[-1].get("end", 0))
         return cached, video_info
 
-    _log("   🌐 Transcript no cacheado — bajando de YouTube...")
+    _log(f"   🌐 Transcript no cacheado (fuente={source}) — pidiéndolo...")
     try:
         return get_youtube_transcript(
             video.get("url") or f"https://www.youtube.com/watch?v={video_id}"
@@ -89,6 +95,8 @@ def evaluate_video(video: dict, *, with_copy: bool = False, json_mode: bool = Fa
 
     from services.processor import analyze_with_openrouter, get_video_category
     from services.validation import (
+        CLIP_MAX_DURATION_SEC,
+        CLIP_MIN_DURATION_SEC,
         validate_durations,
         filter_overlapping_moments,
         evaluate_moment_phrase_metrics,
@@ -142,13 +150,21 @@ def evaluate_video(video: dict, *, with_copy: bool = False, json_mode: bool = Fa
     moments = analysis.viral_moments
     result["moments_selected"] = len(moments)
 
+    # El tope sale de validation.py (CLIP_MIN/MAX_DURATION_SEC, 15–120 s desde
+    # W2-B), no de literales: con 10/60 acá los tiers `analysis` y `full`
+    # truncaban momentos que el pipeline real deja pasar y `moments_truncated`
+    # contaba de más (la corrida de analysis de W4 reportó un
+    # duration_untruncated_rate=0.50 falso, con 4 momentos de 62–93 s).
     truncated = 0
     for m in moments:
         if m.start_time is not None and m.end_time is not None:
-            if (m.end_time - m.start_time) > 60:
+            if (m.end_time - m.start_time) > CLIP_MAX_DURATION_SEC:
                 truncated += 1
     valid = validate_durations(
-        list(moments), min_duration=10, max_duration=60, transcript=transcript
+        list(moments),
+        min_duration=CLIP_MIN_DURATION_SEC,
+        max_duration=CLIP_MAX_DURATION_SEC,
+        transcript=transcript,
     )
     valid = filter_overlapping_moments(valid, max_overlap_ratio=0.5)
     result["moments_valid"] = len(valid)

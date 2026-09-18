@@ -53,8 +53,16 @@ _Avoid_: bueno, aprobado, viral, válido
 ### Pipeline de IA
 
 **Transcript**:
-Texto con timestamps del video completo. Sale de los subtítulos de YouTube cuando la fuente tiene link, o del reconocimiento de voz sobre el audio completo cuando solo hay archivo. Es el insumo de la selección de momentos.
+Texto con timestamps del video completo. Sale de los subtítulos de YouTube (captions en bloques de 3–30 s) o del reconocimiento de voz sobre el audio completo (`TRANSCRIPT_SOURCE=whisper_full`: palabras con puntuación, silencios y líneas). Es el insumo de la selección de momentos.
 _Avoid_: transcripción (reservado para el clip), subtítulos
+
+**Línea**:
+Oración del transcript con su tiempo de inicio y fin, tal como la recibe la Pasada A cuando el transcript viene del audio completo (`[mm:ss] Oración.`). Termina en . ? ! … o en una pausa larga; es la unidad con la que se proponen los límites de un momento.
+_Avoid_: segmento (reservado para los bloques de Whisper/captions), frase (reservado para la Verificación), bloque
+
+**Silencio**:
+Hueco de al menos 0,3 s entre dos palabras del transcript, marcado como un token `__silence` con inicio y fin. Los consumidores de palabras (subtítulos, Verificación, guardas) lo ignoran.
+_Avoid_: pausa (cuando se habla del token), gap
 
 **Transcripción del clip**:
 Texto palabra por palabra con timestamps obtenido por reconocimiento de voz sobre el audio del clip ya cortado. Es la fuente de verdad para subtítulos, copy y juez.

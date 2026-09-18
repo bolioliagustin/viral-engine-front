@@ -113,11 +113,14 @@ def _record_whisper_result(
     model: str,
     result: Dict,
     audio_path: str,
+    usage_task: str = "whisper",
 ) -> None:
+    """Registra el evento de uso. `usage_task` distingue la transcripción del
+    clip (`whisper`) del transcript completo de W4 (`transcript_full`)."""
     try:
         from services.usage_tracker import record_whisper_usage
         seconds = _audio_duration_seconds(result, audio_path)
-        record_whisper_usage(provider, model, seconds)
+        record_whisper_usage(provider, model, seconds, task=usage_task)
     except Exception:
         pass
 
@@ -127,6 +130,7 @@ def transcribe_with_whisper_openrouter(
     prompt: str = None,
     language: str = None,
     provider: str | None = None,
+    usage_task: str = "whisper",
 ) -> Dict:
     """
     Transcribe audio using Whisper (via OpenRouter) with precise timestamps
@@ -138,6 +142,8 @@ def transcribe_with_whisper_openrouter(
             Un valor fuerza ese proveedor (W1: re-transcribir con el OTRO cuando
             los timestamps del primero son sospechosos). Solo aplica al camino
             single (≤ 20 min); el chunked sigue en OpenAI.
+        usage_task: nombre del evento en job_usage_events ("whisper" por
+            defecto; "transcript_full" para los tramos del Transcript de W4).
         
     Returns:
         {
@@ -165,7 +171,10 @@ def transcribe_with_whisper_openrouter(
         return _transcribe_chunked(audio_path, audio, prompt=prompt, language=language)
     else:
         print(f"📝 Transcribing audio with OpenAI ({duration_seconds/60:.1f} min)...")
-        return _transcribe_single(audio_path, prompt=prompt, language=language, provider=provider)
+        return _transcribe_single(
+            audio_path, prompt=prompt, language=language, provider=provider,
+            usage_task=usage_task,
+        )
 
 
 def _transcribe_with_provider(
@@ -196,6 +205,7 @@ def _transcribe_single(
     prompt: str = None,
     language: str = None,
     provider: str | None = None,
+    usage_task: str = "whisper",
 ) -> Dict:
     """
     Transcribe un audio. Prueba Groq primero (mejor/más rápido/barato),
@@ -229,7 +239,7 @@ def _transcribe_single(
             print(f"✅ Groq transcription: {n_segs} segments, {n_words} words")
             print(f"   Language: {result.get('language', 'unknown')}, "
                   f"Duration: {result.get('duration', 'N/A')}s")
-            _record_whisper_result("groq", "whisper-large-v3-turbo", result, audio_path)
+            _record_whisper_result("groq", "whisper-large-v3-turbo", result, audio_path, usage_task)
             result["provider"] = "groq"
             return result
         except Exception as e:
@@ -259,7 +269,7 @@ def _transcribe_single(
         print(f"✅ OpenAI transcription: {n_segs} segments, {n_words} words")
         print(f"   Language: {result.get('language', 'unknown')}, "
               f"Duration: {result.get('duration', 'N/A')}s")
-        _record_whisper_result("openai", "whisper-1", result, audio_path)
+        _record_whisper_result("openai", "whisper-1", result, audio_path, usage_task)
         result["provider"] = "openai"
         return result
     except Exception as e:
@@ -367,6 +377,260 @@ def _transcribe_chunked(audio_path: str, audio: 'AudioSegment', prompt: str = No
         cleanup_chunks(chunks)
 
 
+# ── W4: transcript del audio COMPLETO por tramos ────────────────────────────
+FULL_CHUNK_SEC = 600.0        # tramos de 10 min (≈ 4,8 MB de MP3 mono 16 kHz)
+FULL_OVERLAP_SEC = 5.0        # solape entre tramos; la costura se resuelve por tiempo
+FULL_MAX_PARALLEL = 3         # tramos en paralelo (rate limits de Groq)
+FULL_SEAM_BAND_SEC = 0.25     # ± alrededor de la costura: ambos tramos aportan, se deduplica
+
+
+# Whisper devuelve `language` como nombre ("spanish"), pero el parámetro
+# `language` de la API exige ISO-639-1 ("es"). Lista de idiomas de Whisper.
+_WHISPER_LANGUAGE_CODES = {
+    "english": "en", "chinese": "zh", "german": "de", "spanish": "es", "russian": "ru",
+    "korean": "ko", "french": "fr", "japanese": "ja", "portuguese": "pt", "turkish": "tr",
+    "polish": "pl", "catalan": "ca", "dutch": "nl", "arabic": "ar", "swedish": "sv",
+    "italian": "it", "indonesian": "id", "hindi": "hi", "finnish": "fi", "vietnamese": "vi",
+    "hebrew": "he", "ukrainian": "uk", "greek": "el", "malay": "ms", "czech": "cs",
+    "romanian": "ro", "danish": "da", "hungarian": "hu", "tamil": "ta", "norwegian": "no",
+    "thai": "th", "urdu": "ur", "croatian": "hr", "bulgarian": "bg", "lithuanian": "lt",
+    "latin": "la", "maori": "mi", "malayalam": "ml", "welsh": "cy", "slovak": "sk",
+    "telugu": "te", "persian": "fa", "latvian": "lv", "bengali": "bn", "serbian": "sr",
+    "azerbaijani": "az", "slovenian": "sl", "kannada": "kn", "estonian": "et",
+    "macedonian": "mk", "breton": "br", "basque": "eu", "icelandic": "is", "armenian": "hy",
+    "nepali": "ne", "mongolian": "mn", "bosnian": "bs", "kazakh": "kk", "albanian": "sq",
+    "swahili": "sw", "galician": "gl", "marathi": "mr", "punjabi": "pa", "sinhala": "si",
+    "khmer": "km", "shona": "sn", "yoruba": "yo", "somali": "so", "afrikaans": "af",
+    "occitan": "oc", "georgian": "ka", "belarusian": "be", "tajik": "tg", "sindhi": "sd",
+    "gujarati": "gu", "amharic": "am", "yiddish": "yi", "lao": "lo", "uzbek": "uz",
+    "faroese": "fo", "haitian creole": "ht", "pashto": "ps", "turkmen": "tk", "nynorsk": "nn",
+    "maltese": "mt", "sanskrit": "sa", "luxembourgish": "lb", "myanmar": "my", "tibetan": "bo",
+    "tagalog": "tl", "malagasy": "mg", "assamese": "as", "tatar": "tt", "hawaiian": "haw",
+    "lingala": "ln", "hausa": "ha", "bashkir": "ba", "javanese": "jv", "sundanese": "su",
+    "cantonese": "yue", "burmese": "my", "valencian": "ca", "flemish": "nl", "haitian": "ht",
+    "letzeburgesch": "lb", "pushto": "ps", "panjabi": "pa", "moldavian": "ro", "moldovan": "ro",
+    "sinhalese": "si", "castilian": "es",
+}
+
+
+def iso_language_code(lang: str | None) -> str | None:
+    """'Spanish' / 'spanish' / 'es-419' / 'es' → 'es'; None si no se reconoce."""
+    if not lang:
+        return None
+    t = str(lang).strip().lower()
+    if not t:
+        return None
+    if len(t) <= 3 and "-" not in t:
+        return t
+    if "-" in t and len(t.split("-")[0]) <= 3:
+        return t.split("-")[0]
+    return _WHISPER_LANGUAGE_CODES.get(t)
+
+
+def full_transcript_model() -> str:
+    """Modelo con el que se cachea el Transcript completo: Groq si hay clave, si no whisper-1."""
+    return "whisper-large-v3-turbo" if os.getenv("GROQ_API_KEY") else "whisper-1"
+
+
+def _shift_items(items: List[Dict], offset: float) -> List[Dict]:
+    out = []
+    for it in items or []:
+        it2 = dict(it)
+        it2["start"] = round(float(it2.get("start", 0)) + offset, 3)
+        it2["end"] = round(float(it2.get("end", it2["start"])) + offset, 3)
+        out.append(it2)
+    return out
+
+
+def _dedupe_seam_words(words: List[Dict], seams: List[float], band_sec: float, window: int = 6) -> List[Dict]:
+    """
+    Saca los duplicados de la banda de la costura SIN reordenar por tiempo
+    (los tiempos por palabra de Groq tienen jitter en los bordes de segmento y
+    ordenar por `start` cambiaba el orden del texto). Solo mira las palabras
+    cuyo centro cae a ≤ `band_sec` + 0,5 s de una costura: una de ellas se
+    descarta si repite (sin puntuación ni mayúsculas) a una de las últimas
+    `window` palabras con start a < 0,5 s. Lejos de las costuras no se toca
+    nada: "qué es lo que" tiene dos "que" a < 0,5 s y son legítimos.
+    """
+    from services.transcript_lines import _norm
+    reach = band_sec + 0.5
+
+    def _near_seam(w: Dict) -> bool:
+        mid = (float(w.get("start", 0)) + float(w.get("end", 0))) / 2
+        return any(abs(mid - seam) <= reach for seam in seams)
+
+    out: List[Dict] = []
+    for w in words:
+        if _near_seam(w):
+            w_norm = _norm(w.get("word", ""))
+            w_start = float(w.get("start", 0))
+            if any(
+                _near_seam(prev)
+                and w_norm == _norm(prev.get("word", ""))
+                and abs(w_start - float(prev.get("start", 0))) < 0.5
+                for prev in out[-window:]
+            ):
+                continue
+        out.append(w)
+    return out
+
+
+def merge_chunk_transcripts(
+    chunks: List[tuple],
+    overlap_sec: float = FULL_OVERLAP_SEC,
+    seam_band_sec: float = FULL_SEAM_BAND_SEC,
+) -> Dict:
+    """
+    Une los resultados de los tramos (`[(offset_sec, result_local), ...]`, en
+    orden) en una sola línea de tiempo, sin duplicar las palabras de las
+    costuras.
+
+    La costura entre el tramo k y el k+1 está en la mitad del solape
+    (`offset_{k+1} + overlap/2`): el tramo k aporta las palabras cuyo centro
+    cae antes de la costura (+ banda) y el k+1 las de después (− banda). La
+    banda evita perder una palabra que quedó justo en la costura con tiempos
+    distintos en cada tramo; el duplicado que pueda quedar en la banda lo
+    saca `_deduplicate_words` (mismo texto, start a < 0,5 s).
+    """
+    if not chunks:
+        return {"words": [], "segments": [], "language": None, "duration": 0.0}
+
+    offsets = [float(off) for off, _ in chunks]
+    seams = [offsets[i + 1] + overlap_sec / 2 for i in range(len(chunks) - 1)]
+
+    def _keep(item: Dict, k: int) -> bool:
+        mid = (float(item.get("start", 0)) + float(item.get("end", 0))) / 2
+        lower = seams[k - 1] - seam_band_sec if k > 0 else float("-inf")
+        upper = seams[k] + seam_band_sec if k < len(seams) else float("inf")
+        return lower <= mid < upper
+
+    all_words: List[Dict] = []
+    all_segments: List[Dict] = []
+    language = None
+    for k, (offset, result) in enumerate(chunks):
+        result = result or {}
+        if language is None and result.get("language"):
+            language = result["language"]
+        for w in _shift_items(result.get("words") or [], float(offset)):
+            if _keep(w, k):
+                all_words.append(w)
+        for sg in _shift_items(result.get("segments") or [], float(offset)):
+            if _keep(sg, k):
+                all_segments.append(sg)
+
+    all_words = _dedupe_seam_words(all_words, seams, seam_band_sec)
+    all_segments = _deduplicate_segments(all_segments)
+    for i, sg in enumerate(all_segments):
+        sg["id"] = i
+
+    last_off, last_res = chunks[-1]
+    duration = float(last_off) + float((last_res or {}).get("duration") or 0)
+    if all_words:
+        duration = max(duration, float(all_words[-1].get("end", 0)))
+    return {
+        "words": all_words,
+        "segments": all_segments,
+        "language": language,
+        "duration": round(duration, 3),
+    }
+
+
+def transcribe_full_audio(
+    audio_path: str,
+    *,
+    prompt: str | None = None,
+    language: str | None = None,
+    provider: str | None = None,
+    chunk_sec: float = FULL_CHUNK_SEC,
+    overlap_sec: float = FULL_OVERLAP_SEC,
+    max_parallel: int = FULL_MAX_PARALLEL,
+    usage_task: str = "transcript_full",
+    chunks_dir: str | None = None,
+) -> Dict:
+    """
+    Transcript del audio COMPLETO (W4): parte el audio en tramos de
+    `chunk_sec` con `overlap_sec` de solape, transcribe cada tramo con
+    `transcribe_with_whisper_openrouter` (Groq `whisper-large-v3-turbo` →
+    fallback OpenAI `whisper-1`, `verbose_json` con palabras; misma cascada y
+    reintentos que la transcripción del clip) hasta `max_parallel` a la vez, y
+    une los tramos sin duplicar palabras (`merge_chunk_transcripts`).
+
+    Si no se pasa `language`, el primer tramo se transcribe solo para detectar
+    el idioma y fijarlo en los demás (evita que un tramo salga en otro idioma).
+
+    Devuelve `{"words", "segments", "language", "duration", "providers",
+    "audio_seconds", "cost_usd", "elapsed_sec", "n_chunks"}` en la línea de
+    tiempo del audio. Las palabras vienen SIN puntuación y sin silencios: eso
+    lo agrega `transcript_lines.build_full_transcript`.
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from services.audio_utils import split_audio_ffmpeg, cleanup_chunks
+    from config.pricing import estimate_whisper_cost_usd
+
+    t0 = time.time()
+    chunks = split_audio_ffmpeg(
+        audio_path, chunk_sec=chunk_sec, overlap_sec=overlap_sec, out_dir=chunks_dir,
+    )
+    results: List[Dict | None] = [None] * len(chunks)
+
+    def _one(idx: int, lang: str | None) -> Dict:
+        path, offset = chunks[idx]
+        print(f"🎙️ Tramo {idx + 1}/{len(chunks)} (offset {offset/60:.1f} min)...")
+        return transcribe_with_whisper_openrouter(
+            path, prompt=prompt, language=lang, provider=provider, usage_task=usage_task,
+        )
+
+    try:
+        lang = iso_language_code(language)
+        start_idx = 0
+        if not lang:
+            results[0] = _one(0, None)
+            detected = results[0].get("language") or None
+            lang = iso_language_code(detected)
+            start_idx = 1
+            print(f"   🌐 Idioma detectado en el tramo 1: {detected!r} → {lang or 'sin fijar'}")
+
+        pending = list(range(start_idx, len(chunks)))
+        if pending:
+            with ThreadPoolExecutor(max_workers=max(1, min(max_parallel, len(pending)))) as pool:
+                for idx, res in zip(pending, pool.map(lambda i: _one(i, lang), pending)):
+                    results[idx] = res
+
+        merged = merge_chunk_transcripts(
+            [(off, results[i]) for i, (_, off) in enumerate(chunks)],
+            overlap_sec=overlap_sec,
+        )
+    finally:
+        for path, _ in chunks:
+            tj = path.replace(".mp3", "_transcript.json")  # lo deja _save_transcript
+            if os.path.exists(tj):
+                try:
+                    os.remove(tj)
+                except OSError:
+                    pass
+        cleanup_chunks(chunks)
+
+    providers = sorted({(r or {}).get("provider") or "?" for r in results})
+    audio_seconds = sum(float((r or {}).get("duration") or 0) for r in results)
+    cost = sum(
+        estimate_whisper_cost_usd((r or {}).get("provider") or "groq", float((r or {}).get("duration") or 0))
+        for r in results
+    )
+    merged["language"] = iso_language_code(merged.get("language")) or merged.get("language")
+    merged.update({
+        "providers": providers,
+        "audio_seconds": round(audio_seconds, 1),
+        "cost_usd": round(cost, 4),
+        "elapsed_sec": round(time.time() - t0, 1),
+        "n_chunks": len(chunks),
+    })
+    print(f"✅ Transcript completo: {len(merged['words'])} palabras, {len(merged['segments'])} segmentos, "
+          f"{merged['duration']/60:.1f} min de audio en {merged['elapsed_sec']:.0f} s, "
+          f"~US${cost:.4f} ({'/'.join(providers)})")
+    return merged
+
+
 def _deduplicate_segments(segments: List[Dict]) -> List[Dict]:
     """
     Remove duplicate segments that appear in overlap zones
@@ -402,18 +666,19 @@ def _deduplicate_segments(segments: List[Dict]) -> List[Dict]:
 def _deduplicate_words(words: List[Dict]) -> List[Dict]:
     """
     Elimina palabras duplicadas que aparecen en zonas de overlap entre chunks.
-    Criterio: si dos palabras tienen el mismo texto y su start difiere <0.5s,
-    se considera duplicado.
+    Criterio: si dos palabras tienen el mismo texto (sin puntuación ni
+    mayúsculas: las palabras de W4 traen la puntuación pegada) y su start
+    difiere <0.5s, se considera duplicado.
     """
     if not words:
         return words
+    from services.transcript_lines import _norm
     sorted_words = sorted(words, key=lambda w: float(w.get('start', 0)))
     dedup = []
     for w in sorted_words:
         if dedup:
             last = dedup[-1]
-            same_text = (w.get('word', '').strip().lower()
-                         == last.get('word', '').strip().lower())
+            same_text = _norm(w.get('word', '')) == _norm(last.get('word', ''))
             close_time = abs(float(w.get('start', 0)) - float(last.get('start', 0))) < 0.5
             if same_text and close_time:
                 continue
