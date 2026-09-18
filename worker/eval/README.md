@@ -182,7 +182,7 @@ Registrar en cada run: `models` del summary JSON + fecha.
 | Métrica | Umbral típico | Significado |
 |---------|---------------|-------------|
 | `category_accuracy` | ≥75% | Clasificador podcast/business |
-| `duration_pass_rate` | ≥85% | Momentos 10-60s tras validadores |
+| `duration_pass_rate` | ≥85% | Momentos dentro de `CLIP_MIN/MAX_DURATION_SEC` (15-120 s desde W2-B) tras validadores |
 | `phrase_anchor_pass_rate` | ≥55% | Frases citadas existen en el clip (fuzzy) |
 | `verification_strict_pass_rate` | null | Match estricto inicio/fin (suele ser bajo) |
 | `copy_clean_rate` | ≥85% | Momentos sin problemas de validación de copy |
