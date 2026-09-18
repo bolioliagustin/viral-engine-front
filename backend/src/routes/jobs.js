@@ -4,6 +4,7 @@ const path = require('path');
 const { supabase } = require('../lib/supabase');
 const rateLimit = require('express-rate-limit');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { curveMomentScores } = require('../lib/score-curve');
 
 const router = express.Router();
 
@@ -167,6 +168,24 @@ router.get('/status/:jobId', optionalAuth, async (req, res) => {
             .eq('job_id', jobId)
             .order('moment_index', { ascending: true });
 
+        // W10: "Score visible" — curva 60-99 + letras A-D, calculada por
+        // momento DENTRO de este job. Es solo presentación (score-curve.js);
+        // no toca score_judge ni el ranking que usa el pipeline. Una fila
+        // por content_result (3 por momento) trae el mismo score_judge
+        // repetido, así que alcanza con una fila por moment_index.
+        const rows = results || [];
+        const byMoment = new Map();
+        for (const r of rows) {
+            if (!byMoment.has(r.moment_index)) {
+                byMoment.set(r.moment_index, { moment_index: r.moment_index, score_judge: r.score_judge });
+            }
+        }
+        const curved = curveMomentScores(Array.from(byMoment.values()));
+        const resultsWithDisplay = rows.map((r) => ({
+            ...r,
+            ...(curved.get(r.moment_index) || { score_display: null, grades: null }),
+        }));
+
         res.json({
             id: job.id,
             videoUrl: job.video_url,
@@ -177,7 +196,7 @@ router.get('/status/:jobId', optionalAuth, async (req, res) => {
             errorMessage: job.error_message,
             createdAt: job.created_at,
             updatedAt: job.updated_at,
-            results: results || []
+            results: resultsWithDisplay
         });
 
     } catch (error) {

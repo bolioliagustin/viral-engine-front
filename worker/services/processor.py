@@ -801,6 +801,46 @@ def _clip_text_from_words(words: list[dict]) -> str:
     )
 
 
+# W10: genéricos vacíos que el prompt prohíbe pero el modelo a veces cuela
+# igual (normalizados: minúscula, sin acentos, sin '#').
+_GENERIC_HASHTAGS = {
+    "viral", "fyp", "parati", "foryou", "trending", "tendencia",
+    "explorar", "explore", "reels", "shorts", "tiktok",
+}
+
+
+def _clean_hashtags(raw: object, *, max_tags: int = 10) -> list[str]:
+    """
+    Normaliza la lista de hashtags de la Pasada B: '#' al frente, sin
+    acentos ni espacios, descarta genéricos vacíos y duplicados, tope 10.
+    No depende de content_validators.py (fuera del alcance de W10 en el
+    worker) — normalización mínima, local a esta función.
+    """
+    if not isinstance(raw, list):
+        return []
+    import unicodedata
+    import re
+
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for tag in raw:
+        if not isinstance(tag, str):
+            continue
+        t = unicodedata.normalize("NFKD", tag.strip().lstrip("#"))
+        t = "".join(ch for ch in t if not unicodedata.combining(ch))
+        t = re.sub(r"[^A-Za-z0-9]", "", t)
+        if not t or t.lower() in _GENERIC_HASHTAGS:
+            continue
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(f"#{t}")
+        if len(cleaned) >= max_tags:
+            break
+    return cleaned
+
+
 def generate_moment_copy_full(
     moment,
     clip_text: str,
@@ -816,9 +856,14 @@ def generate_moment_copy_full(
     Pasada B (Fase 2): genera TODO el copy del momento desde el texto real
     del clip (Whisper post-corte, o slice del transcript si no hay Whisper).
 
-    Genera: twitter_thread, linkedin_post, tiktok_caption, hook final y
-    viral_overlay. Mutates moment in-place. El copy previo (si existía, del
-    mega-prompt) queda como fallback si esta pasada falla.
+    Genera: twitter_thread, linkedin_post, tiktok_caption, hook final,
+    viral_overlay y, desde W10 (docs/PLAN_CALIDAD.md §9 Fase 0), el copy
+    por clip que se pega directo al publicar: title, description,
+    hashtags — lo que le faltaba a la card frente a Opus Clip (10 hashtags,
+    título con gancho, descripción de 2 oraciones; ver
+    docs/ANALISIS_OPUS_CLIP.md §2.4). Mutates moment in-place. El copy
+    previo (si existía, del mega-prompt) queda como fallback si esta
+    pasada falla.
 
     W6 (docs/PLAN_CALIDAD.md §4): el juez castigaba hook y overlay por
     prometer el TEMA del momento en vez de citar algo que la persona
@@ -899,11 +944,14 @@ REGLAS POR PIEZA:
 3. tiktok_caption: 1-2 líneas coloquiales + 3-4 hashtags relevantes al tema.
 4. hook: una afirmación que la persona REALMENTE DICE en el clip (parafraseo leve permitido, inventar una promesa que el transcript no cumple NO). Ancla al INICIO REAL de arriba.
 5. viral_overlay: MÁXIMO 4 PALABRAS EN MAYÚSCULAS. Al menos una palabra tiene que salir del INICIO REAL del clip (arriba). Cartel TikTok que frena el scroll en <1s (ej: "NADIE TE DICE ESTO"). NO resume el tema del clip con palabras que la persona no dijo.
+6. title: título del clip para publicar, MÁXIMO 60 caracteres, con gancho. Patrón "Tema: ¡afirmación o pregunta!" (ej: "Sarampión vs COVID: ¡La verdad de la inmunidad de grupo!").
+7. description: EXACTAMENTE 2 oraciones — la primera dice qué se ve/de qué trata, la segunda invita a mirar/reaccionar. Sin hashtags acá (van en su propio campo).
+8. hashtags: EXACTAMENTE 10, en español, SIN acentos, en CamelCase con "#" (ej: "#InmunidadDeGrupo"), específicos del tema del clip — PROHIBIDO usar genéricos vacíos tipo "#Viral", "#Fyp", "#ParaTi", "#Trending".
 
 PROHIBIDO: clichés de IA ("en el mundo de hoy", "descubre cómo", "es importante destacar", "sumérgete").{fidelity_correction}
 
 Responde SOLO JSON:
-{{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "..."}}"""
+{{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "...", "title": "...", "description": "...", "hashtags": ["...", "..."]}}"""
 
     def _request_copy(fidelity_correction: str = "") -> Optional[dict]:
         try:
@@ -994,6 +1042,15 @@ Responde SOLO JSON:
             if issue not in existing:
                 existing.append(issue)
         moment.clip_quality_issues = existing
+
+    # W10: copy por clip (título, descripción, hashtags)
+    if data.get("title"):
+        moment.title = str(data["title"]).strip()[:60]
+    if data.get("description"):
+        moment.description = str(data["description"]).strip()
+    hashtags = _clean_hashtags(data.get("hashtags"))
+    if hashtags:
+        moment.hashtags = hashtags
 
     print(f"   ✅ Pasada B: copy completo generado desde texto real ({len(clip_text)} chars, model={model})")
     return True

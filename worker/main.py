@@ -1853,6 +1853,13 @@ def _deliver_moment(
         words_per_sec=wps_val,
         clip_quality_issues=clip_quality_issues or None,
         clip_generation_error=clip_generation_error,
+        # W10 (gap de integración INT-1a): la Pasada B ya genera y guarda
+        # title/description/hashtags en el moment (services/processor.py,
+        # models/schemas.py), y save_content_result ya los acepta
+        # (services/supabase_client.py) — faltaba enchufarlos acá.
+        title=getattr(moment, "title", None),
+        description=getattr(moment, "description", None),
+        hashtags=getattr(moment, "hashtags", None),
     )
 
     if moment.content_pieces.twitter_thread:

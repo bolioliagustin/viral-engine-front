@@ -46,6 +46,10 @@ _Avoid_: re-render, regeneración, edit
 Puntuación 1–10 de un momento en tres métricas: hook, retención y compartibilidad. El score que ve el usuario es el del Juez.
 _Avoid_: rating, nota, viralidad (para la tercera métrica usar "compartibilidad")
 
+**Score visible**:
+Número 60–99 que ve el usuario en la card, curvado a partir del Score del Juez según el ranking de los momentos dentro de ese Job (el mejor momento siempre es 99); viene con una letra A–D por métrica. Es una capa de presentación: no cambia el Score interno ni el orden en que el pipeline elige o entrega los momentos.
+_Avoid_: score (a secas, para el visible), score curvado, curved score
+
 **Posteable**:
 Etiqueta que pone una persona a un clip cuando lo publicaría tal cual, sin editar. Es la fuente de verdad de calidad; el score del Juez es su aproximación automática.
 _Avoid_: bueno, aprobado, viral, válido
