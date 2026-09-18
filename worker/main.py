@@ -809,6 +809,7 @@ def _refine_bounds_legacy(
         find_phrase_start_in_words,
         find_hook_start_in_words,
         hook_keyword_overlap,
+        CLIP_MAX_DURATION_SEC,
     )
     from services.clip_generator import (
         refine_bounds_to_sentences,
@@ -826,7 +827,7 @@ def _refine_bounds_legacy(
     s_start, s_end = refine_bounds_to_sentences(
         clip_words, clip_duration,
         segments=clip_segments_whisper,
-        max_duration=60.0,
+        max_duration=CLIP_MAX_DURATION_SEC,
     )
     if s_start > trim_start:
         print(f"   📝 Sentence snap start: {trim_start:.2f} → {s_start:.2f}")
@@ -2006,15 +2007,22 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # inside processor.py BEFORE Pydantic validation, so timestamps are
         # guaranteed to be populated here (the workaround that used to live
         # in this step has been removed).
-        # Fase 3: el truncado a 60s ahora snapea al fin de frase del transcript.
+        # Fase 3: el truncado a CLIP_MAX_DURATION_SEC ahora snapea al fin de
+        # frase del transcript (W2-B: tope subido a 120s, docs/PLAN_CALIDAD.md
+        # §8-9 — con 60s se perdía la idea completa, ver ANALISIS_OPUS_CLIP.md).
         print("\n🔍 Step 3.5: Quality filter...")
         from services.validation import (
             validate_durations,
             filter_overlapping_moments,
             validate_against_transcript,
+            CLIP_MIN_DURATION_SEC,
+            CLIP_MAX_DURATION_SEC,
         )
         result.viral_moments = validate_durations(
-            result.viral_moments, min_duration=10, max_duration=60, transcript=transcript
+            result.viral_moments,
+            min_duration=CLIP_MIN_DURATION_SEC,
+            max_duration=CLIP_MAX_DURATION_SEC,
+            transcript=transcript,
         )
         result.viral_moments = filter_overlapping_moments(result.viral_moments, max_overlap_ratio=0.5)
 

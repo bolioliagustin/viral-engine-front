@@ -23,7 +23,11 @@ from services.supabase_client import get_supabase
 #     que main.py los evalúe con el juez antes de descartar. El prompt de la
 #     Pasada A no cambió, pero el shape cacheado (cuántos viral_moments trae)
 #     sí, así que hace falta invalidar el cache viejo.
-PROMPT_VERSION = "v5"
+# v6: W2-B (docs/PLAN_CALIDAD.md §8-9, análisis Opus Clip 18-sep-2026) — tope
+#     de duración del Momento 60 → 120 s (CLIP_MIN/MAX_DURATION_SEC en
+#     services/validation.py). Esta vez el TEXTO del prompt de la Pasada A sí
+#     cambió (moment_selector.get_selection_prompt: la guía de duración nueva).
+PROMPT_VERSION = "v6"
 
 
 def effective_prompt_version(transcript_source: str | None = None) -> str:

@@ -7,6 +7,7 @@ from typing import Optional
 from models.schemas import AnalysisResult
 from config.model_tiers import get_model, output_language_instruction
 from config.llm_chat import build_chat_kwargs, log_llm_usage
+from services.validation import CLIP_MAX_DURATION_SEC
 
 
 def get_video_category(video_info: dict, client=None, transcript_excerpt: str = None) -> str:
@@ -195,7 +196,7 @@ CONTEXTO DEL CREADOR:
 
 ANÁLISIS DE AUDIO:
 {moments_instruction}
-Cada momento debe tener máximo 60 segundos de duración.
+Un momento es una idea completa: planteo, desarrollo y remate. Entre 20 y {CLIP_MAX_DURATION_SEC:.0f} segundos. En podcasts y entrevistas lo normal es 40-90 s; en videos cortos de un solo hablante, 20-60 s. Cortá siempre donde termina una oración.
 
 Prioriza momentos con:
 1. **Contrarian Truths**: Ideas que rompen creencias comunes

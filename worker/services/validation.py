@@ -5,6 +5,14 @@ import re
 import unicodedata
 from typing import Optional
 
+# Duración de un Momento (docs/PLAN_CALIDAD.md §8-9, análisis Opus Clip
+# 18-sep-2026, `docs/ANALISIS_OPUS_CLIP.md`): 7 de los 10 mejores clips de
+# Opus sobre nuestro propio golden set (podcast_general_01) duran más de
+# 60 s — su #1 dura 96 s y empieza donde el tope viejo nos obligaba a
+# cortar. Menos de 15 s no alcanza para plantear una idea.
+CLIP_MIN_DURATION_SEC = 15.0
+CLIP_MAX_DURATION_SEC = 120.0
+
 
 def validate_video_duration(duration_seconds: int, max_duration: int = 7200) -> None:
     """
@@ -710,8 +718,8 @@ def compute_clip_bounds(
     seg_start_abs: float,
     seg_end_abs: float,
     video_duration: float,
-    min_s: float = 15.0,
-    max_s: float = 60.0,
+    min_s: float = CLIP_MIN_DURATION_SEC,
+    max_s: float = CLIP_MAX_DURATION_SEC,
     hint_start_abs: float | None = None,
     hint_end_abs: float | None = None,
     segments: list[dict] | None = None,
@@ -972,7 +980,7 @@ def build_clip_quality_issues(
       - hook_not_found: first_phrase_in_audio no apareció en el segmento; el
         inicio se decidió por ancla de hook o por el start_time numérico.
       - payoff_not_found: last_phrase_in_audio no apareció (ni tras extender el
-        margen) o no entró en los 60 s; el fin es un fin de oración de respaldo.
+        margen) o no entró en los 120 s; el fin es un fin de oración de respaldo.
       - margin_extended: se re-descargó el segmento con +25 s al final para
         buscar la última frase.
       - margin_extension_failed: la última frase no aparece y la re-descarga
@@ -1067,8 +1075,8 @@ def _snap_end_to_segment_boundary(
 
 def validate_durations(
     viral_moments: list,
-    min_duration: int = 10,
-    max_duration: int = 60,
+    min_duration: float = CLIP_MIN_DURATION_SEC,
+    max_duration: float = CLIP_MAX_DURATION_SEC,
     transcript: dict = None,
 ) -> list:
     """

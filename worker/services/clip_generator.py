@@ -43,6 +43,14 @@ FFPROBE_PATH = _resolve_bin('FFPROBE_PATH', 'ffprobe')
 
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
 
+# cut_clip() también corta el "segmento ancho" de W1 (services.validation.
+# CLIP_MIN/MAX_DURATION_SEC), no solo el clip final. Con el tope de Momento
+# en 120 s (docs/PLAN_CALIDAD.md §8-9), el segmento ancho puede llegar a
+# margen_antes(15) + clip(120) + margen_después(20) + extensión de remate
+# W1 (25) = 180 s exactos; el tope viejo de 180 no dejaba margen de
+# redondeo. 240 s da headroom sin abrir la puerta a un corte descontrolado.
+MAX_CUT_CLIP_DURATION_SEC = 240
+
 
 def cleanup_clips(video_id: str) -> None:
     """Borra los MP4 locales de un video ya subido a R2."""
@@ -166,8 +174,10 @@ def cut_clip(
     if duration < 3:
         raise ClipGenerationError(f"Clip demasiado corto (<3s): {duration}s")
 
-    if duration > 180:
-        raise ClipGenerationError(f"Clip demasiado largo (>3min): {duration}s")
+    if duration > MAX_CUT_CLIP_DURATION_SEC:
+        raise ClipGenerationError(
+            f"Clip demasiado largo (>{MAX_CUT_CLIP_DURATION_SEC}s): {duration}s"
+        )
 
     # Verificar que el rango este dentro del video
     source_meta = probe_video(video_path)
@@ -187,7 +197,7 @@ def cut_clip(
 
     # FFmpeg con re-encode preciso
     # -ss DESPUES de -i = seek preciso pero mas lento
-    # Para clips <60s no es problema, ganamos precision
+    # Para clips de hasta MAX_CUT_CLIP_DURATION_SEC no es problema, ganamos precision
     # -threads 2: limita uso de memoria (default = all cores → buffers enormes en RAM)
     # -preset veryfast: ~30% menos RAM que 'fast', calidad casi idéntica para clips cortos
     # -loglevel error: evita bufferar cientos de KB de progress output en capture_output

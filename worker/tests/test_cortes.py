@@ -19,6 +19,7 @@ from services.validation import (  # noqa: E402
     sentence_bounds_around,
     compute_clip_bounds,
     build_clip_quality_issues,
+    CLIP_MAX_DURATION_SEC,
 )
 
 
@@ -176,7 +177,7 @@ class TestComputeClipBounds:
         assert r["start_rel"] == pytest.approx(first_w["start"] - 0.25, abs=0.01)
         payoff_end = WIDE[locate_phrase(WIDE, PAYOFF, prefer="last")["end_idx"]]["end"]
         assert r["end_rel"] == pytest.approx(payoff_end + 0.40, abs=0.01)
-        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 60.0
+        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 120.0
         assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
         assert r["evidence"]["extend_recommended"] is False
 
@@ -199,7 +200,7 @@ class TestComputeClipBounds:
         assert r["evidence"]["extend_recommended"] is True
         # Fin de respaldo: primer fin de oración en o después del end_time numérico
         assert r["evidence"]["end_source"] in ("sentence_after_hint", "last_fitting_sentence")
-        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 60.0
+        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 120.0
         # y sigue arrancando en la primera frase
         assert r["evidence"]["start_source"] == "first_phrase"
 
@@ -278,9 +279,11 @@ class TestComputeClipBounds:
         assert r["flags"] == []
 
     def test_long_clip_moves_start_forward_before_dropping_payoff(self):
-        # Primera frase + 65 s hasta el remate (> 60 s): antes que perder la
-        # última frase se mueve el START al siguiente inicio de oración
-        # (decisión del brief W1); la primera frase queda afuera y se flaggea.
+        # Primera frase + 65 s hasta el remate (> max_s=60, explícito para
+        # ejercitar el truncado sin depender del tope por defecto del sistema,
+        # que W2-B subió a 120s): antes que perder la última frase se mueve
+        # el START al siguiente inicio de oración (decisión del brief W1); la
+        # primera frase queda afuera y se flaggea.
         sentences = [(FIRST, 0.0)] + [
             (f"Oración de relleno número {i} que dura lo suficiente para sumar tiempo.", 0.4)
             for i in range(7)
@@ -290,6 +293,7 @@ class TestComputeClipBounds:
         r = compute_clip_bounds(
             words, FIRST, PAYOFF,
             seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+            max_s=60.0,
         )
         payoff_end = words[locate_phrase(words, PAYOFF, prefer="last")["end_idx"]]["end"]
         assert 15.0 <= r["end_rel"] - r["start_rel"] <= 60.0
@@ -305,17 +309,56 @@ class TestComputeClipBounds:
     def test_long_clip_without_room_cuts_end_and_flags(self):
         # Una sola oración larguísima (sin puntuación ni gaps) de 80 s con la
         # primera frase al inicio y el remate al final: no hay inicio de oración
-        # al que mover el start → se corta a ≤ 60 s y se flaggea el remate perdido.
+        # al que mover el start → se corta a ≤ max_s y se flaggea el remate
+        # perdido. max_s=60 explícito para ejercitar el truncado (el tope por
+        # defecto del sistema es 120s desde W2-B).
         text = FIRST[:-1] + " " + " ".join(f"relleno{i}" for i in range(90)) + " " + PAYOFF
         words = _speak(text, 0.0, wps=1.5)
         dur = words[-1]["end"] + 1.0
         r = compute_clip_bounds(
             words, FIRST, PAYOFF,
             seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+            max_s=60.0,
         )
         assert r["end_rel"] - r["start_rel"] <= 60.0
         assert "payoff_not_found" in r["flags"]
         assert r["evidence"].get("payoff_dropped_for_max") is True
+
+    def test_95s_candidate_is_not_truncated_by_120s_cap(self):
+        # W2-B (docs/PLAN_CALIDAD.md §8-9, análisis Opus Clip): con el tope
+        # viejo (60s) este candidato bien formado —planteo, desarrollo y
+        # remate en ~96s— se truncaba y perdía el remate. Con
+        # CLIP_MAX_DURATION_SEC=120 pasa entero, sin flags.
+        fillers = [
+            (f"Desarrollo del argumento numero {i} con varias palabras para sumar tiempo real.", 0.4)
+            for i in range(10)
+        ]
+        sentences = [(FIRST, 0.0)] + fillers + [(PAYOFF, 0.4)]
+        words = _segment(sentences, wps=1.5)
+        content_duration = words[-1]["end"] - words[0]["start"]
+        assert 90.0 < content_duration < 110.0  # el fixture realmente supera los 60s viejos
+        dur = words[-1]["end"] + 2.0
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["flags"] == []
+        assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
+        clip_duration = r["end_rel"] - r["start_rel"]
+        assert 90.0 < clip_duration <= CLIP_MAX_DURATION_SEC
+
+    def test_validate_durations_keeps_95s_moment_with_new_default(self):
+        # Mismo caso a nivel de validate_durations (Step 3.5 en main.py):
+        # ya no pasa min_duration=10/max_duration=60 a mano, usa los defaults
+        # CLIP_MIN/MAX_DURATION_SEC (15/120) — un momento de 95s bien formado
+        # llega intacto, no se recorta a 60.
+        from services.validation import validate_durations
+        from types import SimpleNamespace
+
+        moment = SimpleNamespace(start_time=100.0, end_time=195.0, hook="idea completa de 95s")
+        kept = validate_durations([moment])
+        assert len(kept) == 1
+        assert kept[0].end_time == 195.0  # sin recortar
 
     def test_never_start_lowercase_if_sentence_start_within_2s(self):
         # La "primera frase" empieza en minúscula a mitad de oración corta:
