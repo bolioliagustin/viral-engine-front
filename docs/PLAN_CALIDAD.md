@@ -254,6 +254,40 @@ Decisiones nuevas para §7:
 
 ---
 
+## 9. Plan de acción "ir por Opus" (decidido el 18-sep-2026)
+
+Agustín aprobó el análisis completo (`ANALISIS_OPUS_CLIP.md`) y las dos decisiones de §8: **tope de duración 120 s** y **entrega tipo "todos los clips viables como preview, HD y copy al descargar"**. Este plan reordena las líneas W0–W8 y agrega W9–W11. La regla no cambia: cada cambio se mide en el tier `e2e` contra la corrida anterior, una medición a la vez.
+
+### Fase 0 — esta semana, en paralelo (tres agentes)
+
+| Línea | Qué | Agente / rama | Mide contra |
+|---|---|---|---|
+| **W2-B** Tope 120 s + medir W2 | `validate_durations` 10–60 → 15–120; prompt de Pasada A ("una idea completa: planteo, desarrollo y remate; 20–120 s; en podcast lo normal es 40–90 s"); `compute_clip_bounds(max_s=120)`; márgenes de descarga acordes; `PROMPT_VERSION` v6. Luego la medición e2e de W2 que quedó pendiente. | selección / `feat/juez-elige` | `2026-09-18-w1-cortes.json` |
+| **W6** remedir | La corrida con el fix de `hook_is_faithful` (bolsa de palabras). | copy / `feat/copy-fiel-al-clip` | `2026-09-18-w1-cortes.json` |
+| **W4** Transcript puntuado con silencios | Whisper del audio completo (Groq `whisper-large-v3-turbo`, `verbose_json` con palabras), puntuación y mayúsculas, tokens de silencio ≥ 0,3 s con duración, `wordsPerMinute`; detrás de `TRANSCRIPT_SOURCE=whisper_full|supadata|hybrid`; la Pasada A recibe líneas (oraciones) en vez de bloques de captions. | transcript / `feat/transcript-whisper-full` | corrida W2-B (misma rama base) |
+| **W10** Copy por clip + presentación del score | Título (≤ 60 chars), descripción (2 oraciones) y 10 hashtags por momento (además de tweet/post/caption); `reasoning` del juez en español y constructivo; **capa de presentación**: percentil curvado 60–99 sobre el ranking del juez dentro del job + letra A–D por dimensión; la card muestra título, score curvado, letras y "por qué"; el juez interno no cambia. Migración CLI para las columnas nuevas. | producto / `feat/copy-por-clip` | no mide juez: revisión visual en preview de Vercel |
+
+### Fase 1 — próximas dos semanas
+
+| Línea | Qué | Depende de |
+|---|---|---|
+| **W11** Subtítulos v2 | 1–3 palabras por bloque (el modelo decide cortes por énfasis), mayúsculas, borde 12–16 px, palabra clave resaltada en color (1–2 por bloque, elegidas por el modelo en la Pasada B), sin texto en silencios; estilo `tiktok_viral_v2` por defecto, el actual queda como opción. | W4 (silencios) — puede arrancar con las palabras de Whisper actuales |
+| **W9** Muchos clips, ranking relativo, preview + HD a pedido | El worker evalúa todos los candidatos viables (objetivo ≥ 1 cada 2–3 min de video), renderiza **preview 480×854 `veryfast`** de todos y guarda el ranking; el HD 720p (y luego 1080p) y la Pasada B completa se generan **al descargar** (job de re-render, mecanismo ya existente de `clip_edits`); la card muestra la galería completa ordenada por score curvado; **crédito por job** (se cobra al encolar, ADR 0005) y HD ilimitado dentro del job. Requiere ADR 0008 (modelo de entrega y créditos). | W2 (ranking), W2-B (tope), W10 (presentación) |
+| **W5** Encuadre por paneles/caras (acotado) | Por escena (PySceneDetect): detectar paneles (videollamada) y caras (YuNet/OpenCV, CPU, 2 fps); layouts `Split` (dos caras apiladas), `Fill` (una cara, recorte centrado con seguimiento suave por escena) y `Fit` (fondo desenfocado, el actual) como fallback; sin seguimiento cuadro a cuadro en v1. | nadie; rama larga |
+
+### Fase 2 — después de la beta
+
+- W8 modelos/prompts con la rueda ya girando; detección de patrocinio; "quitar silencios" en el editor; exportar XML; HD 1080p como upsell; email al terminar.
+
+### Objetivos revisados (sobre el golden set, tier `e2e`)
+
+- Juez ≥ 6,5 promedio y ≥ 40 % de clips con las tres ≥ 7 al cerrar la Fase 0 (hoy 5,15 y 0 %); ≥ 7,0 y ≥ 60 % al cerrar la Fase 1.
+- 100 % de clips terminan en fin de oración y ≥ 90 % arrancan con mayúscula (W4).
+- ≥ 8 clips entregados por video de 60 min (W9), 0 clips con `bad_segment` entregados.
+- Posteable ≥ 70 % en la etiqueta humana (W7), que sigue siendo la verdad.
+
+---
+
 ## Apéndice — Datos crudos
 
 Los datos de los 20 clips (scores, razonamientos del juez, palabras Whisper, flags) se extrajeron de Supabase el 17-sep-2026 con los scripts de esta sesión y quedan como baseline cualitativo. El baseline cuantitativo reproducible lo produce W0 (`worker/eval/runs/`).
