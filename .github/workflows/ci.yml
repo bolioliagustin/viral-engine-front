@@ -53,6 +53,12 @@ jobs:
       - name: Run tests
         working-directory: worker
         run: python -m pytest tests/ -v
+        env:
+          ENVIRONMENT: development
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_KEY: test
+          OPENROUTER_API_KEY: test
+          OPENAI_API_KEY: test
 
   build:
     name: Docker Build
