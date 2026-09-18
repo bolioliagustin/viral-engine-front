@@ -794,9 +794,13 @@ def generate_moment_copy_full(
     Pasada B (Fase 2): genera TODO el copy del momento desde el texto real
     del clip (Whisper post-corte, o slice del transcript si no hay Whisper).
 
-    Genera: twitter_thread, linkedin_post, tiktok_caption, hook final y
-    viral_overlay. Mutates moment in-place. El copy previo (si existía, del
-    mega-prompt) queda como fallback si esta pasada falla.
+    Genera: twitter_thread, linkedin_post, tiktok_caption, hook final,
+    viral_overlay y, desde W11 (docs/PLAN_CALIDAD.md §9 Fase 1), keywords —
+    6-12 palabras del texto real del clip a resaltar en color en el estilo
+    de subtítulos `tiktok_viral_v2` (si no vienen, el render usa una
+    heurística local, ver services/clip_generator.py::detect_keywords_v2).
+    Mutates moment in-place. El copy previo (si existía, del mega-prompt)
+    queda como fallback si esta pasada falla.
 
     Returns True si el copy se regeneró OK.
     """
@@ -844,11 +848,12 @@ REGLAS POR PIEZA:
 3. tiktok_caption: 1-2 líneas coloquiales + 3-4 hashtags relevantes al tema.
 4. hook: frase gancho del momento (1-2 líneas, forma larga) fiel al contenido real del clip.
 5. viral_overlay: MÁXIMO 4 PALABRAS EN MAYÚSCULAS. Cartel TikTok que frena el scroll en <1s (ej: "NADIE TE DICE ESTO"). NO resume el clip.
+6. keywords: 6-12 palabras EXACTAS del CLIP TRANSCRIPT de arriba (cítalas tal cual aparecen, sin inventar ni parafrasear) que convenga resaltar en color en los subtítulos: números, nombres propios, verbos fuertes, negaciones — las palabras que un editor humano marcaría a mano para que salten al ojo.
 
 PROHIBIDO: clichés de IA ("en el mundo de hoy", "descubre cómo", "es importante destacar", "sumérgete").
 
 Responde SOLO JSON:
-{{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "..."}}"""
+{{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "...", "keywords": ["...", "..."]}}"""
 
     try:
         response = client.chat.completions.create(
@@ -886,6 +891,13 @@ Responde SOLO JSON:
             moment.hook = data["hook"]
         if data.get("viral_overlay"):
             moment.viral_overlay = data["viral_overlay"]
+        # W11: palabras a resaltar en el estilo de subtítulos tiktok_viral_v2
+        # (services/clip_generator.py::detect_keywords_v2). Sin esto (jobs
+        # legacy o si el modelo omite el campo), el render cae a la
+        # heurística local.
+        kw = data.get("keywords")
+        if isinstance(kw, list) and kw:
+            moment.keywords = [str(k).strip() for k in kw if str(k or "").strip()][:12]
         print(f"   ✅ Pasada B: copy completo generado desde texto real ({len(clip_text)} chars, model={model})")
         return True
     except Exception as e:
