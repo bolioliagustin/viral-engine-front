@@ -329,7 +329,14 @@ def _resolve_moment_video_source(
             muxed_video_path, start_s, end_s, start_s, None, 0.0, muxed_end, "muxed",
         )
 
-    if _should_use_ytdlp_for_clips():
+    # yt-dlp también se intenta en un reintento (extensión de margen W1 o resync
+    # W3) aunque la política prefiera RapidAPI: la descarga per-clip inicial
+    # (`download_clips_parallel`) siempre usa yt-dlp sin mirar esta preferencia,
+    # así que si ya funcionó para este video, negárselo al reintento solo
+    # pierde el clip entero sin alternativa real (caso real: user_recommended_01
+    # m=3/m=5, momentos más allá del primer 20% del video, sin proxies
+    # residenciales en la Mac de eval).
+    if _should_use_ytdlp_for_clips() or extend_after_sec > 0 or sync_attempt > 0:
         try:
             suffix = ""
             if sync_attempt > 0:
