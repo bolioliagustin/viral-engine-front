@@ -77,7 +77,7 @@ Modelo independiente, de otra familia que el de las pasadas A y B, que puntúa e
 _Avoid_: scorer, evaluador
 
 **Verificación**:
-Comprobación de que la primera y la última frase que la IA citó para un momento existen en la transcripción del clip; si ambas fallan, el corte queda marcado para revisar.
+Comprobación de que la primera y la última frase que la IA citó para un momento existen en la transcripción del clip (matching difuso); si alguna de las dos no se ancla, el corte queda marcado para revisar. Desde W2-C (docs/PLAN_CALIDAD.md §9) no incluye señales informativas como el hook tardío o la cola incompleta — esas quedan aparte en `clip_quality_issues`, porque el clip puede arrancar unas palabras antes del hook citado (misma oración) sin que la Verificación haya fallado.
 _Avoid_: validación (reservado para reglas de duración y solapamiento), anti-alucinación
 
 **Tono**:

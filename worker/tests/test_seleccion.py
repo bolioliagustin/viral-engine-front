@@ -15,7 +15,7 @@ from services.moment_selector import (  # noqa: E402
     CandidateEval,
     select_finalists,
     score_candidate,
-    PENALTY_VERIFICATION_FAILED,
+    PENALTY_BROKEN,
 )
 
 
@@ -47,11 +47,26 @@ class TestScoreCandidate:
         )
         assert [c.index for c in selected] == [2]
 
-    def test_verification_failed_pierde_contra_limpio_con_nota_similar(self):
-        sucio = _cand(1, 0, 30, judge={"hook": 7, "retention": 7, "shareability": 7}, verification_failed=True)
+    def test_payoff_not_found_pierde_contra_limpio_con_nota_similar(self):
+        """W2-C: el nivel FUERTE (clip roto) es payoff_not_found/hook_not_found/
+        bad_segment — ya no el viejo `verification_failed` genérico."""
+        roto = _cand(1, 0, 30, judge={"hook": 7, "retention": 7, "shareability": 7}, payoff_not_found=True)
         limpio = _cand(2, 100, 130, judge={"hook": 7, "retention": 7, "shareability": 6})
-        assert score_candidate(limpio) > score_candidate(sucio)
-        assert score_candidate(limpio) - score_candidate(sucio) < PENALTY_VERIFICATION_FAILED + 1
+        assert score_candidate(limpio) > score_candidate(roto)
+        assert score_candidate(limpio) - score_candidate(roto) < PENALTY_BROKEN + 1
+
+    def test_late_hook_es_leve_y_no_le_gana_a_uno_sin_flags_con_juez_similar(self):
+        """W2-C: late_hook/incomplete_tail ya no son 'clip roto' — la
+        penalización es leve, no debería tumbar a un candidato con buen juez."""
+        con_flag_leve = _cand(
+            1, 0, 30, judge={"hook": 8, "retention": 7, "shareability": 8}, late_hook=True,
+        )
+        sin_flags_peor_juez = _cand(
+            2, 100, 130, judge={"hook": 6, "retention": 6, "shareability": 6},
+        )
+        assert score_candidate(con_flag_leve) > score_candidate(sin_flags_peor_juez)
+        selected, _ = select_finalists([con_flag_leve, sin_flags_peor_juez], target=1)
+        assert [c.index for c in selected] == [1]
 
     def test_sin_juez_cae_a_autoscore_penalizado(self):
         sin_juez = _cand(1, 0, 30, self_score=27.0, judge=None)

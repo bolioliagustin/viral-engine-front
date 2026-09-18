@@ -1360,10 +1360,16 @@ def _prepare_moment_clip(
                     incomplete_tail = has_incomplete_tail(
                         clip_words, tail_already_snapped=bool(ev.get("last_found"))
                     )
-                    fp_rel = ev.get("first_phrase_rel_start")
-                    late_hook = bool(
-                        fp_rel is not None and (float(fp_rel) - start_rel) > 3.0
+                    # W2-C: late_hook es informativo (ya no integra
+                    # verification_failed) y se mide en palabras además de
+                    # segundos — W1 ancla al inicio de ORACIÓN de la primera
+                    # frase, así que unas palabras/segundos de setup antes
+                    # del hook citado son normales, no un corte tardío.
+                    from services.validation import hook_delay_metrics, is_late_hook
+                    hook_delay_sec, hook_words_before = hook_delay_metrics(
+                        anchored["words"], start_rel, ev.get("first_phrase_rel_start")
                     )
+                    late_hook = is_late_hook(hook_delay_sec, hook_words_before)
                     verification_info = {
                         "first_ok": bool(ev.get("first_found")) or not first_phrase,
                         "last_ok": bool(ev.get("last_found")) or not last_phrase,
@@ -1411,21 +1417,41 @@ def _prepare_moment_clip(
                     verification_info = verify_phrases_after_snap(
                         moment, clip_words, snap_trim_start, clip_duration
                     )
-                moment.verification_failed = False
-                if (
-                    verification_info.get("failed")
-                    or incomplete_tail
-                    or late_hook
-                ):
-                    moment.verification_failed = True
+                if anchored is not None:
+                    # W2-C: Verificación (CONTEXT.md) = el clip contiene lo
+                    # que dice contener. incomplete_tail/late_hook quedan
+                    # como flags informativos aparte (ver
+                    # services.validation.verification_failed_from_flags).
+                    from services.validation import verification_failed_from_flags
+                    moment.verification_failed = verification_failed_from_flags(
+                        hook_not_found, payoff_not_found
+                    )
+                    reasons = []
+                    if hook_not_found:
+                        reasons.append("hook not found")
+                    if payoff_not_found:
+                        reasons.append("payoff not found")
+                else:
+                    moment.verification_failed = False
                     reasons = []
                     if verification_info.get("failed"):
+                        moment.verification_failed = True
                         reasons.append("phrase mismatch")
                     if incomplete_tail:
+                        moment.verification_failed = True
                         reasons.append("incomplete tail")
                     if late_hook:
+                        moment.verification_failed = True
                         reasons.append("late hook")
+                info_reasons = []
+                if incomplete_tail:
+                    info_reasons.append("incomplete_tail")
+                if late_hook:
+                    info_reasons.append("late_hook")
+                if reasons:
                     print(f"   🚩 verification_failed: {', '.join(reasons)}")
+                if anchored is not None and info_reasons:
+                    print(f"   ℹ️ flags informativos (no afectan verification_failed): {', '.join(info_reasons)}")
                 coverage_val = srt_coverage_metric(clip_words, clip_duration)
                 wps_val = (len(clip_words) / clip_duration) if clip_duration > 0 else 0.0
                 print(f"   📊 Sub coverage: {coverage_val:.0%} | densidad: {wps_val:.2f} w/s")
@@ -2230,11 +2256,15 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 judge_scores=judge_scores,
                 self_score=self_score,
                 usable=bool(prepared.ok and prepared.clip_text_final and prepared.clip_text_final.strip()),
-                verification_failed=bool(getattr(moment, 'verification_failed', False)),
                 density_out_of_range=density_out_of_range,
-                bad_segment=prepared.whisper_bad_segment,
+                hook_not_found=prepared.hook_not_found,
                 payoff_not_found=prepared.payoff_not_found,
+                bad_segment=prepared.whisper_bad_segment,
                 insufficient_source=prepared.margin_extension_failed,
+                timestamps_suspect=prepared.whisper_timestamps_suspect,
+                late_hook=prepared.late_hook,
+                incomplete_tail=prepared.incomplete_tail,
+                min_duration_reverted=prepared.min_duration_reverted,
             ))
 
         # Fase 5b: rankear por el juez (no por el auto-score, causa C4) y

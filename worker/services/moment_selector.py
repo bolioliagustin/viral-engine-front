@@ -50,13 +50,35 @@ def candidate_count(duration_sec: float, target: int) -> int:
 EVAL_POOL_EXTRA = 3
 
 # Penalizaciones sobre la suma de notas del juez (hook+retention+shareability,
-# rango teórico 3-30). Constantes con nombre en vez de números mágicos: reflejan
-# cuánto pesa cada señal de calidad ya conocida (W1/W3) al rankear candidatos.
-PENALTY_VERIFICATION_FAILED = 6.0    # frase citada no coincide con el audio real
-PENALTY_DENSITY_OUT_OF_RANGE = 8.0   # sin habla plausible o timestamps rotos
-PENALTY_BAD_SEGMENT = 5.0            # W3: el segmento no tiene habla plausible
-PENALTY_PAYOFF_NOT_FOUND = 3.0       # W1: el remate no se pudo anclar, fin de respaldo
-PENALTY_INSUFFICIENT_SOURCE = 4.0    # W1: no se pudo ampliar/reintentar la descarga
+# rango teórico 3-30), en tres niveles según qué tan roto está el candidato
+# (W2-C, docs/PLAN_CALIDAD.md §9 — reemplaza las penalizaciones planas de W2,
+# que trataban `verification_failed` como una sola señal aunque mezclaba
+# cosas muy distintas: ver services.validation.verification_failed_from_flags).
+#
+# FUERTE (PENALTY_BROKEN): el clip no tiene lo que dice tener.
+#   hook_not_found / payoff_not_found — Verificación (CONTEXT.md) falló: la
+#   frase citada por la Pasada A no se pudo anclar en el audio real, ni con
+#   el matching difuso de locate_phrase. bad_segment (W3) — el segmento no
+#   tiene habla plausible. Cualquiera de las tres hace que casi nunca
+#   convenga entregar el candidato aunque el juez lo haya puntuado bien.
+# MEDIA (PENALTY_DEGRADED): se pudo entregar algo, pero con una degradación
+#   real. insufficient_source (W1) — no se pudo ampliar el margen ni
+#   reintentar la descarga, se usó el mejor segmento disponible.
+#   timestamps_suspect (W3) — Whisper dio tiempos sospechosos y hubo que
+#   re-transcribir con el otro proveedor (si igual persiste, termina en
+#   bad_segment o subs_disabled_timestamps, penalizados aparte).
+# LEVE (PENALTY_MINOR): señales informativas que NO significan que el corte
+#   esté mal (W2-C). late_hook / incomplete_tail — W1 ancla el clip al
+#   INICIO DE ORACIÓN de la primera frase, no a su primera palabra, así que
+#   unas palabras/segundos de contexto antes del hook citado son normales;
+#   antes estas dos disparaban `verification_failed` completo y un candidato
+#   bien cortado perdía contra uno peor (caso real: podcast_general_01,
+#   candidato 1010-1050s). min_duration_reverted — el refinamiento tuvo que
+#   volver a límites anteriores, pero el clip igual se entrega.
+PENALTY_BROKEN = 12.0
+PENALTY_DEGRADED = 6.0
+PENALTY_MINOR = 2.0
+PENALTY_DENSITY_OUT_OF_RANGE = 8.0   # sin cambios: sin habla plausible o timestamps rotos
 PENALTY_NO_JUDGE_SCORE = 10.0        # el juez falló: nos quedamos con el auto-score, muy penalizado
 
 # Diversidad entre candidatos entregados.
@@ -87,11 +109,18 @@ class CandidateEval:
     judge_scores: dict | None      # {"hook","retention","shareability","reasoning"} o None
     self_score: float              # suma de scores de la Pasada A (fallback si el juez falla)
     usable: bool = True            # False = ni siquiera hay clip_text (sin video/sin habla)
-    verification_failed: bool = False
     density_out_of_range: bool = False
-    bad_segment: bool = False
+    # Nivel FUERTE (PENALTY_BROKEN): el clip no tiene lo que dice tener.
+    hook_not_found: bool = False
     payoff_not_found: bool = False
+    bad_segment: bool = False
+    # Nivel MEDIO (PENALTY_DEGRADED): degradación real pero entregable.
     insufficient_source: bool = False
+    timestamps_suspect: bool = False
+    # Nivel LEVE (PENALTY_MINOR): informativo, no significa corte roto (W2-C).
+    late_hook: bool = False
+    incomplete_tail: bool = False
+    min_duration_reverted: bool = False
     discard_reason: str | None = None
 
 
@@ -112,22 +141,23 @@ def score_candidate(c: "CandidateEval") -> float:
     """
     Nota de ranking (W2): suma del juez sobre el clip real (o el auto-score
     de la Pasada A muy penalizado si el juez falló) menos penalizaciones por
-    señales de calidad ya conocidas. El auto-score NUNCA gana si el juez
-    puntuó — es la causa C4 que este cambio corrige.
+    señales de calidad ya conocidas, en tres niveles (W2-C, ver constantes
+    PENALTY_* arriba). El auto-score NUNCA gana si el juez puntuó — es la
+    causa C4 que W2 corrige. Cada nivel penaliza UNA vez aunque el candidato
+    dispare más de una señal de ese nivel (son síntomas del mismo problema,
+    no problemas independientes que se sumen).
     """
     if not c.usable:
         return -1000.0  # sin clip_text no hay nada que renderizar: nunca se entrega
     score = _judge_sum(c)
-    if c.verification_failed:
-        score -= PENALTY_VERIFICATION_FAILED
+    if c.hook_not_found or c.payoff_not_found or c.bad_segment:
+        score -= PENALTY_BROKEN
+    if c.insufficient_source or c.timestamps_suspect:
+        score -= PENALTY_DEGRADED
+    if c.late_hook or c.incomplete_tail or c.min_duration_reverted:
+        score -= PENALTY_MINOR
     if c.density_out_of_range:
         score -= PENALTY_DENSITY_OUT_OF_RANGE
-    if c.bad_segment:
-        score -= PENALTY_BAD_SEGMENT
-    if c.payoff_not_found:
-        score -= PENALTY_PAYOFF_NOT_FOUND
-    if c.insufficient_source:
-        score -= PENALTY_INSUFFICIENT_SOURCE
     return score
 
 

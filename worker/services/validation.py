@@ -508,6 +508,14 @@ def assess_whisper_words(words: list[dict], clip_duration: float) -> dict:
 
 _SENTENCE_END_CHARS_V = (".", "?", "!", "…", "。", "؟")
 LOCATE_MIN_SCORE = 0.75          # tolera 1 de cada 4 palabras distinta
+# W2-C: frases largas (≥6 palabras) tienen más superficie para que UNA
+# palabra difiera por una transcripción distinta (Pasada A lee Supadata,
+# el matching corre sobre Whisper) sin que la frase deje de ser la misma
+# ("hantavirus" vs "antavirus"): tolerar 1 de cada 3 en vez de 1 de cada 4.
+# Frases cortas (<6 palabras) se quedan en LOCATE_MIN_SCORE — con pocas
+# palabras, relajar el umbral las vuelve ambiguas.
+LOCATE_LONG_PHRASE_WORDS = 6
+LOCATE_MIN_SCORE_LONG = round(2 / 3, 3)
 LOCATE_MAX_WORDS = 12            # ventana máxima de la frase a buscar
 _SENTENCE_MAX_LOOKBACK_SEC = 10.0   # oración "infinita" sin puntuación: no retroceder más
 _SENTENCE_MAX_LOOKAHEAD_SEC = 10.0
@@ -528,11 +536,38 @@ def _fold_token(text: str) -> str:
     Minúsculas, sin acentos ni puntuación (Whisper y Gemini difieren en ambos);
     los números chicos en cifra pasan a palabra ("5" → "cinco": Whisper escribe
     "hack número 5" y el modelo cita "hack número cinco").
+
+    W2-C: la "h" inicial se cae (es muda en español y Whisper a veces la omite
+    o la inventa — "hantavirus" transcribe como "antavirus"), así que ambas
+    formas foldean igual y matchean.
     """
     norm = _normalize_phrase(text)
     norm = unicodedata.normalize("NFD", norm)
     norm = "".join(ch for ch in norm if unicodedata.category(ch) != "Mn")
-    return _ES_NUMBER_WORDS.get(norm, norm)
+    norm = _ES_NUMBER_WORDS.get(norm, norm)
+    if len(norm) > 1 and norm[0] == "h":
+        norm = norm[1:]
+    return norm
+
+
+_ALNUM_SPLIT_RE = re.compile(r"^([a-z]+)(\d+)$")
+
+
+def _expand_alnum_token(tok: str) -> list[str]:
+    """
+    "r0" → ["r", "cero"]: sigla y número pegados sin espacio (común en
+    términos técnicos — R0, T1 — que Whisper y la Pasada A pueden tokenizar
+    distinto: "R0" en una transcripción, "R cero" en la otra). Sin el patrón,
+    devuelve el token tal cual (no-op para el resto de las palabras).
+    """
+    m = _ALNUM_SPLIT_RE.match(tok)
+    if not m:
+        return [tok]
+    letters, digits = m.groups()
+    number_word = _ES_NUMBER_WORDS.get(digits)
+    if not number_word:
+        return [tok]
+    return [letters, number_word]
 
 
 def _tokens_match(a: str, b: str) -> bool:
@@ -579,33 +614,54 @@ def locate_phrase(
     *,
     prefer: str = "first",
     start_idx: int = 0,
-    min_score: float = LOCATE_MIN_SCORE,
+    min_score: float | None = None,
     max_words: int = LOCATE_MAX_WORDS,
 ) -> Optional[dict]:
     """
     Busca `phrase` en las palabras Whisper (desde `start_idx`) con matching
     fuzzy en orden: normaliza acentos/puntuación, tolera 1 de cada 4 palabras
-    distinta y hasta 2 palabras insertadas. Si la frase aparece más de una
-    vez, prefer="first" devuelve la primera aparición y "last" la última.
+    distinta (1 de cada 3 en frases ≥ LOCATE_LONG_PHRASE_WORDS, W2-C) y hasta
+    2 palabras insertadas. Si la frase aparece más de una vez, prefer="first"
+    devuelve la primera aparición y "last" la última.
+
+    `min_score=None` (default) usa el umbral según la longitud de la frase;
+    pasar un valor explícito lo fija sin importar la longitud.
 
     Returns: {"start_idx", "end_idx", "score"} (índices en `words`) o None.
     """
     if not words or not phrase:
         return None
-    target = [t for t in (_fold_token(t) for t in phrase.split()) if t]
+    raw_target = [t for t in (_fold_token(t) for t in phrase.split()) if t]
+    target: list[str] = []
+    for t in raw_target:
+        target.extend(_expand_alnum_token(t))
     if len(target) > max_words:
         target = target[:max_words] if prefer == "first" else target[-max_words:]
     n = len(target)
     if n == 0:
         return None
+    if min_score is None:
+        min_score = LOCATE_MIN_SCORE_LONG if n >= LOCATE_LONG_PHRASE_WORDS else LOCATE_MIN_SCORE
     if n < 2:
         min_score = 1.0
 
-    tokens = [_fold_token(w.get("word") or "") for w in words]
+    # `tokens` puede ser más largo que `words` (un token "r0" expande a dos:
+    # "r", "cero"); `token_word_idx` mapea cada posición de `tokens` de vuelta
+    # al índice real en `words` para que start_idx/end_idx sigan siendo
+    # índices de `words`, como siempre. Para el 99% de las palabras (sin el
+    # patrón letra+dígito pegado) es 1:1, igual que antes.
+    tokens: list[str] = []
+    token_word_idx: list[int] = []
+    for wi, w in enumerate(words):
+        folded = _fold_token(w.get("word") or "")
+        for sub in (_expand_alnum_token(folded) if folded else [folded]):
+            tokens.append(sub)
+            token_word_idx.append(wi)
     total = len(tokens)
+    tok_start = next((i for i, wi in enumerate(token_word_idx) if wi >= start_idx), total)
     slack = 2
-    candidates: list[tuple[int, int, float]] = []   # (start_idx, end_idx, score)
-    for i in range(max(0, start_idx), total):
+    candidates: list[tuple[int, int, float]] = []   # (tok_start, tok_end, score)
+    for i in range(tok_start, total):
         window = tokens[i:i + n + slack]
         if not window or not _tokens_match(target[0], window[0]):
             # exigir que la primera palabra de la frase ancle la ventana evita
@@ -618,7 +674,7 @@ def locate_phrase(
 
     if not candidates:
         # Segundo intento: sin exigir la primera palabra (puede ser la distinta)
-        for i in range(max(0, start_idx), total):
+        for i in range(tok_start, total):
             window = tokens[i:i + n + slack]
             if not window:
                 continue
@@ -638,7 +694,11 @@ def locate_phrase(
             groups.append([c])
     group = groups[0] if prefer == "first" else groups[-1]
     best = max(group, key=lambda c: (c[2], -c[0]))
-    return {"start_idx": best[0], "end_idx": best[1], "score": round(best[2], 3)}
+    return {
+        "start_idx": token_word_idx[best[0]],
+        "end_idx": token_word_idx[best[1]],
+        "score": round(best[2], 3),
+    }
 
 
 def _boundary_set(words: list[dict], segments: list[dict] | None) -> set[float]:
@@ -947,6 +1007,76 @@ def is_youtube_clip_fallback(clip_url: str | None) -> bool:
         return True
     u = clip_url.lower()
     return "youtube.com/watch" in u or "youtu.be/" in u
+
+
+# W2-C: `late_hook` es informativo (no integra verification_failed, ver
+# verification_failed_from_flags) y se mide en palabras además de segundos —
+# W1 ancla el clip al INICIO DE ORACIÓN de la primera frase, no a su primera
+# palabra, así que unas palabras/segundos de setup antes del hook citado son
+# normales, no un corte tardío. 12 palabras u 8 s (lo que se cumpla primero)
+# es bastante más que una oración de setup típica.
+LATE_HOOK_MAX_WORDS = 12
+LATE_HOOK_MAX_SEC = 8.0
+
+
+def hook_delay_metrics(
+    words: list[dict] | None,
+    start_rel: float,
+    first_phrase_rel_start: float | None,
+) -> tuple[Optional[float], Optional[int]]:
+    """
+    Segundos y palabras entre el inicio del clip (`start_rel`, en la línea de
+    tiempo del segmento ancho) y la primera palabra de `first_phrase_in_audio`
+    (`first_phrase_rel_start`, misma línea de tiempo — evidence de
+    compute_clip_bounds). (None, None) si la frase no se ancló.
+    """
+    if first_phrase_rel_start is None:
+        return None, None
+    delay_sec = float(first_phrase_rel_start) - float(start_rel)
+    words_before = sum(
+        1 for w in (words or [])
+        if float(start_rel) <= float(w.get("start", 0)) < float(first_phrase_rel_start)
+    )
+    return delay_sec, words_before
+
+
+def is_late_hook(
+    delay_sec: float | None,
+    words_before: int | None,
+    *,
+    max_words: int = LATE_HOOK_MAX_WORDS,
+    max_sec: float = LATE_HOOK_MAX_SEC,
+) -> bool:
+    """True si el hook citado tarda demasiado en aparecer (W2-C: informativo,
+    no forma parte de verification_failed)."""
+    if delay_sec is None:
+        return False
+    return delay_sec > max_sec or (words_before is not None and words_before > max_words)
+
+
+def verification_failed_from_flags(hook_not_found: bool, payoff_not_found: bool) -> bool:
+    """
+    Verificación (CONTEXT.md): el clip contiene lo que dice contener —
+    `first_phrase_in_audio` y `last_phrase_in_audio` están dentro de él.
+
+    W2-C (docs/PLAN_CALIDAD.md §9): antes `verification_failed` también se
+    disparaba con `incomplete_tail` y `late_hook`, pero esas dos ya no
+    significan "corte roto" desde W1: el clip ancla al INICIO DE ORACIÓN de
+    la primera frase, no a su primera palabra, así que 3-8 s de contexto
+    antes del hook citado es normal (no tardío), y la cola post-snap puede
+    quedar "incompleta" por diseño cuando el remate se ancló bien. Con la
+    semántica vieja, un candidato bien cortado perdía puntos en el ranking
+    de W2 contra uno peor cortado por señales que no medían lo que decían
+    medir (caso real: podcast_general_01, candidato 1010-1050s, mismo tema
+    que el clip mejor puntuado de Opus Clip sobre este video).
+
+    Ahora `verification_failed` es SOLO `hook_not_found or payoff_not_found`
+    (alguna de las dos frases no se pudo anclar ni con el matching difuso de
+    `locate_phrase`, o quedó afuera al ajustar la duración) — eso sí es "el
+    clip no tiene lo que dice tener". `incomplete_tail`/`late_hook` siguen
+    persistiendo como flags informativos en `clip_quality_issues`.
+    """
+    return bool(hook_not_found or payoff_not_found)
 
 
 def build_clip_quality_issues(

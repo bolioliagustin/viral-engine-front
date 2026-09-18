@@ -20,6 +20,9 @@ from services.validation import (  # noqa: E402
     compute_clip_bounds,
     build_clip_quality_issues,
     CLIP_MAX_DURATION_SEC,
+    verification_failed_from_flags,
+    hook_delay_metrics,
+    is_late_hook,
 )
 
 
@@ -127,6 +130,28 @@ class TestLocatePhrase:
     def test_empty_inputs(self):
         assert locate_phrase([], FIRST) is None
         assert locate_phrase(WIDE, "") is None
+
+    def test_h_muda_hantavirus_vs_antavirus(self):
+        # W2-C: Whisper y la Pasada A difieren en la "h" muda del español
+        # ("hantavirus" transcribe como "antavirus") — no debe contar como
+        # palabra distinta.
+        words = _speak("el contagio de antavirus persona a persona es raro", 0.0)
+        r = locate_phrase(words, "el contagio de hantavirus persona a persona")
+        assert r is not None
+        assert r["score"] == 1.0
+
+    def test_r_cero_vs_r0_con_umbral_largo(self):
+        # W2-C: frase larga (≥6 palabras) tolera 1 de cada 3 distinta — cubre
+        # variantes de transcripción de números/siglas ("R0" vs "R cero").
+        words = _speak("y ese es exactamente el R0 del sarampion que mencionabamos antes", 0.0)
+        r = locate_phrase(words, "ese es exactamente el R cero del sarampión")
+        assert r is not None
+
+    def test_umbral_largo_no_relaja_frases_cortas(self):
+        # Frases < LOCATE_LONG_PHRASE_WORDS se quedan en el umbral estricto
+        # (1 de 4): 2 de 4 palabras distintas no debería matchear.
+        words = _speak("el gato negro corre rapido", 0.0)
+        assert locate_phrase(words, "el perro blanco corre") is None
 
 
 # ── sentence_bounds_around ───────────────────────────────────────────────────
@@ -421,6 +446,66 @@ class TestComputeClipBounds:
         assert r["start_rel"] == 15.0
         assert r["end_rel"] == 50.0
         assert set(r["flags"]) == {"hook_not_found", "payoff_not_found"}
+
+
+# ── W2-C: verification_failed = SOLO hook_not_found / payoff_not_found ──────
+# docs/PLAN_CALIDAD.md §9. late_hook/incomplete_tail quedan informativos: el
+# clip ancla al INICIO DE ORACIÓN de la primera frase, no a su primera
+# palabra, así que unas palabras/segundos de contexto antes del hook citado
+# son normales (antes disparaban verification_failed en falso).
+
+class TestVerificationSemanticsW2C:
+
+    def test_hook_con_contexto_previo_no_es_late_hook_ni_verification_failed(self):
+        # Caso real que motivó el cambio: podcast_general_01, candidato
+        # 1010-1050s (mismo tema que el clip mejor puntuado de Opus Clip
+        # sobre este video). La oración que contiene la primera frase citada
+        # arranca ~8 palabras / ~5s antes de esa frase.
+        first_phrase = "ciencia que también se hizo muy famoso"
+        words = _segment([
+            ("Porque esto se calcula con base en la " + first_phrase + ".", 0.0),
+            ("Un desarrollo que conecta la idea del medio con el resto.", 0.4),
+            (PAYOFF, 0.4),
+        ], wps=1.5)
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, first_phrase, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["flags"] == []
+        assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is False
+
+        delay_sec, words_before = hook_delay_metrics(
+            words, float(r["start_rel"]), r["evidence"].get("first_phrase_rel_start")
+        )
+        assert delay_sec is not None and 0 < delay_sec < 8.0
+        assert words_before is not None and words_before <= 12
+        assert is_late_hook(delay_sec, words_before) is False
+
+    def test_payoff_not_found_marca_verification_failed(self):
+        r = _bounds(WIDE, FIRST, "esta frase quedó fuera del segmento descargado")
+        assert "payoff_not_found" in r["flags"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is True
+
+    def test_hook_not_found_marca_verification_failed(self):
+        r = _bounds(WIDE, "frase que no está en el audio", PAYOFF)
+        assert "hook_not_found" in r["flags"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is True
+
+    def test_is_late_hook_por_muchas_palabras_aunque_pocos_segundos(self):
+        # Muletillas rápidas: muchas palabras cortas antes del hook aunque el
+        # tiempo total no llegue a 8s — igual cuenta como late_hook.
+        assert is_late_hook(4.0, 13) is True
+        assert is_late_hook(4.0, 12) is False
+        assert is_late_hook(9.0, 2) is True
+        assert is_late_hook(None, None) is False
 
 
 # ── Sin Verificación → flujo legacy intacto ─────────────────────────────────
