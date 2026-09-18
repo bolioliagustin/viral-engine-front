@@ -48,7 +48,7 @@
       }
     },
     "e2e": {
-      "_doc": "~10-25 min. Pipeline real por clip (main.process_job con EVAL_DRY_RUN=1): descarga, Whisper, snap, Pasada B, juez, render; nada se persiste ni se sube. Umbrales informativos hasta que las líneas W1-W3 del PLAN_CALIDAD entren. Corre los videos habilitados con 'e2e' en tiers, en el orden del array (el largo, user_recommended_01, va último).",
+      "_doc": "~10-25 min. Pipeline real por clip (main.process_job con EVAL_DRY_RUN=1): descarga, Whisper, snap, Pasada B, juez, render; nada se persiste ni se sube. Umbrales = objetivos de PLAN_CALIDAD §3; thresholds_blocking=false hasta que las líneas W1-W3 del PLAN_CALIDAD entren. Corre los videos habilitados con 'e2e' en tiers, en el orden del array (el largo, user_recommended_01, va último).",
       "include_copy": true,
       "thresholds": {
         "judge_avg_min": 7.0,
@@ -61,7 +61,8 @@
         "clips_rendered_rate_min": null,
         "total_cost_usd_max": null,
         "min_clips_total": 15
-      }
+      },
+      "thresholds_blocking": false
     }
   },
   "videos": [

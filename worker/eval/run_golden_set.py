@@ -397,7 +397,9 @@ def evaluate_video_e2e(
     return result
 
 
-def _print_e2e_summary(summary: dict, failures: list[str], *, json_mode: bool = False) -> None:
+def _print_e2e_summary(
+    summary: dict, failures: list[str], *, json_mode: bool = False, blocking: bool = True
+) -> None:
     fmt_pct = lambda v: "n/a" if v is None else f"{v:.0%}"  # noqa: E731
     fmt_num = lambda v: "n/a" if v is None else f"{v:.2f}"  # noqa: E731
     p = lambda msg="": _log(msg, json_mode=json_mode)  # noqa: E731
@@ -425,7 +427,7 @@ def _print_e2e_summary(summary: dict, failures: list[str], *, json_mode: bool = 
     p(f"   Tiempo total:            {(summary.get('total_seconds') or 0) / 60:.1f} min")
     p()
     if failures:
-        p("❌ UMBRALES NO ALCANZADOS (informativos hasta tener baseline estable):")
+        p("❌ UMBRALES NO ALCANZADOS" + ("" if blocking else " (informativos: no hacen fallar la corrida)") + ":")
         for f in failures:
             p(f"   - {f}")
     else:
@@ -494,6 +496,7 @@ def main() -> int:
         return _main_e2e(
             videos, thresholds, json_mode=json_mode, budget_sec=args.video_budget_sec,
             aggregate=aggregate_e2e_results, check=check_e2e_thresholds,
+            blocking=tier_cfg["thresholds_blocking"],
         )
 
     _log(f"🏆 Golden set | tier={tier} | videos={len(videos)} | copy={'sí' if with_copy else 'no'}", json_mode=json_mode)
@@ -564,7 +567,7 @@ def _emit_json(summary: dict, stream=None) -> None:
     stream.flush()
 
 
-def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check) -> int:
+def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check, blocking=True) -> int:
     from datetime import datetime, timezone
 
     from config.model_tiers import resolved_models
@@ -605,12 +608,13 @@ def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check) ->
     failures = check(summary, thresholds)
     summary["failures"] = failures
     summary["passed"] = not failures
+    summary["thresholds_blocking"] = blocking
 
     if json_mode:
         _emit_json(summary, real_stdout)
     # El resumen legible va a stderr en modo JSON (queda en el .log)
-    _print_e2e_summary(summary, failures, json_mode=json_mode)
-    return 1 if failures else 0
+    _print_e2e_summary(summary, failures, json_mode=json_mode, blocking=blocking)
+    return 1 if (failures and blocking) else 0
 
 
 def _git_commit() -> str | None:

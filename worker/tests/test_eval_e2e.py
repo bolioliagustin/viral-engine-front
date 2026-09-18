@@ -289,3 +289,11 @@ class TestCompareRuns:
         out = json.loads(capsys.readouterr().out)
         assert {r["metric"] for r in out["metrics"]} >= {"judge_avg", "total_cost_usd"}
         assert len(out["clips"]) == 5
+
+
+class TestThresholdsBlocking:
+    def test_e2e_no_bloquea_por_defecto_en_golden_set(self):
+        from eval_metrics import resolve_tier_config
+        golden = json.loads((WORKER_DIR / "eval" / "golden_set.json").read_text(encoding="utf-8"))
+        assert resolve_tier_config(golden, "e2e")["thresholds_blocking"] is False
+        assert resolve_tier_config(golden, "smoke")["thresholds_blocking"] is True

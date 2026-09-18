@@ -126,7 +126,7 @@ que vale.
 ### Historial
 
 Cada corrida se guarda en `eval/runs/<fecha>-<PROMPT_VERSION>[-nota].json`
-(el `.log` solo si pesa < 1 MB) y se anota en `eval/runs/README.md`.
+y se anota en `eval/runs/README.md` (el `.log` no se versiona: `*.log` está en `.gitignore`).
 
 ---
 
@@ -191,7 +191,7 @@ Registrar en cada run: `models` del summary JSON + fecha.
 
 ### Métricas del tier `e2e`
 
-| Métrica | Umbral (informativo hoy) | Significado |
+| Métrica | Umbral (objetivo; `thresholds_blocking: false` → no bloquea) | Significado |
 |---------|--------------------------|-------------|
 | `judge_avg` (y `judge_hook/retention/shareability_avg`) | ≥ 7.0 | Juez promedio sobre el clip final |
 | `judge_all_ge7_rate` | ≥ 60% | Clips con juez ≥7 en las tres métricas |

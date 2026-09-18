@@ -40,6 +40,9 @@ def resolve_tier_config(golden: dict, tier: str) -> dict:
         "include_copy": bool(cfg.get("include_copy", tier == "full")),
         "video_ids": cfg.get("video_ids"),
         "thresholds": thresholds,
+        # False = los umbrales se informan pero no hacen fallar la corrida
+        # (exit 0). Útil mientras son objetivos y no regresiones.
+        "thresholds_blocking": bool(cfg.get("thresholds_blocking", True)),
     }
 
 
