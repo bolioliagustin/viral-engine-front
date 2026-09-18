@@ -295,6 +295,49 @@ Por cada `ViralMoment` (típicamente 5):
 | `viral_overlay` | Texto del overlay |
 | `hook_score`, etc. | Scores de viralidad |
 
+### Subtítulos y overlay v2 (W11, `docs/PLAN_CALIDAD.md` §9 Fase 1)
+
+Motivación: `docs/ANALISIS_OPUS_CLIP.md` §2.5 — Opus muestra bloques de
+1-5 palabras (mediana 2) en MAYÚSCULAS con palabra clave en color; nuestro
+render mostraba hasta 4 palabras por línea sin resaltado.
+
+- **Estilo por defecto:** `tiktok_viral_v2` (`generate_clip(subtitle_style=...)`
+  en `services/clip_generator.py`). `tiktok_viral`, `clean` y `podcast`
+  siguen disponibles sin cambios — el editor los elige vía
+  `clip_edits.subtitle_style`.
+- **Agrupado** (`group_words_v2`): bloques de 1-3 palabras; corta siempre
+  en puntuación fuerte (`.!?…`) y en gaps ≥0,35 s entre palabras; nunca
+  deja una partícula española (el/la/de/en/que/...) sola al final de un
+  bloque — se arrastra, excediendo el tope en 1 palabra en ese caso
+  puntual (con partículas encadenadas, ej. "que se", puede pasar más de
+  una vez seguida y el bloque queda de 4).
+- **Timing** (`_v2_blocks_with_timing`): funde bloques que quedarían
+  visibles <0,25 s con el vecino; nunca estira el final de un bloque
+  hacia un hueco de silencio ≥0,5 s — sin texto durante silencios.
+- **Palabra clave** (`detect_keywords_v2`): con `moment.keywords` (Pasada
+  B, 6-12 palabras exactas del transcript, prompt en `processor.py`)
+  marca hasta 2 por bloque (verde `#04F827` primario, amarillo `#FFFD03`
+  secundario); sin eso (jobs legacy), heurística local — números,
+  MAYÚSCULA que no arranca el bloque, ≥7 letras sin ser partícula, máx 1.
+- **Fuente:** Bangers (Google Fonts, licencia OFL — `worker/fonts/README.md`),
+  embebida en `worker/fonts/` y pasada a FFmpeg como `fontsdir` del filtro
+  `ass=` (`services/clip_generator.py::FONTS_DIR`) — no se instala a nivel
+  sistema ni en el Dockerfile. `Dockerfile` sí agrega `fonts-liberation` /
+  `fonts-dejavu-core` (bug preexistente: el filtro `ass=` pedía "Liberation
+  Sans" por nombre sin garantizar que el paquete estuviera instalado).
+- **Animación:** "pop" — escala 100→112→100 % en 120 ms al aparecer cada
+  bloque (tags ASS `\t` + `\fscx`/`\fscy`), sin karaoke por palabra.
+- **Overlay (hook):** mismo mecanismo de W6, solo cambia el estilo
+  `tiktok_viral` — caja blanca con texto negro y esquinas redondeadas
+  simuladas (borde grueso del color de fondo en vez de un box real),
+  fuente normal negrita (no la cómic), 5 s, ~73 % del ancho.
+- **Pendiente para el editor:** `EditClipDrawer.tsx` tiene hardcodeado
+  `type SubtitleStyle = "tiktok_viral" | "clean" | "podcast"` — no ofrece
+  `tiktok_viral_v2` todavía. El backend/DB ya lo aceptan (CHECK actualizado
+  en `supabase/migrations/20260918230146_subtitulos_v2_check.sql`); falta
+  el cambio de frontend (fuera del alcance de este worker).
+- **Tests:** `worker/tests/test_subtitulos_v2.py`.
+
 ### Step 6: Finalización
 
 - `jobs.status` → `completed`
