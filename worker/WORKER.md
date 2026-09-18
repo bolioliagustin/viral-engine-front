@@ -233,6 +233,8 @@ flowchart TD
 
 **Validación anti-desfase:** `verify_phrases_after_snap` marca `verification_failed` si hay phrase mismatch (cache de análisis stale), cola incompleta o hook tardío. **Re-descarga** solo si la cobertura Whisper es &lt;90% (`STRICT_SYNC_VALIDATION=true`, hasta `CLIP_SYNC_RETRIES`). Phrase mismatch con cobertura alta **no** re-descarga — re-descargar no arregla análisis viejo.
 
+**Guardas de sanidad sobre Whisper (W3):** `assess_whisper_words` corre sobre las palabras del clip antes del snap. `timestamps_suspect` (densidad efectiva &gt;5 w/s o hueco inicial &gt;40 % con densidad normal) → no se recorta nada. `bad_segment` (densidad &lt;1,2 w/s, &lt;8 palabras únicas, texto repetido) → una re-descarga con otro proxy y, si persiste, clip **sin subtítulos** + flag. `enforce_min_duration` revierte límites si el refinamiento deja el clip &lt;15 s (`min_duration_reverted`). Tests: `tests/test_guards.py`.
+
 **Variables de entorno:**
 
 ```env
@@ -391,6 +393,10 @@ legacy y su copy queda como borrador que la pasada B pisa.
 - `verification_failed` (bool): first Y last phrase no matchean el audio real
   — visible como badge "⚠ Verificar corte" en la card.
 - `sub_coverage` y `words_per_sec` se persisten como métricas de calidad.
+- `clip_quality_issues` (jsonb): `incomplete_tail`, `late_hook`,
+  `whisper_mismatch_first|last`, `clip_not_rendered`, `clip_generation_failed`
+  y las guardas W3 `timestamps_suspect`, `bad_segment`, `min_duration_reverted`
+  (ver `build_clip_quality_issues` en `services/validation.py`).
 - Migración histórica: `supabase/legacy/supabase_migration_ai_quality.sql`.
 
 ### Personalización (Fase 5)

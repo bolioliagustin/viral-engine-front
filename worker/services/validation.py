@@ -368,6 +368,128 @@ def hook_keyword_overlap(head_words: list[str], hook: str) -> float:
     return len(head_set & hook_set) / len(head_set)
 
 
+# ── Plausibilidad de la Transcripción del clip (guardas W3, PLAN_CALIDAD §1.3 C3) ──
+# Umbrales calibrados con dos casos reales:
+#  (a) job 1b1007c4 m=1: 73 palabras en 33 s (densidad 2.21, normal) pero
+#      amontonadas en los últimos ~9 s → densidad efectiva ~8 w/s. Timestamps
+#      corridos de whisper-1: el texto es bueno, los tiempos no.
+#  (b) job 4bb4561b m=5: "O R m Y TleK E" en 27 s (densidad 0.23), y clips con
+#      "en realidad los modelos están bastante bien en realidad los…" repetido:
+#      el segmento descargado no tiene habla (audio desincronizado o alucinación).
+# El habla real en español sostiene 2–4 palabras/s; >5 sostenidas es imposible.
+WHISPER_MAX_EFFECTIVE_DENSITY = 5.0     # palabras/s sobre el tramo con habla
+WHISPER_MIN_DENSITY = 1.2               # palabras/s sobre el clip entero
+WHISPER_MIN_UNIQUE_RATIO = 0.35         # palabras únicas / total
+WHISPER_MAX_REPEATED_RATIO = 0.40       # fracción del texto cubierta por una secuencia repetida
+WHISPER_MIN_UNIQUE_WORDS = 8
+WHISPER_MIN_SPEECH_SPAN_SEC = 1.0       # piso para no disparar con 2 palabras en 0.3 s
+WHISPER_REPEAT_MIN_NGRAM = 4
+
+
+def longest_repeated_run(tokens: list[str], min_len: int = WHISPER_REPEAT_MIN_NGRAM) -> int:
+    """
+    Longitud (en palabras) de la secuencia más larga de ≥ min_len palabras que
+    aparece verbatim al menos dos veces en `tokens`. 0 si no hay ninguna.
+
+    Detecta el patrón "frase repetida en loop" que deja Whisper cuando el
+    audio no tiene habla clara. O(n²) sobre ≤ unos cientos de palabras: barato.
+    """
+    n = len(tokens)
+    if n < min_len * 2:
+        return 0
+    best = 0
+    seen: dict[tuple, int] = {}
+    # Buscar el n-grama de tamaño min_len repetido y extender desde ahí.
+    for i in range(n - min_len + 1):
+        key = tuple(tokens[i:i + min_len])
+        if key in seen:
+            j = seen[key]
+            length = min_len
+            while i + length < n and tokens[j + length] == tokens[i + length]:
+                length += 1
+            best = max(best, length)
+        else:
+            seen[key] = i
+    return best
+
+
+def assess_whisper_words(words: list[dict], clip_duration: float) -> dict:
+    """
+    Evalúa si las palabras Whisper de un clip son plausibles como habla real
+    con timestamps reales. Devuelve métricas + `plausible` + `reasons`.
+
+    reasons ⊆ {"timestamps_suspect", "bad_segment"}:
+      - timestamps_suspect: el texto parece habla pero los tiempos están
+        comprimidos (densidad efectiva > 5 w/s). No hay que recortar por
+        "silencio" en base a esos tiempos.
+      - bad_segment: el segmento no tiene habla plausible (muy pocas palabras,
+        texto repetido o casi sin vocabulario). No sirve ni para subtítulos.
+    """
+    words = words or []
+    n = len(words)
+    duration = max(float(clip_duration or 0.0), 0.0)
+    tokens = [_normalize_phrase(w.get("word") or "") for w in words]
+    tokens = [t for t in tokens if t]
+
+    if n == 0 or duration <= 0:
+        return {
+            "n_words": n,
+            "density": 0.0,
+            "speech_span": 0.0,
+            "leading_gap": 0.0,
+            "effective_density": 0.0,
+            "unique_ratio": 0.0,
+            "unique_words": 0,
+            "repeated_run": 0,
+            "repeated_ratio": 0.0,
+            "timestamps_suspect": False,
+            "bad_segment": True,
+            "plausible": False,
+            "reasons": ["bad_segment"],
+        }
+
+    starts = [float(w.get("start", 0.0)) for w in words]
+    ends = [float(w.get("end", s)) for w, s in zip(words, starts)]
+    first_start = min(starts)
+    last_end = max(ends)
+    speech_span = max(0.0, last_end - first_start)
+    density = n / duration
+    effective_density = n / max(speech_span, WHISPER_MIN_SPEECH_SPAN_SEC)
+    unique_words = len(set(tokens))
+    unique_ratio = (unique_words / len(tokens)) if tokens else 0.0
+    repeated_run = longest_repeated_run(tokens)
+    repeated_ratio = (repeated_run / len(tokens)) if tokens else 0.0
+
+    reasons: list[str] = []
+    timestamps_suspect = effective_density > WHISPER_MAX_EFFECTIVE_DENSITY
+    bad_segment = (
+        density < WHISPER_MIN_DENSITY
+        or unique_ratio < WHISPER_MIN_UNIQUE_RATIO
+        or repeated_ratio > WHISPER_MAX_REPEATED_RATIO
+        or unique_words < WHISPER_MIN_UNIQUE_WORDS
+    )
+    if timestamps_suspect:
+        reasons.append("timestamps_suspect")
+    if bad_segment:
+        reasons.append("bad_segment")
+
+    return {
+        "n_words": n,
+        "density": round(density, 3),
+        "speech_span": round(speech_span, 3),
+        "leading_gap": round(first_start, 3),
+        "effective_density": round(effective_density, 3),
+        "unique_ratio": round(unique_ratio, 3),
+        "unique_words": unique_words,
+        "repeated_run": repeated_run,
+        "repeated_ratio": round(repeated_ratio, 3),
+        "timestamps_suspect": timestamps_suspect,
+        "bad_segment": bad_segment,
+        "plausible": not reasons,
+        "reasons": reasons,
+    }
+
+
 def is_youtube_clip_fallback(clip_url: str | None) -> bool:
     """True si el clip_url es un deep-link de YouTube (no MP4 en R2)."""
     if not clip_url:
@@ -383,13 +505,33 @@ def build_clip_quality_issues(
     late_hook: bool = False,
     clip_not_rendered: bool = False,
     clip_generation_error: str | None = None,
+    timestamps_suspect: bool = False,
+    bad_segment: bool = False,
+    min_duration_reverted: bool = False,
 ) -> list[str]:
-    """Lista de flags de calidad para persistir en content_results."""
+    """
+    Lista de flags de calidad para persistir en content_results.clip_quality_issues.
+
+    Flags: incomplete_tail, late_hook, whisper_mismatch_first, whisper_mismatch_last,
+    clip_not_rendered, clip_generation_failed, y las guardas W3:
+      - timestamps_suspect: Whisper devolvió texto normal con tiempos comprimidos;
+        el snap por silencio se omitió (ver assess_whisper_words).
+      - bad_segment: el segmento descargado no tiene habla plausible; el clip se
+        renderizó sin subtítulos aunque se reintentó la descarga.
+      - min_duration_reverted: el refinamiento dejó el clip < 15 s y se
+        volvió a límites anteriores (ver enforce_min_duration).
+    """
     issues: list[str] = []
     if incomplete_tail:
         issues.append("incomplete_tail")
     if late_hook:
         issues.append("late_hook")
+    if timestamps_suspect:
+        issues.append("timestamps_suspect")
+    if bad_segment:
+        issues.append("bad_segment")
+    if min_duration_reverted:
+        issues.append("min_duration_reverted")
     if verification_info:
         if not verification_info.get("first_ok", True):
             issues.append("whisper_mismatch_first")

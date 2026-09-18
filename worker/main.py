@@ -65,6 +65,7 @@ from services.clip_generator import (
     shift_words_timeline,
     fix_ghost_leading_words,
     srt_coverage_metric,
+    enforce_min_duration,
 )
 from services.supabase_client import (
     update_job_status,
@@ -204,12 +205,22 @@ def _strict_sync_validation() -> bool:
     return os.getenv("STRICT_SYNC_VALIDATION", "true").lower() not in ("0", "false", "no")
 
 
-def _should_sync_retry_download(coverage_val: float) -> bool:
-    """Re-descargar solo si Whisper tiene baja cobertura (desfase real de video).
+def _should_sync_retry_download(coverage_val: float, bad_segment: bool = False) -> bool:
+    """Re-descargar solo si Whisper tiene baja cobertura (desfase real de video)
+    o si el segmento no tiene habla plausible (`bad_segment`, guarda W3: audio
+    desincronizado o segmento vacío → otro proxy/estrategia puede traer el bueno).
 
     phrase mismatch indica análisis/cache stale, no un clip mal descargado.
     """
-    return coverage_val < 0.9
+    if bad_segment:
+        return True
+    return coverage_val is not None and coverage_val < 0.9
+
+
+# Guarda W3: un segmento sin habla se re-descarga UNA sola vez (no las
+# CLIP_SYNC_RETRIES de la baja cobertura): si el segundo intento también
+# viene vacío, casi seguro el momento es malo y no la descarga.
+_BAD_SEGMENT_MAX_RETRIES = 1
 
 
 def _select_download_strategy(video_duration: float, viral_moments) -> str:
@@ -710,6 +721,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             clip_quality_issues = []    # flags de calidad (incomplete_tail, etc.)
             clip_generation_error = None
             clip_rendered_ok = False
+            # Guardas W3 (flags por momento; se recalculan en cada intento)
+            whisper_bad_segment = False
+            whisper_timestamps_suspect = False
+            min_duration_reverted = False
 
             # Generate clip (Fase 1.6 — orden invertido):
             #   1. PRIMARY: usar muxed_video_path (partial download ya hecha upfront)
@@ -719,14 +734,19 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             if moment.start_time is not None and moment.end_time is not None:
                 sync_retries = _clip_sync_retries()
                 strict_sync = _strict_sync_validation()
+                sync_retry_reason = "baja cobertura Whisper"
                 for sync_attempt in range(sync_retries + 1):
                     try:
                         if sync_attempt > 0:
                             print(
                                 f"   🔄 Reintento sync {sync_attempt}/{sync_retries} "
-                                f"para clip {moment_index} (baja cobertura Whisper)..."
+                                f"para clip {moment_index} ({sync_retry_reason})..."
                             )
                             clip_paths_cache.pop(moment_index, None)
+                        # Guardas W3 (se recalculan en cada intento)
+                        whisper_bad_segment = False
+                        whisper_timestamps_suspect = False
+                        min_duration_reverted = False
 
                         start_s = float(moment.start_time)
                         end_s = float(moment.end_time)
@@ -846,6 +866,22 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                   f"{len(clip_segments_whisper)}/{len(raw_segments)} segments "
                                   f"(clip_duration={clip_duration:.1f}s, density={words_per_sec:.2f} w/s)")
 
+                            # Guarda W3: plausibilidad de la Transcripción del clip
+                            from services.validation import assess_whisper_words
+                            whisper_assessment = assess_whisper_words(clip_words, clip_duration)
+                            whisper_bad_segment = whisper_assessment["bad_segment"]
+                            whisper_timestamps_suspect = whisper_assessment["timestamps_suspect"]
+                            if not whisper_assessment["plausible"]:
+                                print(
+                                    f"   🩺 Whisper no plausible: {', '.join(whisper_assessment['reasons'])} "
+                                    f"(density={whisper_assessment['density']:.2f}, "
+                                    f"effective={whisper_assessment['effective_density']:.2f}, "
+                                    f"leading_gap={whisper_assessment['leading_gap']:.1f}s, "
+                                    f"unique={whisper_assessment['unique_words']}/"
+                                    f"{whisper_assessment['n_words']}, "
+                                    f"repeated_run={whisper_assessment['repeated_run']})"
+                                )
+
                             if n_kept == 0:
                                 print(f"   🔄 Whisper devolvió 0 words — fallback a YT transcript")
                                 clip_words = None
@@ -861,6 +897,26 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                     Path(clip_audio_path).unlink(missing_ok=True)
                                 except Exception:
                                     pass
+
+                        # Guarda W3: segmento sin habla plausible → re-descargar UNA vez
+                        # con otro proxy/estrategia; si persiste, el clip va sin
+                        # subtítulos (nunca con las palabras basura) y queda flaggeado.
+                        if whisper_bad_segment:
+                            if (
+                                strict_sync
+                                and sync_attempt < min(sync_retries, _BAD_SEGMENT_MAX_RETRIES)
+                                and _should_sync_retry_download(None, bad_segment=True)
+                            ):
+                                sync_retry_reason = "segmento sin habla plausible"
+                                raise _SyncRetryNeeded(
+                                    "bad_segment: Whisper no devolvió habla plausible — re-download"
+                                )
+                            print(
+                                f"   🚩 bad_segment persiste en clip {moment_index} — "
+                                f"se renderiza sin subtítulos"
+                            )
+                            clip_words = None
+                            clip_segments_whisper = None
 
                         if clip_words or clip_segments_whisper:
                             subs_segments = clip_segments_whisper
@@ -882,7 +938,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                 has_incomplete_tail,
                                 detect_sentence_boundaries,
                             )
+                            # Guarda W3: historial de límites para enforce_min_duration
+                            bound_candidates = [(0.0, clip_duration)]
                             trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
+                            bound_candidates.append((trim_start, trim_end))
                             tail_snapped_by_sentence = False
 
                             # Fase 3: límites a boundaries de oración (puntuación +
@@ -899,6 +958,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                 print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
                                 trim_end = s_end
                                 tail_snapped_by_sentence = True
+                            bound_candidates.append((trim_start, trim_end))
 
                             # Hook anchor: overlay > hook > first_phrase (después de sentence snap)
                             _overlay = getattr(moment, "viral_overlay", None) or ""
@@ -925,6 +985,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                         f"inicio {trim_start:.2f} → {new_start:.2f}"
                                     )
                                     trim_start = new_start
+                                    bound_candidates.append((trim_start, trim_end))
                             elif moment.hook and len(clip_words) >= 3:
                                 head_tokens = [
                                     (w.get("word") or "").strip()
@@ -946,6 +1007,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                                 f"   🧹 Head filler trim: {trim_start:.2f} → {new_start:.2f}"
                                             )
                                             trim_start = new_start
+                                            bound_candidates.append((trim_start, trim_end))
 
                             # First-phrase anchor (fallback si hook anchor no corrió)
                             if _first_phrase and trim_start < 0.5:
@@ -962,7 +1024,31 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                         f"{trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f}"
                                     )
                                     trim_start = max(0.0, anchor_t - 0.35)
+                                    bound_candidates.append((trim_start, trim_end))
 
+                            # Guarda W3: con timestamps sospechosos ningún límite
+                            # derivado de las palabras es confiable → clip entero.
+                            if whisper_timestamps_suspect and (trim_start, trim_end) != (0.0, clip_duration):
+                                print(
+                                    f"   ⚠️ Timestamps Whisper sospechosos — ignoro refinamiento "
+                                    f"(start={trim_start:.2f}, end={trim_end:.2f}) y dejo el clip entero"
+                                )
+                                trim_start, trim_end = 0.0, clip_duration
+
+                            # Guarda W3: duración mínima post-refinamiento (15 s).
+                            # Si el refinamiento dejó el clip corto, volver al último
+                            # conjunto de límites que cumplía (o a los originales).
+                            bound_candidates.append((trim_start, trim_end))
+                            (trim_start, trim_end), min_duration_reverted = enforce_min_duration(
+                                bound_candidates
+                            )
+                            if min_duration_reverted:
+                                print(
+                                    f"   ↩️ Duración mínima: refinamiento dejó "
+                                    f"{bound_candidates[-1][1] - bound_candidates[-1][0]:.1f}s — "
+                                    f"revierto a start={trim_start:.2f}, end={trim_end:.2f} "
+                                    f"({trim_end - trim_start:.1f}s)"
+                                )
                             if trim_end - trim_start < 3.0:
                                 trim_start, trim_end = 0.0, clip_duration
 
@@ -1053,7 +1139,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             from services.processor import _clip_text_from_words
                             clip_text_final = _clip_text_from_words(clip_words)
                         else:
-                            subs_segments = transcript.get("segments")
+                            # bad_segment: sin subtítulos (los captions de YT
+                            # tampoco corresponden a un segmento sin habla)
+                            subs_segments = None if whisper_bad_segment else transcript.get("segments")
                             subs_words = None
                             subs_offset = start_s
                             # Sin Whisper: el texto real del clip es el slice del
@@ -1211,6 +1299,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     late_hook=locals().get("late_hook", False),
                     clip_not_rendered=True,
                     clip_generation_error=clip_generation_error,
+                    timestamps_suspect=locals().get("whisper_timestamps_suspect", False),
+                    bad_segment=locals().get("whisper_bad_segment", False),
+                    min_duration_reverted=locals().get("min_duration_reverted", False),
                 )
             elif clip_rendered_ok or verification_info:
                 clip_quality_issues = build_clip_quality_issues(
@@ -1219,6 +1310,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     late_hook=locals().get("late_hook", False),
                     clip_not_rendered=False,
                     clip_generation_error=None,
+                    timestamps_suspect=locals().get("whisper_timestamps_suspect", False),
+                    bad_segment=locals().get("whisper_bad_segment", False),
+                    min_duration_reverted=locals().get("min_duration_reverted", False),
                 )
 
             if (

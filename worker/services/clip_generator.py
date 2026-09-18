@@ -357,6 +357,18 @@ def fix_ghost_leading_words(
     return fixed
 
 
+# Guarda W3 (PLAN_CALIDAD §1.3 C3): el snap por silencio confía en los timestamps
+# de Whisper. Si vienen corridos (whisper-1 con prompt largo: 73 palabras en 33 s
+# amontonadas en los últimos 9 s), "ver" 24 s de silencio y recortarlos destruye el
+# clip. Señales de timestamps sospechosos: densidad efectiva > 5 palabras/s sobre
+# el tramo con habla, o un hueco inicial > 40 % del clip cuando la densidad global
+# es normal (≥ 1.5 w/s: si hubiera habla real en ese hueco, Whisper la habría visto).
+_SNAP_MAX_EFFECTIVE_DENSITY = 5.0
+_SNAP_MAX_LEADING_TRIM_RATIO = 0.40
+_SNAP_NORMAL_DENSITY = 1.5
+_SNAP_MIN_SPEECH_SPAN_SEC = 1.0
+
+
 def snap_trim_bounds(
     words: list[dict],
     clip_duration: float,
@@ -364,9 +376,15 @@ def snap_trim_bounds(
     start_pad: float = 0.3,
     end_pad: float = 0.5,
     min_words_after_trim: int = 5,
+    max_leading_trim_ratio: float = _SNAP_MAX_LEADING_TRIM_RATIO,
 ) -> tuple[float, float]:
     """
     Snap clip bounds to speech, trimming leading/trailing silence > threshold.
+
+    Guardas: si los timestamps parecen corridos (densidad efectiva > 5 w/s, o
+    hueco inicial > 40 % con densidad global normal) no se toca el clip. El
+    recorte inicial nunca supera `max_leading_trim_ratio` del clip salvo que la
+    región descartada realmente no tenga palabras.
 
     Returns (trim_start, trim_end) within [0, clip_duration].
     """
@@ -374,8 +392,30 @@ def snap_trim_bounds(
         return 0.0, clip_duration
 
     words = fix_ghost_leading_words(words)
+    if not words:
+        return 0.0, clip_duration
     first_start = float(words[0].get("start", 0))
     last_end = float(words[-1].get("end", first_start))
+
+    n_words = len(words)
+    density = n_words / clip_duration
+    speech_span = max(0.0, last_end - first_start)
+    effective_density = n_words / max(speech_span, _SNAP_MIN_SPEECH_SPAN_SEC)
+    leading_ratio = first_start / clip_duration
+    if effective_density > _SNAP_MAX_EFFECTIVE_DENSITY:
+        print(
+            f"   ⚠️ Snap omitido: timestamps Whisper sospechosos "
+            f"({n_words} palabras en {speech_span:.1f}s de habla = "
+            f"{effective_density:.1f} w/s)"
+        )
+        return 0.0, clip_duration
+    if leading_ratio > max_leading_trim_ratio and density >= _SNAP_NORMAL_DENSITY:
+        print(
+            f"   ⚠️ Snap omitido: hueco inicial {first_start:.1f}s "
+            f"({leading_ratio:.0%} del clip) con densidad normal "
+            f"({density:.2f} w/s) — timestamps Whisper sospechosos"
+        )
+        return 0.0, clip_duration
 
     trim_start = 0.0
     if first_start > silence_threshold:
@@ -383,8 +423,16 @@ def snap_trim_bounds(
         words_after = sum(
             1 for w in words if float(w.get("end", 0)) > candidate_start
         )
+        words_dropped = n_words - words_after
         if words_after >= min_words_after_trim:
-            trim_start = candidate_start
+            if candidate_start / clip_duration > max_leading_trim_ratio and words_dropped > 0:
+                print(
+                    f"   ⚠️ Snap inicial omitido: recortaría {candidate_start:.1f}s "
+                    f"({candidate_start / clip_duration:.0%} del clip) con "
+                    f"{words_dropped} palabras adentro"
+                )
+            else:
+                trim_start = candidate_start
 
     trim_end = clip_duration
     trailing_silence = clip_duration - last_end
@@ -402,7 +450,14 @@ def shift_words_timeline(
     clip_duration: float | None = None,
     pre_trim_tolerance: float = 0.2,
 ) -> list[dict]:
-    """Shift word timestamps after trimming clip start; drop words outside range."""
+    """
+    Shift word timestamps after trimming clip start; drop words outside range.
+
+    Garantías (guarda W3): tras el desplazamiento se descartan las palabras
+    con end ≤ 0 (quedaron antes del corte), se recortan a 0 las que cruzan el
+    origen y se descartan las que arrancan en o después de `clip_duration`.
+    Nunca quedan más palabras que las que caen dentro de [0, clip_duration].
+    """
     shifted = []
     for w in words:
         raw_start = float(w.get("start", 0))
@@ -415,7 +470,8 @@ def shift_words_timeline(
         if we <= 0:
             continue
         if clip_duration is not None and ws >= clip_duration:
-            break
+            # `continue` y no `break`: no asumir que las palabras vienen ordenadas
+            continue
         ws = max(0.0, ws)
         we = max(ws + 0.04, we)
         if clip_duration is not None:
@@ -634,6 +690,37 @@ def refine_bounds_to_sentences(
     if trim_end - trim_start < min_duration:
         return 0.0, clip_duration
     return trim_start, min(trim_end, clip_duration)
+
+
+_MIN_CLIP_DURATION_AFTER_REFINE_SEC = 15.0
+
+
+def enforce_min_duration(
+    candidates: list[tuple[float, float]],
+    min_s: float = _MIN_CLIP_DURATION_AFTER_REFINE_SEC,
+) -> tuple[tuple[float, float], bool]:
+    """
+    Guarda W3 de duración mínima post-refinamiento.
+
+    `candidates` son los límites (start, end) en orden cronológico de
+    refinamiento: el primero son los límites originales del clip y el último
+    el resultado de snap + oraciones + anclas. Si el último cumple ≥ min_s se
+    devuelve tal cual; si no, se vuelve al último conjunto de límites que sí
+    cumplía (o a los originales) y se devuelve reverted=True para que el
+    llamador marque `min_duration_reverted`.
+
+    Un clip de 12 s recortado a 11 s vuelve a 12 s: la oración que se perdió
+    se recupera, y el flag avisa que el clip es más corto que el mínimo.
+    """
+    if not candidates:
+        raise ValueError("enforce_min_duration requiere al menos los límites originales")
+    final = candidates[-1]
+    if final[1] - final[0] >= min_s:
+        return final, False
+    for start, end in reversed(candidates[:-1]):
+        if end - start >= min_s:
+            return (start, end), True
+    return candidates[0], True
 
 
 def _parse_srt_timestamp(ts: str) -> float:
