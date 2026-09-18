@@ -386,7 +386,13 @@ def build_e2e_clip_record(
 
     clip_url = row.get("clip_url") or ""
     rendered = bool(clip_url) and "youtube.com/watch" not in clip_url
+    # Mismo redondeo que save_content_result al persistir
     wps = row.get("words_per_sec")
+    wps = round(float(wps), 3) if wps is not None else None
+    cov = row.get("sub_coverage")
+    cov = round(float(cov), 4) if cov is not None else None
+    snap = ww.get("snap_trim_start")
+    snap = round(float(snap), 2) if snap is not None else None
     judge = row.get("score_judge")
 
     return {
@@ -397,13 +403,13 @@ def build_e2e_clip_record(
         "end_time": end,
         "duration_chosen_sec": duration_chosen,
         "duration_final_sec": duration_final,
-        "snap_trim_start": ww.get("snap_trim_start"),
+        "snap_trim_start": snap,
         "first_words": first_words,
         "last_words": last_words,
         "starts_capitalized": clip_starts_capitalized(first_words),
         "words_per_sec": wps,
         "density_out_of_range": density_out_of_range(wps),
-        "sub_coverage": row.get("sub_coverage"),
+        "sub_coverage": cov,
         "verification_failed": row.get("verification_failed"),
         "clip_quality_issues": list(row.get("clip_quality_issues") or []),
         "score_llm": row.get("score_llm"),

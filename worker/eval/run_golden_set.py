@@ -264,13 +264,21 @@ def _prepare_e2e_runtime(*, json_mode: bool):
     os.environ["EVAL_DRY_RUN"] = "1"
     os.environ.setdefault("SENTRY_DSN_WORKER", "")
 
-    import main  # noqa: F401 — importa el pipeline (setup_logging, validate_env)
+    real_stdout = sys.stdout
+    if json_mode:
+        # main.py imprime al importar (setup_logging, validate_env) y crea su
+        # StreamHandler sobre sys.stdout: durante el import, stdout es stderr.
+        sys.stdout = sys.stderr
+    try:
+        import main  # noqa: F401 — importa el pipeline (setup_logging, validate_env)
+    finally:
+        sys.stdout = real_stdout
 
     if json_mode:
         import logging
         logger = logging.getLogger("worker")
         for h in logger.handlers:
-            if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout:
+            if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is real_stdout:
                 h.setStream(sys.stderr)
     return main
 
@@ -381,7 +389,8 @@ def evaluate_video_e2e(
             f"      m{c['moment_index']}: {c['duration_chosen_sec']}s→{c['duration_final_sec']}s "
             f"juez={j.get('hook')}/{j.get('retention')}/{j.get('shareability')} "
             f"flags={c['clip_quality_issues'] or '-'} "
-            f"wps={c['words_per_sec']} cap={c['starts_capitalized']} "
+            f"wps={c['words_per_sec'] if c['words_per_sec'] is None else round(c['words_per_sec'], 2)} "
+            f"cap={c['starts_capitalized']} "
             f"| {' '.join(c['first_words'][:6])}…",
             json_mode=json_mode,
         )
@@ -547,11 +556,12 @@ def main() -> int:
     return 1 if failures else 0
 
 
-def _emit_json(summary: dict) -> None:
-    # sys.stdout directo: main.py parchea print() hacia logging (con timestamp),
-    # y el JSON tiene que salir limpio por stdout.
-    sys.stdout.write(json.dumps(summary, ensure_ascii=False, indent=2, default=str) + "\n")
-    sys.stdout.flush()
+def _emit_json(summary: dict, stream=None) -> None:
+    # Escritura directa al stream: main.py parchea print() hacia logging (con
+    # timestamp), y el JSON tiene que salir limpio por stdout.
+    stream = stream or sys.stdout
+    stream.write(json.dumps(summary, ensure_ascii=False, indent=2, default=str) + "\n")
+    stream.flush()
 
 
 def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check) -> int:
@@ -564,16 +574,26 @@ def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check) ->
     _log(f"   Modelos: {resolved_models()} | PROMPT_VERSION={PROMPT_VERSION}", json_mode=json_mode)
     _log("", json_mode=json_mode)
 
+    # En modo JSON, stdout del proceso pasa a ser stderr mientras corre el
+    # pipeline: yt-dlp (en proceso) y main.py escriben ahí sin pasar por
+    # logging. El JSON final sale por el stdout real.
+    real_stdout = sys.stdout
+    if json_mode:
+        sys.stdout = sys.stderr
+
     t0 = time.time()
     results = []
-    for video in videos:
-        _log(f"── {video['id']} ─────────────────────────────", json_mode=json_mode)
-        try:
-            results.append(evaluate_video_e2e(video, json_mode=json_mode, budget_sec=budget_sec))
-        except Exception as e:
-            _log(f"   ❌ Eval crash: {str(e)[:200]}", json_mode=json_mode)
-            results.append({"id": video["id"], "ok": False, "clips": [], "errors": [f"crash: {str(e)[:150]}"]})
-        _log("", json_mode=json_mode)
+    try:
+        for video in videos:
+            _log(f"── {video['id']} ─────────────────────────────", json_mode=json_mode)
+            try:
+                results.append(evaluate_video_e2e(video, json_mode=json_mode, budget_sec=budget_sec))
+            except Exception as e:
+                _log(f"   ❌ Eval crash: {str(e)[:200]}", json_mode=json_mode)
+                results.append({"id": video["id"], "ok": False, "clips": [], "errors": [f"crash: {str(e)[:150]}"]})
+            _log("", json_mode=json_mode)
+    finally:
+        sys.stdout = real_stdout
 
     summary = aggregate(results)
     summary["tier"] = "e2e"
@@ -587,7 +607,7 @@ def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check) ->
     summary["passed"] = not failures
 
     if json_mode:
-        _emit_json(summary)
+        _emit_json(summary, real_stdout)
     # El resumen legible va a stderr en modo JSON (queda en el .log)
     _print_e2e_summary(summary, failures, json_mode=json_mode)
     return 1 if failures else 0
