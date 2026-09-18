@@ -22,6 +22,11 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
+# W5 (docs/PLAN_CALIDAD.md §9 Fase 1, fila D): reencuadre vertical por escena
+# (Split/Fill/Fit). Módulo aislado — clip_generator solo lo CONSUME (arma el
+# filtro FFmpeg a partir de un LayoutPlan); reframe.py no conoce clip_generator.
+from services.reframe import LayoutPlan, plan_reframe_for_clip
+
 
 def _resolve_bin(env_var: str, name: str) -> str:
     """
@@ -2025,20 +2030,75 @@ def burn_overlay_text(
     return probe_video(output_path)
 
 
+def _build_reframe_filter(layout: Optional[LayoutPlan], W: int, H: int, B: int, src_label: str = "0:v") -> str:
+    """
+    Filtro FFmpeg (sin `[vout]` final — lo agrega el caller) para pasar de
+    16:9 a WxH según `layout` (W5, docs/PLAN_CALIDAD.md §9 Fase 1):
+
+      - None o layout.name == "fit": EXACTAMENTE el filtro de fondo
+        desenfocado de siempre (test de snapshot en test_reframe.py).
+      - "fill": un solo crop+scale a pantalla completa (el CropArea ya viene
+        con el aspect ratio de destino calculado — ver reframe._fill_layout).
+      - "split": dos crop+scale apilados con vstack (mitad superior/inferior).
+
+    Los crops de LayoutPlan están en % del frame ORIGINAL, así que se
+    traducen a expresiones `iw*pct`/`ih*pct` de FFmpeg — no hace falta saber
+    las dimensiones reales del video de entrada.
+    """
+    if layout is None or layout.name == "fit" or not layout.crops:
+        return (
+            f"[{src_label}]split=2[bg][fg];"
+            f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,"
+            f"crop={W}:{H},boxblur=luma_radius={B}:luma_power=1[bg2];"
+            f"[fg]scale={W}:-2:force_original_aspect_ratio=decrease[fg2];"
+            f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"
+        )
+
+    if layout.name == "fill":
+        c = layout.crops[0]
+        return (
+            f"[{src_label}]crop=w=iw*{c.src_w_pct:.6f}:h=ih*{c.src_h_pct:.6f}:"
+            f"x=iw*{c.src_x_pct:.6f}:y=ih*{c.src_y_pct:.6f},"
+            f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},format=yuv420p"
+        )
+
+    if layout.name == "split":
+        top, bottom = layout.crops[0], layout.crops[1]
+        half_h = H // 2
+        return (
+            f"[{src_label}]split=2[a][b];"
+            f"[a]crop=w=iw*{top.src_w_pct:.6f}:h=ih*{top.src_h_pct:.6f}:"
+            f"x=iw*{top.src_x_pct:.6f}:y=ih*{top.src_y_pct:.6f},"
+            f"scale={W}:{half_h}[a2];"
+            f"[b]crop=w=iw*{bottom.src_w_pct:.6f}:h=ih*{bottom.src_h_pct:.6f}:"
+            f"x=iw*{bottom.src_x_pct:.6f}:y=ih*{bottom.src_y_pct:.6f},"
+            f"scale={W}:{H - half_h}[b2];"
+            f"[a2][b2]vstack=2,format=yuv420p"
+        )
+
+    raise ClipGenerationError(f"LayoutPlan.name desconocido: {layout.name!r}")
+
+
 def to_vertical_9_16(
     clip_path: str,
     output_path: Optional[str] = None,
     target_width: int = 1080,
     target_height: int = 1920,
     blur_intensity: int = 25,
+    layout: Optional[LayoutPlan] = None,
 ) -> ClipMetadata:
     """
-    Convierte un clip a formato vertical 9:16 con fondo desenfocado.
+    Convierte un clip a formato vertical 9:16.
 
-    Estilo TikTok/Reels/Shorts:
+    Sin `layout` (default, comportamiento original): fondo desenfocado
+    estilo TikTok/Reels/Shorts.
       - Fondo: version ampliada del mismo video con blur fuerte (llena el frame)
       - Foreground: video original centrado, escalado a ancho completo manteniendo aspect ratio
       - Resultado: 1080x1920 (o el target que se pase)
+
+    Con `layout` (W5, docs/PLAN_CALIDAD.md §9 Fase 1): "fill" (una cara,
+    recorte a pantalla completa) o "split" (dos caras, apiladas) en vez del
+    fondo desenfocado — ver `services.reframe.choose_layout`.
 
     Args:
         clip_path: Path al clip (tipicamente output de cut_clip)
@@ -2046,6 +2106,7 @@ def to_vertical_9_16(
         target_width: Ancho final (default 1080)
         target_height: Alto final (default 1920)
         blur_intensity: Intensidad del blur del fondo (10=suave, 25=medio, 50=fuerte)
+        layout: LayoutPlan opcional (services.reframe.choose_layout); None = "fit" (actual)
 
     Returns:
         ClipMetadata del clip vertical generado
@@ -2067,20 +2128,8 @@ def to_vertical_9_16(
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    # Filtergraph:
-    # [0:v]split=2[bg][fg]                          ← duplicar stream de video
-    # [bg]scale=W:H:force_original_aspect_ratio=increase,crop=W:H,
-    #       boxblur=luma_radius=BLUR:luma_power=1[bg2]  ← fondo cubriendo + blur
-    # [fg]scale=W:-2:force_original_aspect_ratio=decrease[fg2]  ← foreground ancho completo manteniendo AR
-    # [bg2][fg2]overlay=(W-w)/2:(H-h)/2             ← centrar fg sobre bg
     W, H, B = target_width, target_height, blur_intensity
-    filter_complex = (
-        f"[0:v]split=2[bg][fg];"
-        f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,"
-        f"crop={W}:{H},boxblur=luma_radius={B}:luma_power=1[bg2];"
-        f"[fg]scale={W}:-2:force_original_aspect_ratio=decrease[fg2];"
-        f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"
-    )
+    filter_complex = _build_reframe_filter(layout, W, H, B)
 
     cmd = [
         FFMPEG_PATH,
@@ -2161,6 +2210,14 @@ def generate_clip(
     overlay_position: str = "top",
     target_width: int = 1080,
     target_height: int = 1920,
+    # W5 (docs/PLAN_CALIDAD.md §9 Fase 1): encuadre Split/Fill/Fit en vez del
+    # fondo desenfocado de siempre. None (default): si REFRAME_MODE=auto (env
+    # var, default "off") Y hay video_path local, se analiza automáticamente
+    # con services.reframe.plan_reframe_for_clip; si no, "fit" de siempre.
+    # Pasar un LayoutPlan explícito (services.reframe.choose_layout) salta el
+    # análisis automático y lo usa directamente (tests, o un caller que ya
+    # analizó por su cuenta).
+    layout: Optional[LayoutPlan] = None,
     keep_intermediate: bool = False,
     workdir: Optional[str] = None,
     # ── Descarga selectiva (stream URLs) ──────────────────────────────────────
@@ -2197,6 +2254,8 @@ def generate_clip(
         overlay_style: 'tiktok_viral' | 'question' | 'stat'
         overlay_duration_sec: cuantos segundos dura el overlay visible
         overlay_position: 'top' | 'center' | 'bottom'
+        layout: LayoutPlan explícito (services.reframe). None = auto-detección
+            si REFRAME_MODE=auto (env var) y hay video_path local; si no, "fit"
         target_width, target_height: dimensiones finales (default 1080x1920)
         keep_intermediate: si True, no borra los archivos temporales
         workdir: directorio para archivos intermedios
@@ -2254,6 +2313,33 @@ def generate_clip(
 
         t0 = time.time()
 
+        # Paso 0 (W5, docs/PLAN_CALIDAD.md §9 Fase 1): reencuadre por escena.
+        # `layout` explícito gana siempre. Si no vino ninguno, solo se
+        # analiza cuando REFRAME_MODE=auto Y hay un video_path local — el
+        # análisis lee frames reales (cv2.VideoCapture), no sirve con
+        # stream URLs. Con REFRAME_MODE=off (default) el comportamiento es
+        # idéntico al de antes de W5: layout queda None -> filtro "fit".
+        reframe_mode = os.environ.get("REFRAME_MODE", "off").strip().lower()
+        if layout is None and reframe_mode == "auto" and not use_stream_urls and video_path:
+            t_reframe = time.time()
+            try:
+                layout = plan_reframe_for_clip(
+                    video_path=video_path, start_sec=0.0, end_sec=duration_sec,
+                    target_w=W, target_h=H,
+                )
+                print(f"   🖼️  Reencuadre (W5): layout={layout.name}")
+            except Exception as e_reframe:
+                print(f"   ⚠️ Reencuadre falló, sigo con 'fit': {e_reframe}")
+                layout = None
+            step_times['reframe_analysis'] = round(time.time() - t_reframe, 2)
+
+        # W5: en "split" las dos caras ocupan toda la altura del frame, así
+        # que los subtítulos se corren de ~58% a la costura (centro
+        # vertical, 50%) para no taparlas — ver _build_reframe_filter.
+        subtitle_base_style = SUBTITLE_STYLES[subtitle_style]
+        if layout is not None and layout.name == "split" and subtitle_style == "tiktok_viral_v2":
+            subtitle_base_style = {**subtitle_base_style, "MarginV": str(H // 2)}
+
         # Paso A: generar ASS de subtítulos (si hay segments o words)
         subs_ass_path = None
         if segments or words:
@@ -2266,7 +2352,7 @@ def generate_clip(
                     _words_to_per_word_ass(
                         words=words,
                         output_path=ass_path,
-                        base_style=SUBTITLE_STYLES[subtitle_style],
+                        base_style=subtitle_base_style,
                         play_res_x=W,
                         play_res_y=H,
                         clip_duration_sec=duration_sec,
@@ -2282,7 +2368,7 @@ def generate_clip(
                     _v2_words_to_ass(
                         words=words,
                         output_path=ass_path,
-                        base_style=SUBTITLE_STYLES[subtitle_style],
+                        base_style=subtitle_base_style,
                         play_res_x=W,
                         play_res_y=H,
                         clip_duration_sec=duration_sec,
@@ -2332,18 +2418,8 @@ def generate_clip(
 
         step_times['prep'] = round(time.time() - t0, 2)
 
-        # Paso C: filter_complex — 9:16 base
-        # bg: escala a 9:16 rellenando + blur
-        # fg: escala manteniendo aspect ratio (ancho completo)
-        # overlay centra fg sobre bg
-        fg_filter = f"[fg]scale={W}:-2:force_original_aspect_ratio=decrease[fg2]"
-        filter_parts = (
-            f"[0:v]split=2[bg][fg];"
-            f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,"
-            f"crop={W}:{H},boxblur=luma_radius={B}:luma_power=1[bg2];"
-            f"{fg_filter};"
-            f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"
-        )
+        # Paso C: filter_complex — 9:16 base (W5: fit/fill/split según `layout`)
+        filter_parts = _build_reframe_filter(layout, W, H, B)
 
         # Encadenar filtros de texto directamente en el mismo stream
         def _esc(p: str) -> str:
