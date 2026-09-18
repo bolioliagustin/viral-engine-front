@@ -75,6 +75,17 @@ interface ViralMomentCardProps {
   clipGenerationError?: string;
   scoreJudge?: { hook: number; retention: number; shareability: number; reasoning?: string };
   scoreLlm?: { hook: number; retention: number; shareability: number };
+  // W10 (docs/PLAN_CALIDAD.md §9 Fase 0): copy por clip + "Score visible".
+  /** Título ≤60 chars, patrón "Tema: ¡afirmación o pregunta!". Jobs viejos: undefined. */
+  title?: string;
+  /** 2 oraciones: qué se ve + invitación. */
+  description?: string;
+  /** 10 hashtags con "#", listos para pegar. */
+  hashtags?: string[];
+  /** "Score visible": percentil 60-99 curvado por backend/src/lib/score-curve.js sobre el ranking del juez DENTRO del job. null si no hay juez. */
+  scoreDisplay?: number | null;
+  /** Letra A-D por dimensión, calculada sobre el score del juez (no sobre scoreDisplay). */
+  grades?: { hook: string; retention: string; shareability: string } | null;
 }
 
 // ─── Pillar config ─────────────────────────────────────────────────────────
@@ -146,6 +157,29 @@ const ScoreRing = ({ score, label }: { score: number; label: string }) => {
   );
 };
 
+// ─── Grade chip (letra A-D — W10, "Score visible") ─────────────────────────
+const GRADE_COLORS: Record<string, string> = {
+  A: "text-green-400 border-green-500/40 bg-green-500/10",
+  B: "text-blue-400 border-blue-500/40 bg-blue-500/10",
+  C: "text-yellow-400 border-yellow-500/40 bg-yellow-500/10",
+  D: "text-orange-400 border-orange-500/40 bg-orange-500/10",
+};
+
+const GradeChip = ({ letter, label }: { letter: string; label: string }) => (
+  <div className="flex flex-col items-center gap-0.5">
+    <div
+      className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${
+        GRADE_COLORS[letter] || GRADE_COLORS.D
+      }`}
+    >
+      {letter}
+    </div>
+    <span className="text-[8px] uppercase tracking-wider text-slate-500 font-medium">
+      {label}
+    </span>
+  </div>
+);
+
 // ─── Chip ──────────────────────────────────────────────────────────────────
 const Chip = ({
   icon,
@@ -203,10 +237,17 @@ export function ViralMomentCard({
   clipGenerationError,
   scoreJudge,
   scoreLlm,
+  title,
+  description,
+  hashtags,
+  scoreDisplay,
+  grades,
 }: ViralMomentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [ringsOpen, setRingsOpen] = useState(false);
   // Si hay un re-render completado, este reemplaza al clipUrl original.
   const [renderedOverride, setRenderedOverride] = useState<string | null>(null);
   const { toast } = useToast();
@@ -251,6 +292,10 @@ export function ViralMomentCard({
         )
       : null;
   const pillar = pillarType ? PILLAR_CONFIG[pillarType.toLowerCase()] : null;
+  // W10: "Score visible" reemplaza los anillos como vista principal solo
+  // cuando el backend lo mandó (jobs viejos / sin score_judge: scoreDisplay
+  // es undefined/null y la card cae al bloque legacy de siempre).
+  const hasScoreDisplay = scoreDisplay !== undefined && scoreDisplay !== null && Boolean(grades);
   const subtitleCoverage = computeSubtitleCoverage(whisperWords ?? null, duration);
   const subsComplete = isSubtitleCoverageComplete(subtitleCoverage);
   const improvementTips = justifications
@@ -387,10 +432,22 @@ export function ViralMomentCard({
                 )}
               </div>
 
-              {/* Hook */}
-              <h3 className="text-lg md:text-xl font-bold text-white leading-snug">
-                &ldquo;{hook}&rdquo;
-              </h3>
+              {/* W10: título arriba de la card (jobs viejos sin título: el
+                  hook mantiene su jerarquía original, no se rompe nada). */}
+              {title ? (
+                <>
+                  <h3 className="text-lg md:text-xl font-bold text-white leading-snug">
+                    {title}
+                  </h3>
+                  <p className="text-sm text-slate-400 italic leading-snug">
+                    &ldquo;{hook}&rdquo;
+                  </p>
+                </>
+              ) : (
+                <h3 className="text-lg md:text-xl font-bold text-white leading-snug">
+                  &ldquo;{hook}&rdquo;
+                </h3>
+              )}
 
               {/* Chips row: trigger, sentiment, roi */}
               <div className="flex flex-wrap items-center gap-2">
@@ -419,28 +476,94 @@ export function ViralMomentCard({
             </div>
 
             {/* Score block — wrap en mobile para no overflow */}
-            <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
-              <div className="flex flex-col items-center justify-center px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
-                <div className="text-[9px] uppercase tracking-widest text-purple-300 font-bold">
-                  Viral Score
-                </div>
-                <div className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none mt-0.5">
-                  {globalScore}
-                </div>
-                <div className="text-[9px] text-slate-500 mt-0.5">/ 10</div>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
+                {hasScoreDisplay ? (
+                  // W10: "Score visible" — percentil curvado + letras, vista
+                  // principal. Reemplaza el bloque "Viral Score X/10" + anillos.
+                  <div className="flex items-center gap-3 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
+                    <div className="flex flex-col items-center">
+                      <div className="text-[9px] uppercase tracking-widest text-purple-300 font-bold">
+                        Score
+                      </div>
+                      <div className="flex items-baseline gap-0.5 mt-0.5">
+                        <span className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none">
+                          {scoreDisplay}
+                        </span>
+                        <span className="text-[10px] text-slate-500">/100</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 pl-2 border-l border-slate-700/60">
+                      <GradeChip letter={grades!.hook} label="Gancho" />
+                      <GradeChip letter={grades!.retention} label="Reten." />
+                      <GradeChip letter={grades!.shareability} label="Viral." />
+                    </div>
+                  </div>
+                ) : (
+                  // Legacy: sin score_display (jobs viejos o sin juez) — el
+                  // bloque de siempre, sin romper nada.
+                  <>
+                    <div className="flex flex-col items-center justify-center px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
+                      <div className="text-[9px] uppercase tracking-widest text-purple-300 font-bold">
+                        Viral Score
+                      </div>
+                      <div className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none mt-0.5">
+                        {globalScore}
+                      </div>
+                      <div className="text-[9px] text-slate-500 mt-0.5">/ 10</div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800">
+                      <ScoreRing score={scores.hook} label="Gancho" />
+                      <ScoreRing score={scores.retention} label="Reten." />
+                      <ScoreRing score={scores.shareability} label="Viral." />
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800">
-                <ScoreRing score={scores.hook} label="Gancho" />
-                <ScoreRing score={scores.retention} label="Reten." />
-                <ScoreRing score={scores.shareability} label="Viral." />
-              </div>
+
+              {/* "Por qué este score" — reasoning del juez, colapsable (W7) */}
               {scoreJudge?.reasoning && (
-                <p
-                  className="text-[10px] text-slate-500 leading-snug max-w-[200px] line-clamp-3"
-                  title={scoreJudge.reasoning}
-                >
-                  {scoreJudge.reasoning}
-                </p>
+                <div className="max-w-[220px] w-full">
+                  <button
+                    type="button"
+                    onClick={() => setReasoningOpen((v) => !v)}
+                    className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors ml-auto"
+                  >
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform ${reasoningOpen ? "rotate-180" : ""}`}
+                    />
+                    Por qué este score
+                  </button>
+                  {reasoningOpen && (
+                    <p className="text-[10px] text-slate-400 leading-snug mt-1 text-right">
+                      {scoreJudge.reasoning}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Detalle 1-10 colapsable — los anillos, cuando ya mostramos
+                  el score visible arriba como vista principal (W10). */}
+              {hasScoreDisplay && (
+                <div className="w-full flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRingsOpen((v) => !v)}
+                    className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+                  >
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform ${ringsOpen ? "rotate-180" : ""}`}
+                    />
+                    Ver detalle 1-10
+                  </button>
+                  {ringsOpen && (
+                    <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800">
+                      <ScoreRing score={scores.hook} label="Gancho" />
+                      <ScoreRing score={scores.retention} label="Reten." />
+                      <ScoreRing score={scores.shareability} label="Viral." />
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -608,6 +731,8 @@ export function ViralMomentCard({
                   linkedinContent={linkedinContent}
                   scriptContent={scriptContent}
                   overlayText={overlayText}
+                  description={description}
+                  hashtags={hashtags}
                 />
               </div>
             </div>

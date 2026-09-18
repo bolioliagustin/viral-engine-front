@@ -40,6 +40,13 @@ interface Result {
   score_llm?: string | { hook: number; retention: number; shareability: number };
   clip_quality_issues?: string | string[];
   clip_generation_error?: string;
+  // W10: copy por clip + "Score visible" (docs/PLAN_CALIDAD.md §9 Fase 0)
+  title?: string;
+  description?: string;
+  hashtags?: string[];
+  /** Curvado 60-99 por el backend (score-curve.js); null si no hay juez. */
+  score_display?: number | null;
+  grades?: { hook: string; retention: string; shareability: string } | null;
 }
 
 
@@ -323,6 +330,11 @@ export default function ResultsPage() {
                         clipGenerationError={firstResult.clip_generation_error}
                         scoreJudge={scoreJudge}
                         scoreLlm={scoreLlm}
+                        title={firstResult.title}
+                        description={firstResult.description}
+                        hashtags={firstResult.hashtags}
+                        scoreDisplay={firstResult.score_display}
+                        grades={firstResult.grades}
                       />
                     </motion.div>
                   );
