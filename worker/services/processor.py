@@ -414,9 +414,13 @@ def analyze_with_openrouter(
     from services.analysis_cache import (
         get_cached_analysis, save_analysis,
         get_cached_category, save_category,
+        effective_prompt_version,
     )
+    # W4: el cache de la Pasada A se separa por fuente del transcript
+    # (v5 / v5+whisper_full / v5+hybrid) porque el prompt recibe otro texto.
+    prompt_version = effective_prompt_version(transcript.get("source"))
     if video_id:
-        cached = get_cached_analysis(video_id, model, tone)
+        cached = get_cached_analysis(video_id, model, tone, prompt_version=prompt_version)
         if cached:
             try:
                 from services.usage_tracker import record_cache_hit
@@ -471,15 +475,24 @@ def analyze_with_openrouter(
     # Format transcript: usar formato compacto (50% menos tokens, sin perder
     # información clave). Override con env var COMPACT_TRANSCRIPT=false si es
     # necesario debugear con el formato anterior.
+    # W4: si el transcript trae Líneas (TRANSCRIPT_SOURCE=whisper_full|hybrid),
+    # la Pasada A recibe una oración puntuada por renglón con `[mm:ss]` en vez
+    # de bloques de captions (causa C1). El resto del prompt no cambia.
     from services.transcriber import (
         format_transcript_for_prompt,
         format_transcript_for_prompt_compact,
     )
-    if os.getenv("COMPACT_TRANSCRIPT", "true").lower() in ("false", "0", "no"):
+    from services.transcript_lines import format_lines_for_prompt, has_full_transcript
+    if has_full_transcript(transcript):
+        transcript_text = format_lines_for_prompt(transcript["lines"])
+        print(f"   📝 Transcript prompt (W4 {transcript.get('source')}, "
+              f"{len(transcript['lines'])} líneas): {len(transcript_text)} chars")
+    elif os.getenv("COMPACT_TRANSCRIPT", "true").lower() in ("false", "0", "no"):
         transcript_text = format_transcript_for_prompt(transcript)
+        print(f"   📝 Transcript prompt: {len(transcript_text)} chars")
     else:
         transcript_text = format_transcript_for_prompt_compact(transcript)
-    print(f"   📝 Transcript prompt: {len(transcript_text)} chars")
+        print(f"   📝 Transcript prompt: {len(transcript_text)} chars")
     
     # Duración efectiva: oEmbed suele devolver 0 — usar último segmento
     duration = video_info.get('duration') or 0
@@ -757,6 +770,7 @@ VIDEO INFO:
                     tone=tone,
                     category_detected=category,
                     prompt_chars=len(transcript_text),
+                    prompt_version=prompt_version,
                 )
             except Exception as e:
                 print(f"   ⚠️ No se pudo guardar al analysis_cache: {e}")
@@ -774,8 +788,12 @@ VIDEO INFO:
 
 
 def _clip_text_from_words(words: list[dict]) -> str:
-    """Build plain transcript from whisper words."""
-    return " ".join((w.get("word") or "").strip() for w in words if (w.get("word") or "").strip())
+    """Build plain transcript from whisper words (ignora tokens `__silence` de W4)."""
+    from services.transcript_lines import words_without_silence
+    return " ".join(
+        (w.get("word") or "").strip()
+        for w in words_without_silence(words) if (w.get("word") or "").strip()
+    )
 
 
 def generate_moment_copy_full(

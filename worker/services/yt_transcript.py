@@ -5,11 +5,30 @@ Gets transcripts directly from YouTube's subtitle API — no download needed.
 Priority:
   1. Supadata API (supadata.ai) — works from any IP, including Render/Railway
   2. youtube_transcript_api — direct scraping, blocked on datacenter IPs
+
+W4 (docs/PLAN_CALIDAD.md §4, causa C1): la fuente del Transcript se elige con
+`TRANSCRIPT_SOURCE`:
+  - `supadata` (default): captions de YouTube, comportamiento de siempre.
+  - `whisper_full`: Whisper del audio completo por tramos (Líneas puntuadas,
+    palabras con silencios, wpm); si falla, cae a captions.
+  - `hybrid`: captions para el clasificador y las validaciones numéricas +
+    Whisper completo para la Pasada A (ADR 0007).
 """
 import re
 import os
 import requests
 from typing import Dict, Optional
+
+TRANSCRIPT_SOURCES = ("supadata", "whisper_full", "hybrid")
+
+
+def transcript_source() -> str:
+    """Fuente del Transcript según `TRANSCRIPT_SOURCE` (default `supadata`)."""
+    raw = (os.getenv("TRANSCRIPT_SOURCE") or "supadata").strip().lower()
+    if raw not in TRANSCRIPT_SOURCES:
+        print(f"⚠️ TRANSCRIPT_SOURCE={raw!r} no es válido ({'|'.join(TRANSCRIPT_SOURCES)}); uso supadata")
+        return "supadata"
+    return raw
 
 
 def get_video_id(video_url: str) -> Optional[str]:
@@ -232,19 +251,134 @@ def get_youtube_transcript(video_url: str) -> tuple[Dict, dict]:
     Get transcript from YouTube + video metadata.
     Returns transcript in Whisper-compatible format.
 
-    Strategy:
+    Strategy (TRANSCRIPT_SOURCE=supadata, default):
       1. Supadata API (if SUPADATA_API_KEY is set) — works from any IP
       2. youtube_transcript_api — direct, works on residential IPs only
+    Con `whisper_full` / `hybrid` ver `_get_transcript_via_whisper_full`.
 
     Returns:
         (transcript_dict, video_info_dict)
         transcript format: {"text": "...", "segments": [...], "language": "..."}
         segments format:   [{"id": 0, "start": 0.5, "end": 3.2, "text": "..."}, ...]
+        Con W4 activo, además: "lines", "words" (con `__silence`), "wpm", "source".
     """
     video_id = get_video_id(video_url)
     if not video_id:
         raise ValueError(f"Could not extract video ID from URL: {video_url}")
 
+    source = transcript_source()
+    if source == "supadata":
+        return _get_captions_transcript(video_url, video_id)
+
+    if source == "whisper_full":
+        try:
+            return _get_transcript_via_whisper_full(video_url, video_id)
+        except Exception as e:
+            print(f"⚠️ Transcript whisper_full falló ({type(e).__name__}: {str(e)[:160]}) — fallback a captions")
+            transcript, video_info = _get_captions_transcript(video_url, video_id)
+            transcript["source_fallback_from"] = "whisper_full"
+            return transcript, video_info
+
+    # hybrid: captions (clasificador, validaciones numéricas) + Whisper completo (Pasada A)
+    transcript, video_info = _get_captions_transcript(video_url, video_id)
+    try:
+        full, _ = _get_transcript_via_whisper_full(
+            video_url, video_id, language=transcript.get("language"), video_info=video_info,
+        )
+    except Exception as e:
+        print(f"⚠️ Transcript hybrid: Whisper completo falló ({type(e).__name__}: {str(e)[:160]}) — sigo solo con captions")
+        transcript["source_fallback_from"] = "hybrid"
+        return transcript, video_info
+    transcript.update({
+        "lines": full["lines"],
+        "words": full["words"],
+        "wpm": full["wpm"],
+        "source": "hybrid",
+        "model": full.get("model"),
+        "provider": full.get("provider"),
+    })
+    return transcript, video_info
+
+
+def _get_transcript_via_whisper_full(
+    video_url: str,
+    video_id: str,
+    *,
+    language: str | None = None,
+    video_info: dict | None = None,
+) -> tuple[Dict, dict]:
+    """
+    Transcript de alta resolución (W4): cache por (video_id, fuente, modelo)
+    → descarga solo audio → Whisper por tramos → puntuación sobre palabras,
+    Líneas, silencios y wpm (`transcript_lines.build_full_transcript`) → cache.
+    `segments` son las Líneas, así que los consumidores actuales no cambian.
+    """
+    from services.transcript_cache import get_cached_transcript, save_transcript
+    from services.transcriber import full_transcript_model, transcribe_full_audio
+    from services.transcript_lines import (
+        build_full_transcript, has_punctuation, punctuate_words_with_llm,
+        lines_punctuation_rate, silence_stats,
+    )
+
+    model = full_transcript_model()
+    if video_info is None:
+        video_info = get_video_metadata(video_id)
+
+    cached = get_cached_transcript(video_id, source="whisper_full", model=model)
+    if cached and cached.get("lines"):
+        print(f"✅ Transcript whisper_full desde cache ({len(cached['lines'])} líneas, {len(cached.get('words') or [])} tokens)")
+        try:
+            from services.usage_tracker import record_cache_hit
+            record_cache_hit("transcript_full", model=model, metadata={"source": "transcription_cache"})
+        except Exception:
+            pass
+        if not video_info.get("duration") and cached.get("duration"):
+            video_info["duration"] = int(cached["duration"]) + 1
+        return cached, video_info
+
+    from services.downloader import download_audio_only
+    audio_path = download_audio_only(video_url, video_id)
+
+    lang = (language or "").strip().lower() or None
+    if lang and len(lang) > 2:
+        lang = lang.split("-")[0]
+    prompt = (video_info.get("title") or "").strip() or None
+
+    raw = transcribe_full_audio(audio_path, prompt=prompt, language=lang)
+    provider = "/".join(raw.get("providers") or [])
+
+    align = True
+    if raw.get("segments") and not has_punctuation(raw["segments"]):
+        print("   ⚠️ El proveedor no trajo puntuación: puntuando con el modelo barato por tramos")
+        raw["words"] = punctuate_words_with_llm(raw["words"], language=raw.get("language") or lang)
+        align = False
+
+    transcript = build_full_transcript(
+        raw, source="whisper_full", model=model, provider=provider, align=align,
+    )
+    for key in ("audio_seconds", "cost_usd", "elapsed_sec", "n_chunks"):
+        if key in raw:
+            transcript[key] = raw[key]
+
+    stats = silence_stats(transcript["words"])
+    print(f"✅ Transcript whisper_full: {len(transcript['lines'])} líneas "
+          f"({lines_punctuation_rate(transcript['lines'])*100:.0f}% terminan en puntuación), "
+          f"{stats['count']} silencios ≥0,3 s, {transcript['wpm']} wpm, "
+          f"{transcript['duration']/60:.1f} min")
+
+    save_transcript(
+        video_id, transcript,
+        language=transcript.get("language"),
+        duration_seconds=transcript.get("duration"),
+        source="whisper_full", model=model,
+    )
+    if not video_info.get("duration") and transcript.get("duration"):
+        video_info["duration"] = int(transcript["duration"]) + 1
+    return transcript, video_info
+
+
+def _get_captions_transcript(video_url: str, video_id: str) -> tuple[Dict, dict]:
+    """Captions de YouTube: Supadata → youtube_transcript_api (comportamiento de siempre)."""
     supadata_key = os.getenv("SUPADATA_API_KEY")
     environment = os.getenv("ENVIRONMENT", "development")
     key_status = f"SET ({len(supadata_key)} chars)" if supadata_key else "NOT SET"

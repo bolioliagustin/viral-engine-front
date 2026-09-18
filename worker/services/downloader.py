@@ -744,6 +744,70 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
     return str(video_path)
 
 
+def find_local_full_media(video_id: str) -> str | None:
+    """
+    Si ya hay un archivo local con el audio completo del video (audio solo,
+    video completo o muxeado de una descarga previa), devuelve su path para
+    no volver a YouTube. Lo usa el Transcript completo de W4.
+    """
+    candidates = list(DOWNLOADS_DIR.glob(f"{video_id}_audio_only.*"))
+    for name in (f"{video_id}_video.mp4", f"{video_id}_video.webm", f"{video_id}_video.mkv",
+                 f"{video_id}_muxed.mp4"):
+        candidates.append(DOWNLOADS_DIR / name)
+    for path in candidates:
+        if path.exists() and path.stat().st_size > 0 and not path.name.endswith(".part"):
+            return str(path)
+    return None
+
+
+def download_audio_only(video_url: str, video_id: str) -> str:
+    """
+    Descarga SOLO el audio del video (yt-dlp `bestaudio`, ~70 MB por hora) a
+    `downloads/{video_id}_audio_only.<ext>`, para el Transcript completo de W4
+    (docs/PLAN_CALIDAD.md §4). Reutiliza cookies, cascada de player_client y
+    proxy de `_build_ydl_opts`; si falla y hay más de un proxy, reintenta una
+    vez con el siguiente. Si ya existe un archivo local con el audio completo
+    (`find_local_full_media`), lo devuelve sin descargar.
+    """
+    existing = find_local_full_media(video_id)
+    if existing:
+        print(f"♻️ Audio completo ya disponible en local: {Path(existing).name}")
+        return existing
+
+    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    proxies = _get_proxy_list()
+    attempts = [proxies[0] if proxies else None]
+    if len(proxies) > 1:
+        attempts.append(proxies[1])
+
+    last_err: Exception | None = None
+    for attempt, proxy in enumerate(attempts, start=1):
+        ydl_opts = _build_ydl_opts({
+            'format': 'bestaudio[ext=m4a]/bestaudio/best[height<=360]',
+            'outtmpl': str(DOWNLOADS_DIR / f'{video_id}_audio_only.%(ext)s'),
+            'ffmpeg_location': FFMPEG_LOCATION,
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            'noprogress': True,
+            'http_headers': {'User-Agent': _DEFAULT_UA},
+        }, proxy_url=proxy)
+        try:
+            print(f"⬇️ Descargando solo audio de {video_id} (intento {attempt}/{len(attempts)})...")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(video_url, download=True)
+            found = find_local_full_media(video_id)
+            if not found:
+                raise FileNotFoundError(f"yt-dlp terminó pero no encontré {video_id}_audio_only.*")
+            size_mb = Path(found).stat().st_size / (1024 * 1024)
+            print(f"✅ Audio completo: {Path(found).name} ({size_mb:.1f} MB)")
+            return found
+        except Exception as e:
+            last_err = e
+            print(f"⚠️ Descarga de audio falló ({type(e).__name__}: {str(e)[:120]})")
+    raise RuntimeError(f"No se pudo descargar el audio de {video_id}: {last_err}")
+
+
 def download_clip_ytdlp(
     youtube_url: str,
     start_sec: float,

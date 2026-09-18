@@ -94,3 +94,78 @@ def cleanup_chunks(chunks: List[Tuple[str, float]]):
             chunks_dir.rmdir()
     except:
         pass
+
+
+# ── W4: tramos del audio completo con ffmpeg (sin cargar el audio en memoria) ──
+def probe_audio_duration_sec(audio_path: str) -> float:
+    """Duración del archivo vía ffprobe (0.0 si no se puede leer)."""
+    import json
+    import subprocess
+    from services.clip_generator import FFPROBE_PATH
+    try:
+        r = subprocess.run(
+            [FFPROBE_PATH, "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", audio_path],
+            capture_output=True, text=True, timeout=60, check=True,
+        )
+        return float(json.loads(r.stdout)["format"]["duration"])
+    except Exception as e:
+        print(f"⚠️ ffprobe no pudo leer la duración de {audio_path}: {e}")
+        return 0.0
+
+
+def split_audio_ffmpeg(
+    audio_path: str,
+    chunk_sec: float = 600.0,
+    overlap_sec: float = 5.0,
+    out_dir: str | None = None,
+    prefix: str | None = None,
+) -> List[Tuple[str, float]]:
+    """
+    Parte el audio completo en tramos de `chunk_sec` con `overlap_sec` de
+    solapamiento, como MP3 mono 16 kHz 64 kbps (≈ 4,8 MB por 10 min: entra en
+    el límite de 25 MB de Groq). Usa ffmpeg con `-ss` antes de `-i` (seek
+    rápido) en vez de pydub, que carga todo el audio en memoria.
+
+    Cada tramo k cubre [k·chunk_sec, k·chunk_sec + chunk_sec + overlap_sec).
+    Devuelve [(chunk_path, offset_sec)] en orden. El solapamiento se resuelve
+    después en `transcriber.merge_chunk_transcripts`.
+    """
+    import subprocess
+    from services.clip_generator import FFMPEG_PATH
+
+    total = probe_audio_duration_sec(audio_path)
+    if total <= 0:
+        raise RuntimeError(f"No se pudo determinar la duración de {audio_path}")
+
+    base = Path(audio_path)
+    chunks_dir = Path(out_dir) if out_dir else base.parent / "chunks"
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+    stem = prefix or base.stem
+
+    chunks: List[Tuple[str, float]] = []
+    offset = 0.0
+    k = 0
+    while offset < total:
+        if k > 0 and total - offset <= overlap_sec:
+            break  # lo que queda ya lo cubrió el solape del tramo anterior
+        length = min(chunk_sec + overlap_sec, total - offset)
+        out_path = chunks_dir / f"{stem}_full_{k:03d}.mp3"
+        cmd = [
+            FFMPEG_PATH, "-y", "-loglevel", "error",
+            "-ss", f"{offset:.3f}", "-t", f"{length:.3f}",
+            "-i", audio_path,
+            "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k",
+            "-acodec", "libmp3lame",
+            str(out_path),
+        ]
+        subprocess.run(cmd, check=True, timeout=600, capture_output=True, text=True)
+        chunks.append((str(out_path), offset))
+        k += 1
+        offset += chunk_sec
+        if length < chunk_sec + overlap_sec:
+            break
+
+    print(f"✂️ Audio completo ({total/60:.1f} min) → {len(chunks)} tramos de "
+          f"{chunk_sec/60:.0f} min (+{overlap_sec:.0f} s de solape)")
+    return chunks

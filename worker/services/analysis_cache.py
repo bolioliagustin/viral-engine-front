@@ -26,11 +26,27 @@ from services.supabase_client import get_supabase
 PROMPT_VERSION = "v5"
 
 
+def effective_prompt_version(transcript_source: str | None = None) -> str:
+    """
+    Versión de prompt con la que se lee/escribe el cache. W4: la Pasada A
+    recibe un transcript distinto según la fuente (`TRANSCRIPT_SOURCE`), así
+    que el cache se separa por fuente sin bumpear `PROMPT_VERSION`:
+    `v5` (supadata, igual que siempre) / `v5+whisper_full` / `v5+hybrid`.
+    `transcript_source` explícito (lo que trae el transcript) pisa el env.
+    """
+    import os
+    source = (transcript_source or os.getenv("TRANSCRIPT_SOURCE") or "supadata").strip().lower()
+    if source in ("whisper_full", "hybrid"):
+        return f"{PROMPT_VERSION}+{source}"
+    return PROMPT_VERSION
+
+
 # ─── Analysis cache (resultado completo del análisis) ───────────────────────
 def get_cached_analysis(
     video_id: str,
     model: str,
     tone: str = "profesional",
+    prompt_version: str | None = None,
 ) -> Optional[dict]:
     """
     Busca un AnalysisResult cacheado. Retorna el dict crudo o None.
@@ -46,7 +62,7 @@ def get_cached_analysis(
             .eq("video_id", video_id)
             .eq("model", model)
             .eq("tone", tone)
-            .eq("prompt_version", PROMPT_VERSION)
+            .eq("prompt_version", prompt_version or effective_prompt_version())
             .limit(1)
             .execute()
         )
@@ -68,6 +84,7 @@ def get_cached_analysis_row(
     video_id: str,
     model: str,
     tone: str = "profesional",
+    prompt_version: str | None = None,
 ) -> Optional[dict]:
     """
     Como `get_cached_analysis` pero devuelve la fila completa (`result` +
@@ -86,7 +103,7 @@ def get_cached_analysis_row(
             .eq("video_id", video_id)
             .eq("model", model)
             .eq("tone", tone)
-            .eq("prompt_version", PROMPT_VERSION)
+            .eq("prompt_version", prompt_version or effective_prompt_version())
             .limit(1)
             .execute()
         )
@@ -109,6 +126,7 @@ def save_analysis(
     tone: str = "profesional",
     category_detected: Optional[str] = None,
     prompt_chars: Optional[int] = None,
+    prompt_version: str | None = None,
 ) -> bool:
     """
     Guarda un AnalysisResult al cache. Upsert por la unique key
@@ -129,7 +147,7 @@ def save_analysis(
             "video_id": video_id,
             "model": model,
             "tone": tone,
-            "prompt_version": PROMPT_VERSION,
+            "prompt_version": prompt_version or effective_prompt_version(),
             "result": json.dumps(result, ensure_ascii=False, default=str),
             "category_detected": category_detected,
             "prompt_chars": prompt_chars,
