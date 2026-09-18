@@ -18,7 +18,12 @@ from services.supabase_client import get_supabase
 # Forzá invalidación global del cache. Ejemplo de bump: "v1" → "v2".
 # v2: pipeline two-pass (pasada A selección sin copy) + model tiers (Fase 1-2)
 # v4: migración modelos jul 2026 (gemini-3.5-flash analysis/copy, gpt-5.4-nano judge, flash-lite classifier)
-PROMPT_VERSION = "v4"
+# v5: W2 "el juez elige" (docs/PLAN_CALIDAD.md §4) — rank_and_prune_candidates
+#     ya no poda a `target`, conserva target+EVAL_POOL_EXTRA candidatos para
+#     que main.py los evalúe con el juez antes de descartar. El prompt de la
+#     Pasada A no cambió, pero el shape cacheado (cuántos viral_moments trae)
+#     sí, así que hace falta invalidar el cache viejo.
+PROMPT_VERSION = "v5"
 
 
 # ─── Analysis cache (resultado completo del análisis) ───────────────────────
@@ -56,6 +61,44 @@ def get_cached_analysis(
         return result
     except Exception as e:
         print(f"   ⚠️ analysis_cache lookup falló (no fatal): {e}")
+        return None
+
+
+def get_cached_analysis_row(
+    video_id: str,
+    model: str,
+    tone: str = "profesional",
+) -> Optional[dict]:
+    """
+    Como `get_cached_analysis` pero devuelve la fila completa (`result` +
+    `category_detected`). La usa W2 (main.py) para reescribir `candidates_all`
+    con las notas del juez después de evaluar, sin pisar `category_detected`
+    con `None` en el upsert (`get_cached_analysis` descarta esa columna
+    porque `processor.py` solo necesita `result`).
+    """
+    supabase = get_supabase()
+    if not supabase:
+        return None
+    try:
+        res = (
+            supabase.table("analysis_cache")
+            .select("result, category_detected")
+            .eq("video_id", video_id)
+            .eq("model", model)
+            .eq("tone", tone)
+            .eq("prompt_version", PROMPT_VERSION)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return None
+        row = res.data[0]
+        result = row["result"]
+        if isinstance(result, str):
+            result = json.loads(result)
+        return {"result": result, "category_detected": row.get("category_detected")}
+    except Exception as e:
+        print(f"   ⚠️ analysis_cache lookup (row) falló (no fatal): {e}")
         return None
 
 

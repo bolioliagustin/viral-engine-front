@@ -29,19 +29,26 @@ def _candidate(i: int, start: float, hook_score: int = 8) -> dict:
 
 class TestCandidatesAll:
     def test_rank_and_prune_guarda_todos_los_candidatos(self):
-        from services.moment_selector import rank_and_prune_candidates
+        # W2: la poda conserva target + EVAL_POOL_EXTRA (pool de evaluación),
+        # no `target` — el juez decide el target final en main.py.
+        from services.moment_selector import rank_and_prune_candidates, EVAL_POOL_EXTRA
 
         result = {
             "video_title": "t",
             "summary": "s",
-            "viral_moments": [_candidate(1, 0, 9), _candidate(2, 100, 7), _candidate(3, 200, 8)],
+            "viral_moments": [
+                _candidate(1, 0, 9), _candidate(2, 100, 7), _candidate(3, 200, 8),
+                _candidate(4, 300, 6), _candidate(5, 400, 5),
+            ],
         }
-        out = rank_and_prune_candidates(result, target=2, transcript=None)
+        target = 1
+        pool_size = target + EVAL_POOL_EXTRA
+        out = rank_and_prune_candidates(result, target=target, transcript=None)
 
-        assert len(out["viral_moments"]) == 2
-        assert [m["hook"] for m in out["viral_moments"]] == ["Hook 1", "Hook 3"]  # cronológico
-        assert len(out["candidates_all"]) == 3
-        assert [c["rank_score"] for c in out["candidates_all"]] == [25.0, 23.0, 24.0]
+        assert len(out["viral_moments"]) == pool_size
+        # se descarta el peor por auto-score (Hook 5, score 21); el resto en cronológico
+        assert [m["hook"] for m in out["viral_moments"]] == ["Hook 1", "Hook 2", "Hook 3", "Hook 4"]
+        assert len(out["candidates_all"]) == 5
         # Copia independiente: modificar el momento final no toca el candidato guardado
         out["viral_moments"][0]["hook"] = "cambiado"
         assert out["candidates_all"][0]["hook"] == "Hook 1"
@@ -57,19 +64,20 @@ class TestCandidatesAll:
     def test_analysis_result_ignora_candidates_all(self):
         """Lo que save_analysis guarda tiene que poder volver por AnalysisResult(**cached)."""
         from models.schemas import AnalysisResult
-        from services.moment_selector import rank_and_prune_candidates
+        from services.moment_selector import rank_and_prune_candidates, EVAL_POOL_EXTRA
 
         result = {
             "video_title": "t",
             "summary": "s",
-            "viral_moments": [_candidate(1, 0), _candidate(2, 100)],
+            "viral_moments": [_candidate(i, i * 100) for i in range(1, 3 + EVAL_POOL_EXTRA + 2)],
         }
-        out = rank_and_prune_candidates(result, target=1)
+        target = 1
+        out = rank_and_prune_candidates(result, target=target)
         cached = json.loads(json.dumps(out, default=str))  # round-trip como analysis_cache
         parsed = AnalysisResult(**cached)
-        assert len(parsed.viral_moments) == 1
+        assert len(parsed.viral_moments) == target + EVAL_POOL_EXTRA
         assert not hasattr(parsed, "candidates_all") or parsed.model_extra in (None, {})
-        assert "candidates_all" in cached and len(cached["candidates_all"]) == 2
+        assert "candidates_all" in cached and len(cached["candidates_all"]) == 3 + EVAL_POOL_EXTRA + 1
 
 
 def _row(moment_index: int, **over) -> dict:

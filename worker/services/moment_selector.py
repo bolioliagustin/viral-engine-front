@@ -13,7 +13,9 @@ igual que el pipeline legacy). Esto reemplaza la densidad fija "video >5min
 import copy
 import json
 import os
+import re
 import time
+from dataclasses import dataclass
 
 from config.model_tiers import output_language_instruction
 from config.llm_chat import build_chat_kwargs, log_llm_usage
@@ -36,6 +38,174 @@ def candidate_count(duration_sec: float, target: int) -> int:
     minutes = max(1, int(duration_sec // 60))
     n = min(12, minutes)
     return max(n, min(target + 1, 12))
+
+
+# ─── W2: el juez elige ───────────────────────────────────────────────────────
+# docs/PLAN_CALIDAD.md §4 W2 (causas C4/C5): la Pasada A sobre-genera pero el
+# auto-score del propio LLM no discrimina (8-9 a casi todo); el juez corría
+# después de renderizar y no decidía nada. Ahora: cuántos candidatos extra
+# sobre el target final pasan por descarga+Whisper+ancla(W1)+juez antes de
+# descartarse (evaluación barata, sin Pasada B ni render).
+EVAL_POOL_EXTRA = 3
+
+# Penalizaciones sobre la suma de notas del juez (hook+retention+shareability,
+# rango teórico 3-30). Constantes con nombre en vez de números mágicos: reflejan
+# cuánto pesa cada señal de calidad ya conocida (W1/W3) al rankear candidatos.
+PENALTY_VERIFICATION_FAILED = 6.0    # frase citada no coincide con el audio real
+PENALTY_DENSITY_OUT_OF_RANGE = 8.0   # sin habla plausible o timestamps rotos
+PENALTY_BAD_SEGMENT = 5.0            # W3: el segmento no tiene habla plausible
+PENALTY_PAYOFF_NOT_FOUND = 3.0       # W1: el remate no se pudo anclar, fin de respaldo
+PENALTY_INSUFFICIENT_SOURCE = 4.0    # W1: no se pudo ampliar/reintentar la descarga
+PENALTY_NO_JUDGE_SCORE = 10.0        # el juez falló: nos quedamos con el auto-score, muy penalizado
+
+# Diversidad entre candidatos entregados.
+MAX_OVERLAP_RATIO = 0.30             # solapamiento temporal máximo (ver filter_overlapping_moments)
+MAX_HOOK_SIMILARITY = 0.6            # Jaccard de palabras normalizadas (sin stopwords)
+
+_STOPWORDS_ES = {
+    "el", "la", "los", "las", "de", "del", "un", "una", "unos", "unas", "que",
+    "y", "o", "a", "en", "por", "para", "con", "su", "sus", "es", "se", "lo",
+    "al", "como", "más", "tu", "este", "esta", "esa", "ese", "no", "si", "sí",
+    "le", "les", "nos", "muy", "ya", "pero", "porque", "cuando", "qué",
+}
+
+
+@dataclass
+class CandidateEval:
+    """Resultado de evaluar un candidato (W2): descarga + Whisper + ancla de
+    frases (W1) + juez sobre el texto real del clip, sin Pasada B ni render.
+
+    `index` es la posición 1-based del candidato dentro de la lista que
+    devolvió la Pasada A (estable durante todo el job, antes de renumerar
+    los finalistas 1..target en orden cronológico para la entrega).
+    """
+    index: int
+    start_time: float
+    end_time: float
+    hook: str
+    judge_scores: dict | None      # {"hook","retention","shareability","reasoning"} o None
+    self_score: float              # suma de scores de la Pasada A (fallback si el juez falla)
+    usable: bool = True            # False = ni siquiera hay clip_text (sin video/sin habla)
+    verification_failed: bool = False
+    density_out_of_range: bool = False
+    bad_segment: bool = False
+    payoff_not_found: bool = False
+    insufficient_source: bool = False
+    discard_reason: str | None = None
+
+
+def _judge_sum(c: "CandidateEval") -> float:
+    if c.judge_scores:
+        try:
+            return (
+                float(c.judge_scores["hook"])
+                + float(c.judge_scores["retention"])
+                + float(c.judge_scores["shareability"])
+            )
+        except (KeyError, TypeError, ValueError):
+            pass
+    return max(0.0, c.self_score - PENALTY_NO_JUDGE_SCORE)
+
+
+def score_candidate(c: "CandidateEval") -> float:
+    """
+    Nota de ranking (W2): suma del juez sobre el clip real (o el auto-score
+    de la Pasada A muy penalizado si el juez falló) menos penalizaciones por
+    señales de calidad ya conocidas. El auto-score NUNCA gana si el juez
+    puntuó — es la causa C4 que este cambio corrige.
+    """
+    if not c.usable:
+        return -1000.0  # sin clip_text no hay nada que renderizar: nunca se entrega
+    score = _judge_sum(c)
+    if c.verification_failed:
+        score -= PENALTY_VERIFICATION_FAILED
+    if c.density_out_of_range:
+        score -= PENALTY_DENSITY_OUT_OF_RANGE
+    if c.bad_segment:
+        score -= PENALTY_BAD_SEGMENT
+    if c.payoff_not_found:
+        score -= PENALTY_PAYOFF_NOT_FOUND
+    if c.insufficient_source:
+        score -= PENALTY_INSUFFICIENT_SOURCE
+    return score
+
+
+def _normalize_words(text: str) -> set[str]:
+    words = re.findall(r"[a-záéíóúñü0-9]+", (text or "").lower())
+    return {w for w in words if w not in _STOPWORDS_ES and len(w) > 2}
+
+
+def _hook_similarity(a: str, b: str) -> float:
+    """Jaccard de palabras normalizadas (sin stopwords) — comparación simple,
+    sin embeddings, para detectar candidatos que repiten el mismo momento."""
+    wa, wb = _normalize_words(a), _normalize_words(b)
+    if not wa or not wb:
+        return 0.0
+    inter = len(wa & wb)
+    union = len(wa | wb)
+    return inter / union if union else 0.0
+
+
+def _overlap_ratio(a: "CandidateEval", b: "CandidateEval") -> float:
+    start = max(a.start_time, b.start_time)
+    end = min(a.end_time, b.end_time)
+    inter = max(0.0, end - start)
+    shortest = min(a.end_time - a.start_time, b.end_time - b.start_time)
+    return (inter / shortest) if shortest > 0 else 0.0
+
+
+def select_finalists(
+    candidates: list["CandidateEval"], target: int
+) -> tuple[list["CandidateEval"], list["CandidateEval"]]:
+    """
+    W2 — el juez elige: rankea por `score_candidate` (el juez sobre el clip
+    real, no el auto-score de la Pasada A) y entrega los `target` mejores.
+
+    Diversidad: un candidato se descarta si solapa > MAX_OVERLAP_RATIO en
+    tiempo con uno ya elegido, o si su hook es casi el mismo (Jaccard de
+    palabras > MAX_HOOK_SIMILARITY). Si la diversidad deja menos de `target`
+    elegidos, se completa con los siguientes mejores igual — mejor un
+    candidato repetido que entregar menos clips de los que pidió el usuario.
+    Con menos candidatos que `target`, no se rompe: devuelve los que haya.
+
+    Returns:
+        (elegidos, en orden cronológico), (descartados, con `discard_reason`)
+    """
+    ranked = sorted(candidates, key=score_candidate, reverse=True)
+    selected: list[CandidateEval] = []
+    deferred: list[CandidateEval] = []
+
+    for cand in ranked:
+        conflict = any(
+            _overlap_ratio(cand, s) > MAX_OVERLAP_RATIO
+            or _hook_similarity(cand.hook, s.hook) > MAX_HOOK_SIMILARITY
+            for s in selected
+        )
+        if len(selected) < target and not conflict:
+            selected.append(cand)
+        else:
+            cand.discard_reason = (
+                "diversidad: solapa o repite el hook de un candidato ya elegido"
+                if conflict else
+                "ranking: quedó fuera del top por nota del juez"
+            )
+            deferred.append(cand)
+
+    if len(selected) < target:
+        selected_idx = {c.index for c in selected}
+        for cand in deferred:
+            if len(selected) >= target:
+                break
+            if cand.index in selected_idx:
+                continue
+            cand.discard_reason = None
+            selected.append(cand)
+            selected_idx.add(cand.index)
+
+    selected_idx = {c.index for c in selected}
+    discarded = [c for c in ranked if c.index not in selected_idx]
+    selected.sort(key=lambda c: c.start_time)
+    return selected, discarded
 
 
 def get_selection_prompt(
@@ -145,11 +315,17 @@ def rank_and_prune_candidates(
     transcript: dict | None = None,
 ) -> dict:
     """
-    Rankea candidatos por score preliminar (suma hook+retention+shareability)
-    y conserva los top `target`. Mantiene orden cronológico en el output final
-    (los momentos se muestran al usuario en orden de aparición).
+    Pre-filtro barato por auto-score de la Pasada A (suma hook+retention+
+    shareability): cuando se generaron muchos más candidatos de los que se
+    van a evaluar de verdad, descarta los peores por auto-score para no
+    gastar descarga+Whisper+juez en todos. Conserva `target + EVAL_POOL_EXTRA`
+    candidatos (W2) — NO `target`: la selección final la hace el juez sobre
+    el clip real en `select_finalists`, después de W1 (main.py), porque el
+    auto-score del propio LLM no discrimina (causa C4, PLAN_CALIDAD.md §1.3).
+    Mantiene orden cronológico en el output (se procesan en orden de aparición).
     """
     moments = result_dict.get("viral_moments") or []
+    pool_size = target + EVAL_POOL_EXTRA
 
     def _score(m: dict) -> float:
         s = m.get("scores") or {}
@@ -176,14 +352,19 @@ def rank_and_prune_candidates(
         for m in moments
     ]
 
-    if len(moments) <= target:
+    if len(moments) <= pool_size:
         return result_dict
 
-    ranked = sorted(moments, key=_score, reverse=True)[:target]
+    ranked = sorted(moments, key=_score, reverse=True)[:pool_size]
     dropped = len(moments) - len(ranked)
     # Orden cronológico para presentación
     ranked.sort(key=lambda m: float(m.get("start_time") or 0))
-    print(f"   🏆 Ranking candidatos: {len(moments)} generados → top {target} ({dropped} descartados)")
+    print(
+        f"   🏊 Pool de evaluación: {len(moments)} generados → {len(ranked)} "
+        f"pasan a Whisper+juez (top {pool_size} por auto-score, {dropped} "
+        f"descartados antes de gastar en descarga; el juez decide el target "
+        f"final de {target} en main.py)"
+    )
     result_dict["viral_moments"] = ranked
     return result_dict
 
