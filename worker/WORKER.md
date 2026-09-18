@@ -410,8 +410,8 @@ legacy y su copy queda como borrador que la pasada B pisa.
   y los cortes W1 `hook_not_found`, `payoff_not_found`, `margin_extended`,
   `subs_disabled_timestamps` (ver `build_clip_quality_issues` en `services/validation.py`),
   más los flags de fidelidad de copy (W6) `overlay_no_fiel` y `hook_no_fiel`
-  — estos dos los setea `generate_moment_copy_full` en `moment.clip_quality_issues`;
-  falta mergearlos en la lista que arma `main.py` antes de `save_content_result`.
+  — `generate_moment_copy_full` los setea en `moment.clip_quality_issues` y
+  `main.py` los mergea con la lista local antes de `save_content_result`.
 - Migración histórica: `supabase/legacy/supabase_migration_ai_quality.sql`.
 
 ### Personalización (Fase 5)

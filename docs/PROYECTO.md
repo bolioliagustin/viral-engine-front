@@ -329,7 +329,7 @@ Desde W1 ([`PLAN_CALIDAD.md`](PLAN_CALIDAD.md) §4) **la verdad son las frases d
     Fidelidad de copy (`generate_moment_copy_full`, W6), guardadas en `moment.clip_quality_issues`:
     - `overlay_no_fiel`: el overlay no tenía ninguna palabra con carga semántica en los primeros ~8 s del clip ni tras regenerar una vez; se reemplazó por un overlay derivado del texto real.
     - `hook_no_fiel`: el hook no aparecía como subsecuencia difusa del texto del clip ni tras regenerar una vez; se reemplazó por la primera oración real.
-    Estos dos flags viven en el `moment` (no en la lista local `clip_quality_issues` que arma el paso 10 de acá abajo para `save_content_result`); falta un merge de una línea en `main.py` para que lleguen a `content_results.clip_quality_issues` — ver PR de W6.
+    `generate_moment_copy_full` los deja en `moment.clip_quality_issues`; `main.py` los mergea con la lista local (`build_clip_quality_issues(...)`) antes de `save_content_result`, así que llegan igual a `content_results.clip_quality_issues`.
 
 ### 5.6 Cierre del job
 

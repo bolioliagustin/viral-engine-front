@@ -1880,6 +1880,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     subs_disabled_timestamps=locals().get("subs_disabled_timestamps", False),
                 )
 
+            # W6: overlay_no_fiel / hook_no_fiel los setea generate_moment_copy_full
+            # en moment.clip_quality_issues (Pasada B, corrió antes en este loop).
+            clip_quality_issues = clip_quality_issues + (getattr(moment, "clip_quality_issues", None) or [])
+
             if (
                 not (moment.content_pieces.twitter_thread or "").strip()
                 and moment.start_time is not None
