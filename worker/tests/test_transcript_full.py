@@ -656,6 +656,57 @@ class TestUsageTask:
         assert tl.punctuate_unpunctuated_runs(short, client=client) == short
         assert not client.chat.completions.create.called
 
+    def test_parallel_chunks_keep_the_job_context(self, tmp_path):
+        """Los tramos corren en un ThreadPoolExecutor: sin propagar el contexto,
+        `usage_tracker` descarta sus eventos y el costo del Whisper no se
+        atribuye al job (medido en el e2e: US$0.02 registrados de US$0.146)."""
+        from context.job_context import clear_job_context, set_job_context, get_job_context
+
+        chunks = [(str(tmp_path / f"c{i}.mp3"), i * 600.0) for i in range(3)]
+        for path, _ in chunks:
+            open(path, "wb").close()
+        seen = []
+
+        def _fake_transcribe(path, prompt=None, language=None, provider=None, usage_task="whisper"):
+            seen.append(get_job_context().get("job_id"))
+            return {"words": _words_from_text("hola mundo", t0=1.0), "segments": [],
+                    "language": "es", "duration": 605.0, "provider": "groq"}
+
+        set_job_context(job_id="job-abc", user_id="u1")
+        try:
+            with patch("services.audio_utils.split_audio_ffmpeg", return_value=chunks), \
+                 patch("services.audio_utils.cleanup_chunks"), \
+                 patch.object(transcriber, "transcribe_with_whisper_openrouter", side_effect=_fake_transcribe):
+                transcriber.transcribe_full_audio(str(tmp_path / "full.m4a"), max_parallel=3)
+        finally:
+            clear_job_context()
+
+        assert len(seen) == 3
+        assert seen == ["job-abc"] * 3, "los tramos paralelos perdieron el contexto del job"
+
+    def test_punctuation_fallback_keeps_the_job_context(self):
+        from context.job_context import clear_job_context, set_job_context, get_job_context
+
+        words = _words_from_text("Hola. " + " ".join(["palabra"] * 100) + " fin.")
+        words[0]["word"], words[-1]["word"] = "Hola.", "fin."
+        seen = []
+        client = MagicMock()
+
+        def _create(**kwargs):
+            seen.append(get_job_context().get("job_id"))
+            resp = MagicMock()
+            resp.choices = [MagicMock(message=MagicMock(content="Palabra. " * 40))]
+            resp.usage = None
+            return resp
+
+        client.chat.completions.create.side_effect = _create
+        set_job_context(job_id="job-xyz")
+        try:
+            tl.punctuate_unpunctuated_runs(words, min_run_words=40, client=client, model="cheap")
+        finally:
+            clear_job_context()
+        assert seen and set(seen) == {"job-xyz"}
+
     def test_punctuate_with_llm_aligns_and_survives_failure(self):
         words = _words_from_text("hola a todos hoy hablamos del sarampión")
         client = MagicMock()

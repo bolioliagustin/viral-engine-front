@@ -565,6 +565,7 @@ def transcribe_full_audio(
     """
     import time
     from concurrent.futures import ThreadPoolExecutor
+    from context.job_context import in_current_context
     from services.audio_utils import split_audio_ffmpeg, cleanup_chunks
     from config.pricing import estimate_whisper_cost_usd
 
@@ -593,8 +594,13 @@ def transcribe_full_audio(
 
         pending = list(range(start_idx, len(chunks)))
         if pending:
+            # El contexto del job no se hereda en los hilos del pool: sin
+            # `in_current_context`, `usage_tracker` descarta los eventos de los
+            # tramos paralelos y el costo del Whisper no se atribuye al job
+            # (medido: el rollup registró US$0.02 de US$0.146 reales).
+            _one_in_ctx = in_current_context(_one)
             with ThreadPoolExecutor(max_workers=max(1, min(max_parallel, len(pending)))) as pool:
-                for idx, res in zip(pending, pool.map(lambda i: _one(i, lang), pending)):
+                for idx, res in zip(pending, pool.map(lambda i: _one_in_ctx(i, lang), pending)):
                     results[idx] = res
 
         merged = merge_chunk_transcripts(
