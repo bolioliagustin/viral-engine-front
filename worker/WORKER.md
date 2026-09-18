@@ -199,7 +199,9 @@ transcript_lines.build_full_transcript:
 Cache en transcription_cache por (video_id, fuente, modelo) + copia local en downloads/
 ```
 
-La Pasada A recibe `[mm:ss] Oración.` por renglón en vez de bloques (`processor.py`); el
+La Pasada A recibe `[inicio-fin] Oración.` en segundos por renglón en vez de bloques
+(`processor.py`; `TRANSCRIPT_LINE_STYLE=mmss` para `[mm:ss]`, que con gemini-3.5-flash hace
+que el modelo concatene minutos y segundos: `[57:16]` → `start_time=5716`); el
 clasificador, `validate_durations` y `validate_against_transcript` ven las Líneas como
 `segments`. `hybrid` = captions para clasificador/validaciones + Líneas de Whisper para la
 Pasada A. Si el audio no baja o Whisper falla → captions (`source_fallback_from`). Los
@@ -208,6 +210,8 @@ la Transcripción del clip (Step 5) no trae silencios. El cache de la Pasada A s
 fuente (`analysis_cache.effective_prompt_version()` → `v6+whisper_full`). Usage:
 `task=transcript_full`. Medido en podcast_general_01 (77 min): ~50 s, US$0.055, 730 Líneas,
 98 % terminan en puntuación, 464 silencios, 174 wpm; segunda corrida desde cache en 1 s.
+En la Pasada A (misma llamada, mismo video): con Líneas 6/8 candidatos arrancan en inicio de
+oración y duran 41–65 s; con captions 1/8 y 81–192 s.
 Tests: `tests/test_transcript_full.py`. Con `supadata` (default) nada cambia.
 
 ### Step 3: Análisis IA

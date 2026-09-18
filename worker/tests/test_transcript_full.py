@@ -259,20 +259,42 @@ class TestBuildFullTranscript:
         assert not tl.has_full_transcript({"source": "whisper_full", "lines": []})
         assert not tl.has_full_transcript(None)
 
-    def test_format_lines_for_prompt_mmss(self):
+    def test_format_lines_for_prompt_seconds(self):
+        """Default: `[inicio-fin]` en segundos. Medido: con `[mm:ss]`
+        gemini-3.5-flash concatena minutos y segundos (`[57:16]` → 5716)."""
         lines = [
             {"id": 0, "start": 0.4, "end": 3.0, "text": "Hola a todos."},
             {"id": 1, "start": 1030.4, "end": 1040.0, "text": "La enfermedad más contagiosa."},
             {"id": 2, "start": 4623.0, "end": 4630.0, "text": "Chau."},
             {"id": 3, "start": 5.0, "end": 6.0, "text": "   "},
         ]
-        out = tl.format_lines_for_prompt(lines)
+        out = tl.format_lines_for_prompt(lines, header=False)
+        assert out.splitlines() == [
+            "[0-3] Hola a todos.",
+            "[1030-1040] La enfermedad más contagiosa.",
+            "[4623-4630] Chau.",
+        ]
+        with_header = tl.format_lines_for_prompt(lines)
+        assert with_header.splitlines()[0] == tl.LINES_PROMPT_HEADER
+        assert "SEGUNDOS" in with_header
+        assert with_header.splitlines()[1] == "[0-3] Hola a todos."
+
+    def test_format_lines_for_prompt_mmss_style(self):
+        lines = [
+            {"id": 0, "start": 0.4, "end": 3.0, "text": "Hola a todos."},
+            {"id": 1, "start": 1030.4, "end": 1040.0, "text": "La enfermedad más contagiosa."},
+            {"id": 2, "start": 4623.0, "end": 4630.0, "text": "Chau."},
+        ]
+        out = tl.format_lines_for_prompt(lines, header=False, style="mmss")
         assert out.splitlines() == [
             "[0:00] Hola a todos.",
             "[17:10] La enfermedad más contagiosa.",
             "[77:03] Chau.",
         ]
         assert tl.format_mmss(59.6) == "1:00"
+        assert tl.format_lines_for_prompt(lines, style="mmss").splitlines()[0] == tl.LINES_PROMPT_HEADER_MMSS
+        with pytest.raises(ValueError):
+            tl.format_lines_for_prompt(lines, style="iso")
 
     def test_pasada_a_receives_lines_when_flag_active(self):
         """Con el flag activo la Pasada A recibe `[mm:ss] Oración.` en vez de bloques."""
@@ -296,9 +318,23 @@ class TestBuildFullTranscript:
                 processor.analyze_with_openrouter(t, {"id": "vid123", "title": "T"})
 
         text = captured["transcript_text"]
-        assert text.splitlines()[0] == "[0:00] La enfermedad más contagiosa es el sarampión."
-        assert "[0:04] ¿Y el COVID?" in text
+        assert text.splitlines()[0] == tl.LINES_PROMPT_HEADER
+        assert text.splitlines()[1] == "[0-3] La enfermedad más contagiosa es el sarampión."
+        assert "¿Y el COVID?" in text
         assert "]:" not in text  # no es el formato de bloques `[s-e]: texto`
+
+        # TRANSCRIPT_LINE_STYLE=mmss vuelve al formato [mm:ss]
+        captured.clear()
+        with patch.dict(os.environ, {"TRANSCRIPT_SOURCE": "whisper_full", "TRANSCRIPT_LINE_STYLE": "mmss"}), \
+             patch("time.sleep"), \
+             patch("services.analysis_cache.get_cached_analysis", return_value=None), \
+             patch("services.analysis_cache.get_cached_category", return_value="podcast"), \
+             patch("services.moment_selector.select_moments", side_effect=_fake_select_moments), \
+             patch.object(processor, "OpenAI") as fake_openai:
+            fake_openai.return_value.chat.completions.create.side_effect = RuntimeError("no llamar al modelo")
+            with pytest.raises(Exception):
+                processor.analyze_with_openrouter(t, {"id": "vid123", "title": "T"})
+        assert captured["transcript_text"].splitlines()[1] == "[0:00] La enfermedad más contagiosa es el sarampión."
 
     def test_pasada_a_keeps_blocks_with_supadata(self):
         """Con `supadata` (default) el formato compacto de bloques no cambia."""
@@ -558,6 +594,24 @@ class TestTranscriptCache:
         with patch.dict(os.environ, {"TRANSCRIPT_SOURCE": "hybrid"}):
             assert effective_prompt_version() == f"{PROMPT_VERSION}+hybrid"
             assert effective_prompt_version("supadata") == PROMPT_VERSION  # la fuente real manda
+
+
+# ── El pipeline tolera timestamps en mm:ss ──────────────────────────────────
+class TestMomentTimestamps:
+    def test_viral_moment_accepts_mmss(self):
+        """Red: si el modelo copia la marca `[17:10]` del transcript de W4 en
+        vez de los segundos, el momento igual queda en segundos."""
+        from models.schemas import ViralMoment
+
+        m = ViralMoment(
+            start_time="17:10", end_time="18:32",
+            hook="h", emotional_trigger="Curiosidad",
+        )
+        assert (m.start_time, m.end_time) == (1030, 1112)
+        assert ViralMoment(start_time="1:17:03", end_time=4630, hook="h",
+                           emotional_trigger="x").start_time == 4623
+        assert ViralMoment(start_time=1030.4, end_time=1112, hook="h",
+                           emotional_trigger="x").start_time == 1030
 
 
 # ── Usage tracker: task=transcript_full ─────────────────────────────────────

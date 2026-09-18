@@ -477,15 +477,19 @@ def analyze_with_openrouter(
     # información clave). Override con env var COMPACT_TRANSCRIPT=false si es
     # necesario debugear con el formato anterior.
     # W4: si el transcript trae Líneas (TRANSCRIPT_SOURCE=whisper_full|hybrid),
-    # la Pasada A recibe una oración puntuada por renglón con `[mm:ss]` en vez
-    # de bloques de captions (causa C1). El resto del prompt no cambia.
+    # la Pasada A recibe una oración puntuada por renglón con su rango en
+    # segundos en vez de bloques de captions (causa C1). El resto del prompt
+    # no cambia. TRANSCRIPT_LINE_STYLE=mmss para el formato `[mm:ss]`
+    # (ver la medición en `format_lines_for_prompt`).
     from services.transcriber import (
         format_transcript_for_prompt,
         format_transcript_for_prompt_compact,
     )
     from services.transcript_lines import format_lines_for_prompt, has_full_transcript
     if has_full_transcript(transcript):
-        transcript_text = format_lines_for_prompt(transcript["lines"])
+        transcript_text = format_lines_for_prompt(
+            transcript["lines"], style=os.getenv("TRANSCRIPT_LINE_STYLE", "seconds"),
+        )
         print(f"   📝 Transcript prompt (W4 {transcript.get('source')}, "
               f"{len(transcript['lines'])} líneas): {len(transcript_text)} chars")
     elif os.getenv("COMPACT_TRANSCRIPT", "true").lower() in ("false", "0", "no"):

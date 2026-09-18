@@ -408,18 +408,54 @@ def format_mmss(seconds: float) -> str:
     return f"{total // 60}:{total % 60:02d}"
 
 
-def format_lines_for_prompt(lines: List[dict]) -> str:
+LINES_PROMPT_HEADER = (
+    "FORMATO: una oración por línea, precedida por [inicio-fin] en SEGUNDOS "
+    "desde el comienzo del video. Copiá esos números tal cual en start_time y "
+    "end_time (son segundos, no minutos)."
+)
+LINES_PROMPT_HEADER_MMSS = (
+    "FORMATO: una oración por línea, precedida por su minuto de inicio "
+    "[mm:ss] (mm puede pasar de 59 en videos de más de una hora). "
+    "start_time y end_time de la respuesta van en SEGUNDOS ENTEROS "
+    "(mm × 60 + ss): la línea [17:10] empieza en el segundo 1030."
+)
+
+
+def format_lines_for_prompt(
+    lines: List[dict],
+    header: bool = True,
+    style: str = "seconds",
+) -> str:
     """
     Formato con que la Pasada A recibe el Transcript de W4: una Línea por
-    renglón, `[mm:ss] Oración.` (el mm:ss es el inicio de la Línea). Reemplaza
-    a los bloques `[s-e]: texto` de captions; el resto del prompt no cambia.
+    renglón, con su rango temporal adelante. Reemplaza a los bloques
+    `[s-e]: texto` de captions; el resto del prompt no cambia.
+
+    `style="seconds"` (default) → `[1030-1036] Oración.`; `style="mmss"` →
+    `[17:10] Oración.`. Medido en podcast_general_01 con
+    `google/gemini-3.5-flash`: con `mm:ss` el modelo **concatena** minutos y
+    segundos en vez de convertirlos (la oración de `[57:16]` volvió como
+    `start_time=5716`, la de `[3:47]` como `347`), y eso ocurrió en los 8
+    candidatos incluso con el encabezado explicando la conversión; 2 de 8
+    quedaron fuera del video. En segundos no hay conversión que equivocar, y
+    es la unidad en la que trabaja todo lo que sigue
+    (`rank_and_prune_candidates`, `validate_durations`, el corte).
+    `ViralMoment` acepta igual `"mm:ss"` como red.
     """
+    if style not in ("seconds", "mmss"):
+        raise ValueError(f"style inválido: {style!r}")
     out = []
+    if header:
+        out.append(LINES_PROMPT_HEADER if style == "seconds" else LINES_PROMPT_HEADER_MMSS)
     for ln in lines or []:
         text = (ln.get("text") or "").strip()
         if not text:
             continue
-        out.append(f"[{format_mmss(ln.get('start', 0))}] {text}")
+        if style == "seconds":
+            out.append(f"[{int(round(float(ln.get('start', 0))))}-"
+                       f"{int(round(float(ln.get('end', 0))))}] {text}")
+        else:
+            out.append(f"[{format_mmss(ln.get('start', 0))}] {text}")
     return "\n".join(out)
 
 

@@ -164,6 +164,15 @@ class ViralMoment(BaseModel):
             return v
         if isinstance(v, float):
             return int(round(v))
+        # W4: el transcript de Whisper full llega con marcas [mm:ss], así que
+        # el modelo puede devolver "17:10" (o "1:17:10") en vez de 1030.
+        if isinstance(v, str):
+            parts = v.strip().split(":")
+            if len(parts) > 1 and all(p.strip().isdigit() for p in parts):
+                total = 0
+                for part in parts:
+                    total = total * 60 + int(part)
+                return total
         return v
 
 
