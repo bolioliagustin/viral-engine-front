@@ -9,7 +9,7 @@ import sys
 import json
 import time
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -291,12 +291,16 @@ def _resolve_moment_video_source(
     sync_attempt: int = 0,
     muxed_avail_end: float | None = None,
     extend_after_sec: float = 0.0,
+    fallback_source: "_MomentSource | None" = None,
 ) -> "_MomentSource":
     """Resuelve fuente de video para un clip.
 
     `extend_after_sec` > 0 (W1: la última frase no apareció) exige que la fuente
     llegue hasta end_s + margen_después + extend; un segmento per-clip cacheado
-    que no llega se re-descarga con ese margen.
+    que no llega se re-descarga con ese margen. `fallback_source` es la última
+    fuente que sí funcionó para este momento (antes de un resync W3 que borra
+    el cache): si la re-descarga/extensión falla, se usa en vez de perder el
+    clip entero.
     """
     _, m_after = _clip_margins_sec()
     needed_end = min(float(video_duration), end_s + m_after + extend_after_sec) if video_duration else end_s + m_after + extend_after_sec
@@ -426,10 +430,32 @@ def _resolve_moment_video_source(
             except Exception as e_stream:
                 last_stream_err = e_stream
                 print(f"   ⚠️ Stream partial per-clip falló: {e_stream}")
-        if last_stream_err:
-            raise RuntimeError(
-                f"Sin video para clip {moment_index} — stream partial falló: {last_stream_err}"
-            ) from last_stream_err
+
+    # Último recurso: nunca dejar el momento sin video. La extensión de
+    # margen (W1, payoff_not_found) y el resync (W3, bad_segment) son mejoras
+    # oportunistas, no un requisito — si la re-descarga no está disponible,
+    # seguimos con el mejor segmento que ya tenemos en vez de perder el clip
+    # entero (caso real: user_recommended_01 m=3/m=5, 108 min, sin proxies
+    # residenciales en la Mac de eval, medición W1 2026-09-18).
+    if cached and Path(cached.path).exists():
+        print(f"   ⚠️ No se pudo ampliar/reintentar la descarga — sigo con el segmento cacheado ya en mano")
+        return _MomentSource(
+            cached.path,
+            start_s - cached.download_start,
+            end_s - cached.download_start,
+            start_s,
+            cached.path,
+            cached.download_start,
+            cached.download_end,
+            "cached",
+            insufficient=True,
+        )
+    if fallback_source is not None and Path(fallback_source.path).exists():
+        print(
+            f"   ⚠️ No se pudo re-descargar el segmento — sigo con la última "
+            f"fuente {fallback_source.kind} disponible para este momento"
+        )
+        return replace(fallback_source, insufficient=True)
 
     raise RuntimeError(
         f"Sin video disponible para clip {moment_index} "
@@ -533,6 +559,7 @@ class _MomentSource:
     avail_start_abs: float
     avail_end_abs: float
     kind: str   # cached | muxed | ytdlp | apify | stream
+    insufficient: bool = False  # True: no se pudo re-descargar/ampliar; es el mejor segmento disponible
 
 
 def _unlink_quiet(path) -> None:
@@ -1232,6 +1259,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             hook_not_found = False
             payoff_not_found = False
             margin_extended = False
+            margin_extension_failed = False
             subs_disabled_timestamps = False
 
             # Generate clip (Fase 1.6 — orden invertido):
@@ -1243,6 +1271,11 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 sync_retries = _clip_sync_retries()
                 strict_sync = _strict_sync_validation()
                 sync_retry_reason = "baja cobertura Whisper"
+                # Última fuente que sí resolvió video para este momento (sobrevive
+                # a los `clip_paths_cache.pop` de un resync W3): si un resync o una
+                # extensión de margen W1 no consiguen más video, se usa esta en vez
+                # de perder el clip entero.
+                last_good_source: "_MomentSource | None" = None
                 for sync_attempt in range(sync_retries + 1):
                     try:
                         if sync_attempt > 0:
@@ -1275,7 +1308,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         anchored_mode = bool(first_phrase or last_phrase)
                         anchored = None          # resultado del corte anclado (dict) o None
                         extend_after_sec = 0.0
+                        extend_attempted = False
                         margin_extended = False
+                        margin_extension_failed = False
                         subs_disabled_timestamps = False
                         hook_not_found = False
                         payoff_not_found = False
@@ -1295,7 +1330,15 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                 partial_download_failed=partial_download_failed,
                                 sync_attempt=sync_attempt,
                                 extend_after_sec=extend_after_sec,
+                                fallback_source=last_good_source,
                             )
+                            if source.insufficient:
+                                if extend_after_sec > 0:
+                                    margin_extension_failed = True
+                            else:
+                                last_good_source = source
+                                if extend_after_sec > 0:
+                                    margin_extended = True
                             src_path, src_start, src_end = source.path, source.src_start, source.src_end
                             seg_path = source.seg_path
                             if not anchored_mode:
@@ -1396,14 +1439,14 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                     print(f"      first: «{first_phrase[:70]}» ≈ «{ev['first_matched_text'][:70]}»")
                                 if ev.get("last_matched_text"):
                                     print(f"      last:  «{last_phrase[:70]}» ≈ «{ev['last_matched_text'][:70]}»")
-                                can_extend = source.kind in ("muxed", "cached", "ytdlp")
+                                can_extend = source.kind in ("muxed", "cached", "ytdlp") and not source.insufficient
                                 if (
                                     ev.get("extend_recommended")
-                                    and not margin_extended
+                                    and not extend_attempted
                                     and can_extend
                                     and seg_end_abs < video_duration - 0.5
                                 ):
-                                    margin_extended = True
+                                    extend_attempted = True
                                     extend_after_sec = _PAYOFF_EXTEND_AFTER_SEC
                                     print(
                                         f"   🔎 Última frase no aparece — extiendo el segmento "
@@ -1817,6 +1860,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     hook_not_found=locals().get("hook_not_found", False),
                     payoff_not_found=locals().get("payoff_not_found", False),
                     margin_extended=locals().get("margin_extended", False),
+                    margin_extension_failed=locals().get("margin_extension_failed", False),
                     subs_disabled_timestamps=locals().get("subs_disabled_timestamps", False),
                 )
             elif clip_rendered_ok or verification_info:
@@ -1832,6 +1876,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     hook_not_found=locals().get("hook_not_found", False),
                     payoff_not_found=locals().get("payoff_not_found", False),
                     margin_extended=locals().get("margin_extended", False),
+                    margin_extension_failed=locals().get("margin_extension_failed", False),
                     subs_disabled_timestamps=locals().get("subs_disabled_timestamps", False),
                 )
 

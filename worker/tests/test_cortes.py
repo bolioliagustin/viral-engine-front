@@ -497,6 +497,44 @@ class TestClipMargins:
         assert "_ext25" in dl.call_args.kwargs["output_path"]
         assert src2.avail_end_abs == 205.0
 
+    def test_resolve_source_extension_failure_keeps_cached_segment(self, tmp_path, monkeypatch):
+        """Si la re-descarga para extender el margen no está disponible (caso real:
+        user_recommended_01 m=3, momento más allá del primer 20% del video, sin
+        proxies residenciales), el clip no se pierde: se sigue con el segmento
+        cacheado ya descargado, marcado como insuficiente."""
+        import main
+        from services.downloader import ClipDownloadResult
+        for k in ("CLIP_KEYFRAME_MARGIN_SEC", "CLIP_MARGIN_BEFORE_SEC", "CLIP_MARGIN_AFTER_SEC"):
+            monkeypatch.delenv(k, raising=False)
+        cached_file = tmp_path / "seg.mp4"
+        cached_file.write_bytes(b"x")
+        cache = {3: ClipDownloadResult(str(cached_file), 785.0, 880.0)}
+
+        with patch.object(main, "_should_use_ytdlp_for_clips", return_value=False), \
+             patch.object(main, "download_clip_ytdlp", side_effect=RuntimeError("403 sin proxy residencial")), \
+             patch.object(main, "_use_apify_fallback", return_value=False):
+            src = main._resolve_moment_video_source(
+                moment_index=3, start_s=800.0, end_s=860.0, video_url="u", video_id="v",
+                video_duration=1000.0, muxed_video_path=None, clip_paths_cache=cache,
+                partial_download_failed=False, extend_after_sec=25.0,
+            )
+        assert src.kind == "cached"
+        assert src.insufficient is True
+        assert src.avail_end_abs == 880.0
+
+    def test_resolve_source_no_fallback_still_raises(self, tmp_path):
+        """Sin ningún segmento previo (ni cache, ni muxed, ni fallback_source), la
+        falta total de video sigue siendo un error — no hay nada que degradar."""
+        import main
+        with patch.object(main, "_should_use_ytdlp_for_clips", return_value=False), \
+             patch.object(main, "_use_apify_fallback", return_value=False):
+            with pytest.raises(RuntimeError, match="Sin video disponible"):
+                main._resolve_moment_video_source(
+                    moment_index=3, start_s=800.0, end_s=860.0, video_url="u", video_id="v",
+                    video_duration=1000.0, muxed_video_path=None, clip_paths_cache={},
+                    partial_download_failed=False, extend_after_sec=25.0,
+                )
+
 
 # ── transcribe_with_whisper_openrouter(provider=...) ────────────────────────
 

@@ -954,6 +954,7 @@ def build_clip_quality_issues(
     payoff_not_found: bool = False,
     hook_not_found: bool = False,
     margin_extended: bool = False,
+    margin_extension_failed: bool = False,
     subs_disabled_timestamps: bool = False,
 ) -> list[str]:
     """
@@ -974,6 +975,9 @@ def build_clip_quality_issues(
         margen) o no entró en los 60 s; el fin es un fin de oración de respaldo.
       - margin_extended: se re-descargó el segmento con +25 s al final para
         buscar la última frase.
+      - margin_extension_failed: la última frase no aparece y la re-descarga
+        con +25 s no consiguió más video (sin proxy/estrategia disponible);
+        se siguió con el mejor segmento ya descargado en vez de perder el clip.
       - subs_disabled_timestamps: los dos proveedores Whisper dieron timestamps
         sospechosos; el clip se renderizó sin subtítulos.
     """
@@ -994,6 +998,8 @@ def build_clip_quality_issues(
         issues.append("payoff_not_found")
     if margin_extended:
         issues.append("margin_extended")
+    if margin_extension_failed:
+        issues.append("margin_extension_failed")
     if subs_disabled_timestamps:
         issues.append("subs_disabled_timestamps")
     if verification_info:
