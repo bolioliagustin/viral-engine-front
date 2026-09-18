@@ -56,7 +56,9 @@ def _load_golden_set() -> dict:
 
 
 def _get_transcript(video: dict):
-    from services.yt_transcript import get_video_id, get_video_metadata, get_youtube_transcript
+    from services.yt_transcript import (
+        get_video_id, get_video_metadata, get_youtube_transcript, transcript_source,
+    )
     from services.transcript_cache import get_cached_transcript
 
     video_id = video.get("youtube_id") or get_video_id(video.get("url") or "")
@@ -64,7 +66,11 @@ def _get_transcript(video: dict):
         _log("   ❌ Sin youtube_id ni URL válida")
         return None
 
-    cached = get_cached_transcript(video_id)
+    # W4: con TRANSCRIPT_SOURCE=whisper_full|hybrid la cache de captions no
+    # sirve (la Pasada A tiene que ver las Líneas), así que el transcript se
+    # pide por el camino normal, que lee su propia cache por fuente+modelo.
+    source = transcript_source()
+    cached = get_cached_transcript(video_id) if source == "supadata" else None
     if cached:
         _log(f"   ✅ Transcript desde cache ({len(cached.get('segments') or [])} segments)")
         video_info = get_video_metadata(video_id)
@@ -73,7 +79,7 @@ def _get_transcript(video: dict):
             video_info["duration"] = float(segs[-1].get("end", 0))
         return cached, video_info
 
-    _log("   🌐 Transcript no cacheado — bajando de YouTube...")
+    _log(f"   🌐 Transcript no cacheado (fuente={source}) — pidiéndolo...")
     try:
         return get_youtube_transcript(
             video.get("url") or f"https://www.youtube.com/watch?v={video_id}"
