@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from config.model_tiers import output_language_instruction
 from config.llm_chat import build_chat_kwargs, log_llm_usage
+from services.validation import CLIP_MAX_DURATION_SEC
 
 
 def target_moment_count(duration_sec: float) -> int:
@@ -225,7 +226,7 @@ def get_selection_prompt(
 4. Frase memorable standalone que no necesita contexto
 5. Reacción genuina (risa, incomodidad, sorpresa)
 
-TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/reacción + 4s. Ideal 20-40s."""
+TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/reacción + 4s."""
     else:
         focus = """PRIORIZA (contenido de un orador / educativo):
 1. Contrarian truths: ideas que rompen creencias comunes
@@ -233,7 +234,7 @@ TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/re
 3. Deep vulnerability: admisión de errores humanos
 4. Curiosity gap: declaraciones que abren loops mentales
 
-TIMING: start = inicio del setup de la idea; end = fin del remate/conclusión. Ideal 20-55s."""
+TIMING: start = inicio del setup de la idea; end = fin del remate/conclusión."""
 
     return f"""Eres un editor senior de clips virales. Tu ÚNICA tarea en esta pasada es SELECCIONAR los mejores momentos del video. NO generes copy, threads ni posts — eso ocurre en otra etapa.
 
@@ -246,7 +247,7 @@ Identifica los {num_candidates} MEJORES momentos candidatos del video. Sé exige
 
 REGLAS DE TIMING (CRÍTICAS):
 - Usa EXACTAMENTE los timestamps de la transcripción (no los inventes).
-- Cada momento: 15-60 segundos. NUNCA menos de 10s.
+- Un momento es una idea completa: planteo, desarrollo y remate. Entre 20 y {CLIP_MAX_DURATION_SEC:.0f} segundos. En podcasts y entrevistas lo normal es 40-90 s; en videos cortos de un solo hablante, 20-60 s. Cortá siempre donde termina una oración.
 - El momento debe empezar donde empieza la IDEA (setup) y terminar donde termina (remate). No cortes a mitad de frase.
 - Momentos NO solapados (máximo 20% de overlap entre candidatos).
 
