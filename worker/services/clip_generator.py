@@ -13,6 +13,7 @@ Funciones (por dia del sprint):
 El pipeline siempre re-encodea para frame accuracy (el corte con -c copy
 solo era exacto en keyframes).
 """
+import re
 import subprocess
 import os
 import shutil
@@ -42,6 +43,13 @@ FFMPEG_PATH = _resolve_bin('FFMPEG_PATH', 'ffmpeg')
 FFPROBE_PATH = _resolve_bin('FFPROBE_PATH', 'ffprobe')
 
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
+
+# W11 (docs/PLAN_CALIDAD.md §9 Fase 1): fuentes embebidas para el estilo
+# tiktok_viral_v2 (Bangers — ver fonts/README.md, licencia OFL). Se pasan
+# al filtro `ass=` de FFmpeg como `fontsdir` en vez de instalarse a nivel
+# sistema (ni acá ni en el contenedor): libass las resuelve por nombre
+# igual, sin tocar fontconfig.
+FONTS_DIR = Path(__file__).parent.parent / "fonts"
 
 # cut_clip() también corta el "segmento ancho" de W1 (services.validation.
 # CLIP_MIN/MAX_DURATION_SEC), no solo el clip final. Con el tope de Momento
@@ -1096,6 +1104,319 @@ def segments_to_srt(
     return output_path
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# W11 — Subtítulos v2 (docs/PLAN_CALIDAD.md §9 Fase 1)
+# ═══════════════════════════════════════════════════════════════════════════
+# Bloques de 1-3 palabras, MAYÚSCULAS, palabra clave resaltada — imita el
+# estilo de captions cortas tipo TikTok / Opus Clip (docs/ANALISIS_OPUS_CLIP.md
+# §2.5: 1-5 palabras por bloque, mediana 2, sin texto en silencios).
+#
+# Partículas en español que nunca quedan solas al final de un bloque (se
+# arrastran a costa de superar el tope de palabras en ese caso puntual).
+V2_PARTICLES = frozenset({
+    "el", "la", "los", "las", "un", "una", "de", "del", "al", "a", "en",
+    "con", "por", "para", "que", "y", "o", "no", "se", "su", "mi", "tu",
+})
+
+# Puntuación que SIEMPRE corta un bloque (fin de idea).
+V2_STRONG_PUNCT = ".!?…"
+
+V2_MAX_WORDS = 3
+V2_GAP_SPLIT_SEC = 0.35          # gap entre palabras que fuerza un corte
+V2_SILENCE_GAP_SEC = 0.5         # gap a partir del cual NO hay texto (silencio)
+V2_MIN_BLOCK_DUR_SEC = 0.25      # bloque más corto que esto se funde con el vecino
+
+# Colores de palabra clave (docs/ANALISIS_OPUS_CLIP.md §2.5): verde primario,
+# amarillo secundario si el bloque tiene dos palabras marcadas.
+V2_KEYWORD_COLOR_PRIMARY = "#04F827"
+V2_KEYWORD_COLOR_SECONDARY = "#FFFD03"
+
+
+def _v2_clean_word(text: str) -> str:
+    """minúscula, sin puntuación/acentos-diacríticos de borde — para comparar."""
+    return re.sub(r"[^\w]", "", (text or "").lower(), flags=re.UNICODE)
+
+
+def _v2_is_particle(text: str) -> bool:
+    return _v2_clean_word(text) in V2_PARTICLES
+
+
+def _v2_ends_strong(text: str) -> bool:
+    t = (text or "").strip()
+    return bool(t) and t[-1] in V2_STRONG_PUNCT
+
+
+def group_words_v2(words: list[dict], *, max_words: int = V2_MAX_WORDS) -> list[list[dict]]:
+    """
+    Agrupa palabras (con 'word'/'start'/'end') en bloques de 1-`max_words`.
+
+    Corta siempre que: el bloque ya tiene `max_words`, la palabra anterior
+    termina en puntuación fuerte (.!?…), o el gap hasta la palabra siguiente
+    es >= V2_GAP_SPLIT_SEC. Excepción: si el corte por conteo dejaría una
+    partícula (el/la/de/en/...) sola al final del bloque, se la arrastra al
+    bloque (que en ese caso puntual queda de max_words+1).
+    """
+    clean = [w for w in words if (w.get("word") or "").strip()]
+    if not clean:
+        return []
+
+    groups: list[list[dict]] = []
+    current: list[dict] = [clean[0]]
+
+    for w in clean[1:]:
+        if not current:
+            # El bloque anterior cerró en la rama de "arrastrar partícula"
+            # (ver más abajo) — arrancamos uno nuevo con esta palabra.
+            current = [w]
+            continue
+        prev = current[-1]
+        gap = float(w.get("start", 0)) - float(prev.get("end", 0))
+        strong_cut = _v2_ends_strong(prev.get("word", "")) or gap >= V2_GAP_SPLIT_SEC
+        count_cut = len(current) >= max_words
+
+        if strong_cut:
+            groups.append(current)
+            current = [w]
+        elif count_cut:
+            if _v2_is_particle(prev.get("word", "")):
+                # No separar la partícula de lo que sigue: se pega y el
+                # bloque cierra ahí (excede max_words en 1, a propósito).
+                current.append(w)
+                groups.append(current)
+                current = []
+            else:
+                groups.append(current)
+                current = [w]
+        else:
+            current.append(w)
+
+    if current:
+        groups.append(current)
+
+    return groups
+
+
+def _v2_blocks_with_timing(
+    groups: list[list[dict]],
+    clip_duration_sec: Optional[float] = None,
+) -> list[dict]:
+    """
+    A partir de los grupos de `group_words_v2`, arma bloques {"words","start",
+    "end"} con el timing de despliegue: funde bloques que quedarían visibles
+    menos de V2_MIN_BLOCK_DUR_SEC con el vecino, y nunca estira el final de
+    un bloque hacia un hueco de silencio >= V2_SILENCE_GAP_SEC (sin texto
+    durante silencios).
+    """
+    if not groups:
+        return []
+
+    raw: list[dict] = []
+    for g in groups:
+        start = float(g[0]["start"])
+        end = float(g[-1]["end"])
+        if end <= start:
+            end = start + 0.06
+        raw.append({"words": g, "start": start, "end": end})
+
+    # Fundir bloques cortísimos con el bloque anterior (si el hueco entre
+    # ambos no es ya un silencio real).
+    merged: list[dict] = []
+    for b in raw:
+        dur = b["end"] - b["start"]
+        if merged and dur < V2_MIN_BLOCK_DUR_SEC:
+            gap_to_prev = b["start"] - merged[-1]["end"]
+            if gap_to_prev < V2_SILENCE_GAP_SEC:
+                merged[-1]["words"] = merged[-1]["words"] + b["words"]
+                merged[-1]["end"] = b["end"]
+                continue
+        merged.append(b)
+
+    # El primer bloque no tiene "anterior" para fundirse — si es cortísimo,
+    # se funde hacia el siguiente en su lugar.
+    if len(merged) > 1 and (merged[0]["end"] - merged[0]["start"]) < V2_MIN_BLOCK_DUR_SEC:
+        gap_to_next = merged[1]["start"] - merged[0]["end"]
+        if gap_to_next < V2_SILENCE_GAP_SEC:
+            merged[1]["words"] = merged[0]["words"] + merged[1]["words"]
+            merged[1]["start"] = merged[0]["start"]
+            merged.pop(0)
+
+    # Timing de despliegue: estirar el final un poco hacia el próximo bloque
+    # para que no parpadee — salvo que el hueco real sea un silencio.
+    gap_sec = 0.03
+    for i, b in enumerate(merged):
+        if i + 1 < len(merged):
+            next_start = merged[i + 1]["start"]
+            raw_gap = next_start - b["end"]
+            if raw_gap < V2_SILENCE_GAP_SEC:
+                b["end"] = min(b["end"] + 0.10, next_start - gap_sec)
+        elif clip_duration_sec is not None:
+            b["end"] = min(b["end"] + 0.15, clip_duration_sec + 0.10)
+        b["end"] = max(b["start"] + 0.08, b["end"])
+
+    return merged
+
+
+def detect_keywords_v2(
+    blocks: list[dict],
+    moment_keywords: Optional[list[str]] = None,
+) -> list[list[int]]:
+    """
+    Para cada bloque, índices (dentro de block["words"]) de las palabras a
+    resaltar.
+
+    Con `moment_keywords` (Pasada B, W11 punto 2 — 6-12 palabras del texto
+    real elegidas por el modelo): hasta 2 por bloque, en el orden en que
+    aparecen. Sin `moment_keywords` (jobs legacy): heurística local, máximo
+    1 por bloque — números, MAYÚSCULA que no arranca el bloque, o >=7 letras
+    que no sea partícula.
+    """
+    normalized_keywords = None
+    if moment_keywords:
+        normalized_keywords = {
+            _v2_clean_word(k) for k in moment_keywords if k and str(k).strip()
+        }
+        normalized_keywords.discard("")
+
+    result: list[list[int]] = []
+    for block in blocks:
+        words = block["words"]
+        picks: list[int] = []
+        if normalized_keywords:
+            for i, w in enumerate(words):
+                if _v2_clean_word(w.get("word", "")) in normalized_keywords:
+                    picks.append(i)
+                if len(picks) >= 2:
+                    break
+        else:
+            for i, w in enumerate(words):
+                text = (w.get("word") or "").strip()
+                clean = _v2_clean_word(text)
+                if not clean or _v2_is_particle(text):
+                    continue
+                is_number = any(ch.isdigit() for ch in text)
+                # Mayúscula "que no arranca oración": aproximamos con "no es
+                # la primera palabra del bloque" — barato y sin volver a
+                # analizar todo el clip para saber dónde arranca la oración.
+                is_mid_capital = i > 0 and text[:1].isupper()
+                is_long = len(clean) >= 7
+                if is_number or is_mid_capital or is_long:
+                    picks.append(i)
+                    break  # heurística: máximo 1 por bloque
+        result.append(picks)
+    return result
+
+
+def _v2_block_to_ass_text(block: dict, highlight_indices: list[int]) -> str:
+    """MAYÚSCULAS + color de palabra clave (primario/secundario) por bloque."""
+    colors: dict[int, str] = {}
+    if highlight_indices:
+        colors[highlight_indices[0]] = _hex_to_ass_color(V2_KEYWORD_COLOR_PRIMARY)
+    if len(highlight_indices) > 1:
+        colors[highlight_indices[1]] = _hex_to_ass_color(V2_KEYWORD_COLOR_SECONDARY)
+
+    parts = []
+    for i, w in enumerate(block["words"]):
+        text = (w.get("word") or "").strip().upper()
+        safe = text.replace("{", "\\{").replace("}", "\\}")
+        if i in colors:
+            parts.append(r"{\c" + colors[i] + r"&}" + safe + r"{\r}")
+        else:
+            parts.append(safe)
+    return " ".join(parts)
+
+
+def _v2_words_to_ass(
+    words: list[dict],
+    output_path: str,
+    base_style: dict,
+    play_res_x: int,
+    play_res_y: int,
+    clip_duration_sec: Optional[float],
+    start_offset_sec: float = 0.0,
+    moment_keywords: Optional[list[str]] = None,
+) -> str:
+    """
+    Construye el ASS de subtítulos v2 completo: agrupado 1-3 palabras,
+    MAYÚSCULAS, palabra clave en color, animación "pop" al aparecer cada
+    bloque (sin karaoke por palabra), sin texto en silencios.
+    """
+    clip_words = []
+    end_limit = (clip_duration_sec + 0.25) if clip_duration_sec is not None else None
+    for w in words:
+        w_start = float(w.get("start", 0)) - start_offset_sec
+        w_end = float(w.get("end", w_start + 0.1)) - start_offset_sec
+        word_text = (w.get("word") or "").strip()
+        if not word_text or w_end <= 0:
+            continue
+        if end_limit is not None and w_start > end_limit:
+            break
+        w_start = max(0.0, w_start)
+        if clip_duration_sec is not None:
+            w_end = min(clip_duration_sec + 0.15, w_end)
+        if w_end <= w_start:
+            w_end = w_start + 0.06
+        clip_words.append({"word": word_text, "start": w_start, "end": w_end})
+
+    if not clip_words:
+        raise ClipGenerationError("No words for v2 ASS")
+
+    groups = group_words_v2(clip_words)
+    blocks = _v2_blocks_with_timing(groups, clip_duration_sec)
+    highlights = detect_keywords_v2(blocks, moment_keywords)
+
+    events = []
+    # Pop: escala 100%→112%→100% en los primeros 120ms del bloque (\t con
+    # \fscx\fscy) — sin karaoke por palabra, un solo efecto por Dialogue.
+    pop_tag = r"{\fscx100\fscy100\t(0,60,\fscx112\fscy112)\t(60,120,\fscx100\fscy100)}"
+    for block, picks in zip(blocks, highlights):
+        text = _v2_block_to_ass_text(block, picks)
+        start_ass = _format_ass_time(block["start"])
+        end_ass = _format_ass_time(block["end"])
+        events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{pop_tag}{text}")
+
+    s = base_style
+    style_line = (
+        f"Style: Default,"
+        f"{s.get('FontName', 'Arial')},"
+        f"{s.get('FontSize', '48')},"
+        f"{s.get('PrimaryColour', '&H00FFFFFF')},"
+        f"&H000000FF,"
+        f"{s.get('OutlineColour', '&H00000000')},"
+        f"{s.get('BackColour', '&H00000000')},"
+        f"{s.get('Bold', '0')},"
+        f"0,0,0,"
+        f"100,100,{s.get('Spacing', '0')},0,"
+        f"{s.get('BorderStyle', '1')},"
+        f"{s.get('Outline', '1')},"
+        f"{s.get('Shadow', '0')},"
+        f"{s.get('Alignment', '2')},"
+        f"60,60,"
+        f"{s.get('MarginV', '40')},"
+        f"1"
+    )
+    ass_content = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+{style_line}
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+""" + "\n".join(events) + "\n"
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(ass_content)
+    n_kw = sum(1 for h in highlights if h)
+    print(f"   🎬 Subtítulos v2: {len(events)} bloques, {n_kw} con palabra clave")
+    return output_path
+
+
 # Presets de estilo para subtitulos (formato ASS force_style)
 # Colores en formato ASS: &HAABBGGRR  (AA=alpha 00=opaco, BB=blue, GG=green, RR=red)
 # Ejemplos: &H00FFFFFF=blanco, &H0000FFFF=amarillo, &H000080FF=naranja, &H0000FF00=verde
@@ -1145,6 +1466,28 @@ SUBTITLE_STYLES = {
         "Bold": "1",
         "Alignment": "2",
         "MarginV": "340",
+    },
+    # ── tiktok_viral_v2 (default, W11 — docs/PLAN_CALIDAD.md §9 Fase 1) ────────
+    # Bloques cortos (1-3 palabras, ver group_words_v2), MAYÚSCULAS, palabra
+    # clave en color. Fuente cómic Bangers (fonts/, OFL) en vez de Liberation
+    # Sans — el look "hecho para TikTok" que describe ANALISIS_OPUS_CLIP.md
+    # §2.5 (Opus usa Komika Axis; Bangers es el equivalente libre más cercano
+    # en Google Fonts). Tamaño y borde calculados para el canvas 720x1280:
+    # ~7% del alto (90px) y un borde de 5px — el borde de Opus es 16px sobre
+    # 1080p, que a 720p equivale a ~10-11px, pero un borde tan grueso ahoga
+    # los trazos finos de una fuente display; 5px es el punto legible.
+    "tiktok_viral_v2": {
+        "FontName": "Bangers",
+        "FontSize": "90",
+        "PrimaryColour": "&H00FFFFFF",   # blanco
+        "OutlineColour": "&H00000000",   # negro
+        "BorderStyle": "1",
+        "Outline": "5",
+        "Shadow": "2",                   # sombra suave (Opus también la usa)
+        "Bold": "0",                     # Bangers no tiene variante bold real
+        "Spacing": "1",
+        "Alignment": "2",                # bottom-anchored; MarginV lo sube a ~58% del alto
+        "MarginV": "500",                # ≈58% del alto (1280px) medido desde abajo
     },
 }
 
@@ -1450,14 +1793,21 @@ def burn_subtitles(
 # Diferencia vs SUBTITLE_STYLES: fuente mas grande, posicion configurable
 # El overlay va en la zona SUPERIOR del blur (top blur band del layout 9:16).
 OVERLAY_STYLES = {
-    # ── TikTok viral: blanco bold con borde negro — el clásico de hooks ───────
+    # ── TikTok viral (W11 — docs/PLAN_CALIDAD.md §9 Fase 1): caja blanca con
+    # texto negro, como el hook de Opus (docs/ANALISIS_OPUS_CLIP.md §2.4).
+    # Sin BorderStyle=4 (box real, esquinas cuadradas): un Outline grueso del
+    # mismo color que el fondo deseado (\3c = OutlineColour) sigue el
+    # contorno de las letras en vez de dibujar un rectángulo, así que el
+    # "borde" queda como una cápsula redondeada alrededor del texto —
+    # esquinas redondeadas "simuladas" sin dibujo vectorial. Fuente normal
+    # negrita (Liberation Sans), NO la cómic de los subtítulos.
     "tiktok_viral": {
         "FontName": "Liberation Sans",
-        "FontSize": "58",                # baja para que 4 palabras UPPER entren cómodas
-        "PrimaryColour": "&H00FFFFFF",   # blanco
-        "OutlineColour": "&H00000000",   # negro
+        "FontSize": "54",
+        "PrimaryColour": "&H00000000",   # texto negro
+        "OutlineColour": "&H00FFFFFF",   # "caja" blanca (bord grueso = cápsula)
         "BorderStyle": "1",
-        "Outline": "5",                  # borde grueso para legibilidad sobre blur
+        "Outline": "18",                 # grueso a propósito: es el fondo, no un borde fino
         "Shadow": "0",
         "Bold": "1",
         "Spacing": "1",
@@ -1541,7 +1891,7 @@ def _build_overlay_ass(
         f"{s.get('Outline', '3')},"
         f"{s.get('Shadow', '1')},"
         f"{alignment},"
-        f"80,80,"       # MarginL, MarginR (overlay tiene más aire lateral)
+        f"95,95,"       # MarginL, MarginR — deja ~73% del ancho para el texto (W11: 72-75%)
         f"{margin_v},"
         f"1"
     )
@@ -1801,10 +2151,13 @@ def generate_clip(
     segments_start_offset_sec: Optional[float] = None,
     words: Optional[list[dict]] = None,  # word-level timestamps (Whisper verbose_json)
     word_styles: Optional[list[dict]] = None,  # per-word ASS overrides
-    subtitle_style: str = "tiktok_viral",
+    subtitle_style: str = "tiktok_viral_v2",
+    # W11: palabras clave de la Pasada B (moment.keywords) para resaltar en
+    # tiktok_viral_v2; sin esto, heurística local (ver detect_keywords_v2).
+    keywords: Optional[list[str]] = None,
     overlay_text: Optional[str] = None,
     overlay_style: str = "tiktok_viral",
-    overlay_duration_sec: float = 3.5,
+    overlay_duration_sec: float = 5.0,
     overlay_position: str = "top",
     target_width: int = 1080,
     target_height: int = 1920,
@@ -1837,7 +2190,9 @@ def generate_clip(
         output_path: path del MP4 final
         segments: lista Whisper-style para subtitulos.
         segments_start_offset_sec: offset de timestamps de segments.
-        subtitle_style: 'tiktok_viral' | 'clean' | 'podcast'
+        subtitle_style: 'tiktok_viral_v2' (default, W11) | 'tiktok_viral' | 'clean' | 'podcast'
+        keywords: palabras a resaltar en tiktok_viral_v2 (Pasada B); sin esto,
+            heurística local (detect_keywords_v2)
         overlay_text: texto del hook inicial. Si None, no se quema overlay.
         overlay_style: 'tiktok_viral' | 'question' | 'stat'
         overlay_duration_sec: cuantos segundos dura el overlay visible
@@ -1906,6 +2261,8 @@ def generate_clip(
             ass_path = str(Path(workdir) / f"{stem}_subs.ass")
             try:
                 if words and word_styles:
+                    # Overrides manuales del editor (WordSubtitleEditor):
+                    # tienen prioridad sobre el resaltado automático de v2.
                     _words_to_per_word_ass(
                         words=words,
                         output_path=ass_path,
@@ -1916,6 +2273,21 @@ def generate_clip(
                         max_words_per_line=4,
                         word_styles=word_styles,
                         start_offset_sec=offset,
+                    )
+                    subs_ass_path = ass_path
+                    intermediates.append(ass_path)
+                elif words and subtitle_style == "tiktok_viral_v2":
+                    # W11: bloques 1-3 palabras, MAYÚSCULAS, palabra clave,
+                    # pop y sin texto en silencios (ver _v2_words_to_ass).
+                    _v2_words_to_ass(
+                        words=words,
+                        output_path=ass_path,
+                        base_style=SUBTITLE_STYLES[subtitle_style],
+                        play_res_x=W,
+                        play_res_y=H,
+                        clip_duration_sec=duration_sec,
+                        start_offset_sec=offset,
+                        moment_keywords=keywords,
                     )
                     subs_ass_path = ass_path
                     intermediates.append(ass_path)
@@ -1978,10 +2350,16 @@ def generate_clip(
             """Escapa path para filtro ass= de ffmpeg (barras y dos puntos)."""
             return p.replace("\\", "/").replace(":", "\\:")
 
+        # W11: fontsdir le indica a libass dónde buscar además de
+        # fontconfig — necesario para Bangers (tiktok_viral_v2), que no se
+        # instala a nivel sistema. No afecta la resolución de las demás
+        # fuentes (Liberation Sans etc.), que fontconfig sigue encontrando.
+        fontsdir_opt = f":fontsdir='{_esc(str(FONTS_DIR))}'" if FONTS_DIR.exists() else ""
+
         if subs_ass_path:
-            filter_parts += f",ass='{_esc(subs_ass_path)}'"
+            filter_parts += f",ass='{_esc(subs_ass_path)}'{fontsdir_opt}"
         if overlay_ass_path:
-            filter_parts += f",ass='{_esc(overlay_ass_path)}'"
+            filter_parts += f",ass='{_esc(overlay_ass_path)}'{fontsdir_opt}"
 
         filter_parts += "[vout]"
 

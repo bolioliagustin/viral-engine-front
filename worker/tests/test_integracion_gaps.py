@@ -73,3 +73,60 @@ class TestGapATitleDescriptionHashtags:
         assert kwargs["title"] is None
         assert kwargs["description"] is None
         assert kwargs["hashtags"] is None
+
+
+class TestGapBSubtitleStyleDefault:
+    """(b) main.py → generate_clip: subtitle_style default tiktok_viral_v2 (W11)."""
+
+    def test_deliver_moment_usa_tiktok_viral_v2_por_defecto(self, tmp_path):
+        moment = _moment(keywords=["sarampión", "R0"])
+        precut = tmp_path / "precut.mp4"
+        precut.write_bytes(b"x")
+        prepared = main._PreparedClip(
+            ok=True, precut_path=str(precut), clip_duration=30.0,
+            clip_text_final=None,  # sin Pasada B: solo interesa el render
+        )
+
+        fake_gen_result = MagicMock(total_time_sec=1.0, final=MagicMock(size_mb=1.0))
+        with patch.object(main, "generate_clip", return_value=fake_gen_result) as mock_gen, \
+             patch.object(main, "upload_clip_to_storage", return_value="https://r2/clip.mp4"), \
+             patch.object(main, "save_content_result"):
+            main._deliver_moment(
+                moment, 1, prepared,
+                job_id="job-1", video_id="vid-1", job_tone="profesional",
+                user_name="Creador", user_title="Experto", transcript={"segments": []},
+            )
+
+        assert mock_gen.called
+        kwargs = mock_gen.call_args.kwargs
+        assert kwargs["subtitle_style"] == "tiktok_viral_v2"
+        assert kwargs["keywords"] == ["sarampión", "R0"]
+
+    def test_subtitle_style_default_configurable_por_env(self, monkeypatch):
+        monkeypatch.setenv("SUBTITLE_STYLE_DEFAULT", "tiktok_viral")
+        import importlib
+        importlib.reload(main)
+        try:
+            assert main.SUBTITLE_STYLE_DEFAULT == "tiktok_viral"
+        finally:
+            monkeypatch.delenv("SUBTITLE_STYLE_DEFAULT", raising=False)
+            importlib.reload(main)
+            assert main.SUBTITLE_STYLE_DEFAULT == "tiktok_viral_v2"
+
+
+class TestGapCClipEditFallback:
+    """(c) clip_edit_processor.py: fallback de subtitle_style a tiktok_viral_v2 (W11)."""
+
+    def test_fallback_sin_estilo_especificado(self):
+        from services.clip_edit_processor import _resolve_subtitle_style
+        assert _resolve_subtitle_style({"id": "e1"}) == "tiktok_viral_v2"
+
+    def test_fallback_respeta_env_override(self, monkeypatch):
+        from services.clip_edit_processor import _resolve_subtitle_style
+        monkeypatch.setenv("SUBTITLE_STYLE_DEFAULT", "clean")
+        assert _resolve_subtitle_style({}) == "clean"
+        monkeypatch.delenv("SUBTITLE_STYLE_DEFAULT", raising=False)
+
+    def test_edit_con_estilo_explicito_no_lo_pisa(self):
+        from services.clip_edit_processor import _resolve_subtitle_style
+        assert _resolve_subtitle_style({"subtitle_style": "podcast"}) == "podcast"

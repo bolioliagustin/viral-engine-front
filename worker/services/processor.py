@@ -861,9 +861,12 @@ def generate_moment_copy_full(
     por clip que se pega directo al publicar: title, description,
     hashtags — lo que le faltaba a la card frente a Opus Clip (10 hashtags,
     título con gancho, descripción de 2 oraciones; ver
-    docs/ANALISIS_OPUS_CLIP.md §2.4). Mutates moment in-place. El copy
-    previo (si existía, del mega-prompt) queda como fallback si esta
-    pasada falla.
+    docs/ANALISIS_OPUS_CLIP.md §2.4). Desde W11 (Fase 1) también keywords —
+    6-12 palabras del texto real del clip a resaltar en color en el estilo
+    de subtítulos `tiktok_viral_v2` (si no vienen, el render usa una
+    heurística local, ver services/clip_generator.py::detect_keywords_v2).
+    Mutates moment in-place. El copy previo (si existía, del mega-prompt)
+    queda como fallback si esta pasada falla.
 
     W6 (docs/PLAN_CALIDAD.md §4): el juez castigaba hook y overlay por
     prometer el TEMA del momento en vez de citar algo que la persona
@@ -947,11 +950,12 @@ REGLAS POR PIEZA:
 6. title: título del clip para publicar, MÁXIMO 60 caracteres, con gancho. Patrón "Tema: ¡afirmación o pregunta!" (ej: "Sarampión vs COVID: ¡La verdad de la inmunidad de grupo!").
 7. description: EXACTAMENTE 2 oraciones — la primera dice qué se ve/de qué trata, la segunda invita a mirar/reaccionar. Sin hashtags acá (van en su propio campo).
 8. hashtags: EXACTAMENTE 10, en español, SIN acentos, en CamelCase con "#" (ej: "#InmunidadDeGrupo"), específicos del tema del clip — PROHIBIDO usar genéricos vacíos tipo "#Viral", "#Fyp", "#ParaTi", "#Trending".
+9. keywords: 6-12 palabras EXACTAS del CLIP TRANSCRIPT de arriba (cítalas tal cual aparecen, sin inventar ni parafrasear) que convenga resaltar en color en los subtítulos: números, nombres propios, verbos fuertes, negaciones — las palabras que un editor humano marcaría a mano para que salten al ojo.
 
 PROHIBIDO: clichés de IA ("en el mundo de hoy", "descubre cómo", "es importante destacar", "sumérgete").{fidelity_correction}
 
 Responde SOLO JSON:
-{{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "...", "title": "...", "description": "...", "hashtags": ["...", "..."]}}"""
+{{"twitter_thread": "...", "linkedin_post": "...", "tiktok_caption": "...", "hook": "...", "viral_overlay": "...", "title": "...", "description": "...", "hashtags": ["...", "..."], "keywords": ["...", "..."]}}"""
 
     def _request_copy(fidelity_correction: str = "") -> Optional[dict]:
         try:
@@ -1051,6 +1055,14 @@ Responde SOLO JSON:
     hashtags = _clean_hashtags(data.get("hashtags"))
     if hashtags:
         moment.hashtags = hashtags
+
+    # W11: palabras a resaltar en el estilo de subtítulos tiktok_viral_v2
+    # (services/clip_generator.py::detect_keywords_v2). Sin esto (jobs
+    # legacy o si el modelo omite el campo), el render cae a la
+    # heurística local.
+    kw = data.get("keywords")
+    if isinstance(kw, list) and kw:
+        moment.keywords = [str(k).strip() for k in kw if str(k or "").strip()][:12]
 
     print(f"   ✅ Pasada B: copy completo generado desde texto real ({len(clip_text)} chars, model={model})")
     return True

@@ -91,6 +91,13 @@ DOWNLOADS_DIR = Path(__file__).parent / "downloads"
 CLIPS_DIR = Path(__file__).parent / "clips"
 POLL_INTERVAL = 3  # seconds between Supabase polls
 
+# W11 (docs/PLAN_CALIDAD.md §9 Fase 1, gap de integración INT-1b): estilo de
+# subtítulos por defecto para clips nuevos. generate_clip() ya default-ea a
+# "tiktok_viral_v2" pero main.py lo pisaba con el valor viejo "tiktok_viral"
+# — el estilo nuevo nunca se usaba en producción pese a estar mergeado.
+# Configurable por env por si hace falta volver atrás sin deploy de código.
+SUBTITLE_STYLE_DEFAULT = os.getenv("SUBTITLE_STYLE_DEFAULT", "tiktok_viral_v2")
+
 
 def cleanup_old_files(max_age_hours: int = 24) -> None:
     """
@@ -1652,7 +1659,8 @@ def _deliver_moment(
                 segments=prepared.subs_segments,
                 segments_start_offset_sec=prepared.subs_offset,
                 words=prepared.subs_words,
-                subtitle_style="tiktok_viral",
+                subtitle_style=SUBTITLE_STYLE_DEFAULT,
+                keywords=getattr(moment, "keywords", None),
                 overlay_text=overlay_text,
                 overlay_style="tiktok_viral",
                 target_width=720,

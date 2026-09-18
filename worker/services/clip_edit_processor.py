@@ -248,6 +248,16 @@ def _whisper_per_clip(src_path: str, clip_duration: float, edit_id: str):
             pass
 
 
+def _resolve_subtitle_style(edit: dict) -> str:
+    """
+    Estilo de subtítulos del edit, o el default del pipeline si no especificó
+    (W11, gap de integración INT-1c): mismo default y misma env var que
+    main.py.SUBTITLE_STYLE_DEFAULT — antes caía a "tiktok_viral" (viejo) sin
+    que el usuario pudiera notarlo.
+    """
+    return edit.get("subtitle_style") or os.getenv("SUBTITLE_STYLE_DEFAULT", "tiktok_viral_v2")
+
+
 def process_clip_edit(edit: dict) -> None:
     """
     Procesa un único clip_edit. Side-effects: actualiza la fila de DB,
@@ -256,7 +266,7 @@ def process_clip_edit(edit: dict) -> None:
     edit_id = edit["id"]
     content_result_id = edit["content_result_id"]
     overlay_text = edit.get("overlay_text")
-    subtitle_style = edit.get("subtitle_style") or "tiktok_viral"
+    subtitle_style = _resolve_subtitle_style(edit)
     overlay_position = edit.get("overlay_position") or "top"
 
     with trace(edit_id=edit_id, phase="clip_edit"):

@@ -173,6 +173,11 @@ class ViralMoment(BaseModel):
     title: Optional[str] = None  # ≤60 chars, "Tema: ¡afirmación o pregunta!"
     description: Optional[str] = None  # 2 oraciones: qué se ve + invitación
     hashtags: Optional[List[str]] = None  # 10, español, sin acentos, CamelCase, con '#'
+    # W11 (docs/PLAN_CALIDAD.md §9 Fase 1): 6-12 palabras del texto real del
+    # clip a resaltar en color en el estilo de subtítulos tiktok_viral_v2
+    # (generate_moment_copy_full en processor.py las llena; sin esto, el
+    # render usa una heurística local — clip_generator.detect_keywords_v2).
+    keywords: Optional[List[str]] = None
     
     # Validators to convert float to int for timestamps
     @field_validator('start_time', 'end_time', mode='before')
