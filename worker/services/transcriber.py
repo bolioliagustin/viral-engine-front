@@ -522,34 +522,3 @@ def format_transcript_for_prompt_compact(
     return "\n".join(lines)
 
 
-def find_phrase_in_transcript(phrase: str, transcript: Dict, tolerance_seconds: float = 2.0) -> Dict:
-    """
-    Find a phrase in the transcript and return its exact timestamps
-    
-    Args:
-        phrase: Text to search for
-        transcript: Full transcript data
-        tolerance_seconds: How much time difference is acceptable
-        
-    Returns:
-        {
-            "found": True/False,
-            "start": 123.5,
-            "end": 126.8,
-            "segment_text": "Full text of matching segment"
-        }
-    """
-    phrase_lower = phrase.lower()
-    
-    for segment in transcript.get('segments', []):
-        segment_text = segment.get('text', '').lower()
-        
-        if phrase_lower in segment_text:
-            return {
-                "found": True,
-                "start": segment.get('start'),
-                "end": segment.get('end'),
-                "segment_text": segment.get('text')
-            }
-    
-    return {"found": False}

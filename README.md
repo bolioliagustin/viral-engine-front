@@ -1,218 +1,61 @@
-# YouTube Viral Content Engine
+# viral-engine
 
-SaaS que convierte videos de YouTube en clips virales 9:16 con copy para redes sociales (Twitter, TikTok, LinkedIn).
+SaaS que convierte un video de YouTube (y, en la próxima etapa, el archivo del creador) en clips verticales 9:16 con subtítulos, copy para redes y scores de viralidad. Español-first; cliente objetivo: podcasters y coaches.
 
-## Arquitectura de producción (actual)
+| Leer | Para qué |
+|---|---|
+| [`docs/PROYECTO.md`](docs/PROYECTO.md) | Entendimiento completo: producto, arquitectura, pipeline, datos, API, infra, estado, plan |
+| [`CONTEXT.md`](CONTEXT.md) | Glosario del dominio |
+| [`docs/adr/`](docs/adr/) | Decisiones de arquitectura y por qué |
+| [`AGENTS.md`](AGENTS.md) | Reglas de trabajo para agentes IA (Claude Code, Antigravity, OpenCode) |
+| [`worker/WORKER.md`](worker/WORKER.md) | Detalle operativo del worker |
+
+## Arquitectura
 
 ```
-Vercel (frontend)  →  Render (backend API)  →  Supabase (cola)
-                                                    ↑
-                                            OVH VPS (worker)
-                                                    ↓
-                                            Cloudflare R2 (clips)
+Vercel (frontend Next.js)  →  Render (API Express)  →  Supabase (Postgres + Auth; la tabla `jobs` es la cola)
+                                                            ↑
+                                                   OVH VPS (worker Python, Docker)  →  Cloudflare R2 (clips)
 ```
 
-| Componente | Dónde corre | URL / acceso |
-|------------|-------------|--------------|
-| Frontend | Vercel | `NEXT_PUBLIC_API_URL` → Render |
-| Backend API | Render | `https://viral-engine-backend.onrender.com` |
-| Worker | OVH VPS (Docker) | Solo worker — ver abajo |
-| DB + Auth | Supabase | Cloud |
-| Clips | Cloudflare R2 | Cloud |
+| Componente | Carpeta | Runtime | Puerto local |
+|---|---|---|---|
+| Frontend | `frontend/` | Node ≥ 20, Next.js 16 | 3001 |
+| API | `backend/` | Node ≥ 20 (imagen `node:20-slim`), Express | 3000 |
+| Worker | `worker/` | Python 3.12, FFmpeg | — (sondea Supabase cada 3 s) |
 
-### Worker en OVH (solo worker, sin backend local)
+## Desarrollo local (macOS)
 
-En el VPS, usar el compose de solo worker:
+Requisitos: Node ≥ 20, [`uv`](https://docs.astral.sh/uv/) (instala Python 3.12), FFmpeg, [Supabase CLI](https://supabase.com/docs/guides/cli). Un solo `.env` en la raíz alimenta API y worker (copiar de [`.env.example`](.env.example)); el frontend usa `frontend/.env.local` (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL`). En local usá un proyecto Supabase **de desarrollo**: un worker local apuntado al Supabase de la beta le roba jobs al del VPS.
 
 ```bash
-cd ~/viralengine
-bash deploy/worker-only.sh
-# o manualmente:
-docker compose -f docker-compose.worker.yml up -d --build
-docker compose -f docker-compose.worker.yml logs -f
+# API
+cd backend && npm ci && npm run dev
+NODE_ENV=test npm test
+
+# Worker
+cd worker && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt pytest
+source .venv/bin/activate && python main.py
+ENVIRONMENT=development SUPABASE_URL=https://test.supabase.co SUPABASE_SERVICE_KEY=test \
+  OPENROUTER_API_KEY=test OPENAI_API_KEY=test python -m pytest tests/ -q
+
+# Frontend
+cd frontend && npm ci && npx next dev -p 3001
+npx tsc --noEmit
 ```
 
-Para volver a levantar backend + worker en OVH (si migrás la API):
+En una IP residencial (tu Mac) yt-dlp descarga de YouTube sin proxies ni RapidAPI; dejá `ENVIRONMENT=development` en local. En el VPS (`ENVIRONMENT=production`) el worker exige `RAPIDAPI_KEY` y proxies residenciales (`proxies.txt`).
 
-```bash
-docker compose -f docker-compose.worker.yml down
-docker compose up -d --build
-```
+## Base de datos
 
-## Arquitectura local
+El esquema se versiona con Supabase CLI (`supabase/migrations/`, ver [ADR 0006](docs/adr/0006-esquema-versionado-con-supabase-cli.md)): `supabase link --project-ref <ref>` → `supabase db pull` (primera vez) → `supabase migration new <nombre>` → `supabase db push`. Los SQL históricos aplicados a mano están en [`supabase/legacy/`](supabase/legacy/).
 
-| Servicio | Carpeta | Puerto |
-|----------|---------|--------|
-| Frontend | `frontend/` | 3001 (dev) |
-| Backend API | `backend/` | 3000 |
-| Worker | `worker/` | — (polling Supabase) |
+## Deploy
 
-Documentación del worker: [worker/WORKER.md](worker/WORKER.md)
+- **Frontend:** Vercel desde `main`.
+- **API:** Render desde `main` con [`render.yaml`](render.yaml); variables en el dashboard de Render.
+- **Worker:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) hace SSH al VPS y corre [`deploy/deploy-worker.sh`](deploy/deploy-worker.sh) (`git reset --hard origin/main` + rebuild de `docker-compose.worker.yml`). Secrets del repo: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (clave privada cuyo `.pub` está en `~/.ssh/authorized_keys` del VPS; generar con `ssh-keygen -t ed25519 -f ~/.ssh/viralengine_deploy`).
+- **Manual en el VPS:** `ssh ubuntu@<ip> && cd ~/viralengine && bash deploy/deploy-worker.sh`. Solo worker: `bash deploy/worker-only.sh`. Provisión de un VPS nuevo: `deploy/setup-vps.sh`. Proxies Webshare: `bash deploy/format-proxies.sh proxies-raw.txt > proxies.txt`. Logs: `bash scripts/worker-logs.sh tail 200`.
+- Archivos que viven solo en el VPS: `.env`, `proxies.txt`, `cookies.txt` (opcional), `worker-logs/`.
 
-## Desarrollo local
-
-### Prerrequisitos
-
-- Node.js 20+, Python 3.12+, FFmpeg en PATH
-- Cuenta Supabase con migraciones SQL aplicadas (archivos `supabase_migration_*.sql` en la raíz)
-- Archivo `.env` en la raíz (copiar de `.env.example`)
-
-### Variables frontend (`frontend/.env.local`)
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-NEXT_PUBLIC_API_URL=http://localhost:3000
-```
-
-### Levantar servicios (3 terminales)
-
-```bash
-# Terminal 1 — Backend
-cd backend && npm install && npm run dev
-
-# Terminal 2 — Worker
-cd worker && pip install -r requirements.txt && python main.py
-
-# Terminal 3 — Frontend
-cd frontend && npm install && npx next dev -p 3001
-```
-
-Abrir http://localhost:3001
-
-### Docker (backend + worker)
-
-```bash
-cp .env.example .env   # completar valores
-docker compose up -d --build
-curl http://127.0.0.1:3000/health
-```
-
----
-
-## Migración a producción — OVHcloud VPS
-
-### Servidor objetivo
-
-| Parámetro | Valor |
-|-----------|-------|
-| Proveedor | OVHcloud VPS-3 2027 |
-| Datacenter | BHS — Beauharnois, Canadá |
-| CPU / RAM / Disco | 6 vCore / 12 GB / 100 GB NVMe |
-| OS | Ubuntu 26.04 LTS |
-
-### Paso 1 — Provisionar VPS en OVH
-
-1. Crear el VPS con Ubuntu 26.04 en datacenter BHS (Canadá)
-2. Anotar la **IP pública**
-3. Configurar **firewall OVH** (panel de red): abrir puertos **22**, **80**, **443**
-4. Apuntar un subdominio al VPS, ej. `api.tudominio.com` → IP del VPS
-
-### Paso 2 — Setup inicial del servidor (una sola vez)
-
-Conectarse por SSH y ejecutar:
-
-```bash
-ssh root@<IP-VPS>
-
-# Clonar repo
-git clone https://github.com/<tu-usuario>/mvp_p1.git /opt/viralengine
-cd /opt/viralengine
-
-# Instalar Docker, UFW, Caddy
-bash deploy/setup-vps.sh
-```
-
-### Paso 3 — Configurar `.env` de producción
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Variables **obligatorias** en producción:
-
-| Variable | Dónde obtenerla |
-|----------|-----------------|
-| `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` | Supabase → Settings → API |
-| `OPENROUTER_API_KEY` | openrouter.ai |
-| `OPENAI_API_KEY` | platform.openai.com |
-| `GROQ_API_KEY` | console.groq.com (recomendado) |
-| `R2_ACCOUNT_ID` + keys R2 | Cloudflare → R2 |
-| `SUPADATA_API_KEY` | supadata.ai |
-| `WEBSHARE_PROXY_URL` | webshare.io (proxy residencial) |
-| `LEMONSQUEEZY_*` | Lemon Squeezy dashboard |
-| `FRONTEND_URL` | URL de Vercel, ej. `https://tu-app.vercel.app` |
-
-### Paso 4 — Configurar Caddy (HTTPS)
-
-```bash
-cp deploy/Caddyfile.example /etc/caddy/Caddyfile
-nano /etc/caddy/Caddyfile   # reemplazar api.YOURDOMAIN.com
-systemctl reload caddy
-```
-
-### Paso 5 — Levantar servicios
-
-```bash
-cd /opt/viralengine
-docker compose up -d --build
-docker compose logs -f   # verificar que backend y worker arrancan
-curl http://127.0.0.1:3000/health
-curl https://api.tudominio.com/health
-```
-
-### Paso 6 — Actualizar servicios externos
-
-| Servicio | Qué actualizar |
-|----------|----------------|
-| **Vercel** | `NEXT_PUBLIC_API_URL=https://api.tudominio.com` |
-| **Lemon Squeezy** | Webhook URL → `https://api.tudominio.com/billing/webhook` |
-| **Supabase** | Auth redirect URLs si cambiaron dominios |
-
-### Paso 7 — Smoke test
-
-1. Login en el frontend
-2. Pegar una URL de YouTube corta (~5 min)
-3. Verificar progreso en dashboard
-4. Confirmar clips en la página de resultados y en R2
-
-### Deploy automático (recomendado)
-
-Ver guía completa: [deploy/SETUP-DEPLOY.md](deploy/SETUP-DEPLOY.md)
-
-**Flujo:** `git push origin main` → GitHub Actions → VPS actualiza el worker solo.
-
-**Un comando desde Windows:**
-
-```powershell
-.\deploy\push-deploy.ps1 -Message "fix: mi cambio"
-```
-
-Configurar secrets en GitHub: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`
-
----
-
-## Tests
-
-```bash
-cd backend && npm test
-cd worker && python -m pytest tests/ -v
-```
-
-## Documentación adicional
-
-- [API_DOCUMENTATION.md](API_DOCUMENTATION.md) — Endpoints del backend
-- [MEJORAS_PROYECTO.md](MEJORAS_PROYECTO.md) — Backlog de mejoras
-
-## Estructura del proyecto
-
-```
-mvp_p1/
-├── frontend/          Next.js 16 — UI del SaaS
-├── backend/           Express API — jobs, billing, auth
-├── worker/            Python — descarga, IA, clips, R2
-├── deploy/            Scripts de deploy y setup VPS
-├── docker-compose.yml Producción (backend + worker)
-└── supabase_*.sql     Migraciones de base de datos
-```
+Salud: `GET /health` (readiness con Supabase) y `GET /health/live` en la API.

@@ -5,7 +5,6 @@ module.exports = {
     collectCoverageFrom: [
         'src/**/*.js',
         '!src/index.js',
-        '!src/db/**'
     ],
     // Set test timeout to 10s (some tests mock async operations)
     testTimeout: 10000,
