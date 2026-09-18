@@ -169,10 +169,12 @@ class TestLongestRepeatedRun:
 
 class TestSnapGuard:
 
-    def test_case_a_snap_does_not_trim(self, capsys):
-        start, end = snap_trim_bounds(_case_a_words(), CASE_A_DURATION)
+    def test_case_a_snap_does_not_trim(self, capsys, caplog):
+        # Si otro test importó main, print() va al logger del worker: mirar ambos.
+        with caplog.at_level("INFO"):
+            start, end = snap_trim_bounds(_case_a_words(), CASE_A_DURATION)
         assert (start, end) == (0.0, CASE_A_DURATION)
-        out = capsys.readouterr().out
+        out = capsys.readouterr().out + caplog.text
         assert "Snap omitido" in out and "sospechosos" in out
 
     def test_case_a_full_chain_keeps_density_normal(self):

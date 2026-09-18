@@ -316,6 +316,7 @@ class TestDownloadStrategySelector:
         assert _should_sync_retry_download(1.0) is False
 
     def test_download_clip_ytdlp_applies_keyframe_margin(self):
+        # W1: márgenes asimétricos (15 s antes, 20 s después) en vez de ±8 s
         from services.downloader import download_clip_ytdlp, ClipDownloadResult
         from unittest.mock import patch, MagicMock
 
@@ -325,7 +326,7 @@ class TestDownloadStrategySelector:
 
         with patch("services.downloader.yt_dlp.YoutubeDL", mock_ydl_cls), \
              patch("services.downloader._build_ydl_opts", side_effect=lambda o, **kw: o), \
-             patch("services.downloader._clip_keyframe_margin_sec", return_value=8.0), \
+             patch("services.downloader._clip_margins_sec", return_value=(15.0, 20.0)), \
              patch("services.downloader.Path") as mock_path:
             mock_path.return_value.with_suffix.return_value = mock_path.return_value
             mp4 = MagicMock()
@@ -341,8 +342,8 @@ class TestDownloadStrategySelector:
                 video_duration=1000.0,
             )
         assert isinstance(result, ClipDownloadResult)
-        assert result.download_start == 92.0
-        assert result.download_end == 168.0
+        assert result.download_start == 85.0
+        assert result.download_end == 180.0
 
 
 class TestGooglevideoSticky:

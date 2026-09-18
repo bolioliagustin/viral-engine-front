@@ -126,6 +126,7 @@ def transcribe_with_whisper_openrouter(
     audio_path: str,
     prompt: str = None,
     language: str = None,
+    provider: str | None = None,
 ) -> Dict:
     """
     Transcribe audio using Whisper (via OpenRouter) with precise timestamps
@@ -133,6 +134,10 @@ def transcribe_with_whisper_openrouter(
     
     Args:
         audio_path: Path to audio file (mp3, wav, etc.)
+        provider: "groq" | "openai" | None. None = cascada actual (Groq → OpenAI).
+            Un valor fuerza ese proveedor (W1: re-transcribir con el OTRO cuando
+            los timestamps del primero son sospechosos). Solo aplica al camino
+            single (≤ 20 min); el chunked sigue en OpenAI.
         
     Returns:
         {
@@ -160,7 +165,7 @@ def transcribe_with_whisper_openrouter(
         return _transcribe_chunked(audio_path, audio, prompt=prompt, language=language)
     else:
         print(f"📝 Transcribing audio with OpenAI ({duration_seconds/60:.1f} min)...")
-        return _transcribe_single(audio_path, prompt=prompt, language=language)
+        return _transcribe_single(audio_path, prompt=prompt, language=language, provider=provider)
 
 
 def _transcribe_with_provider(
@@ -186,13 +191,27 @@ def _transcribe_with_provider(
     return result
 
 
-def _transcribe_single(audio_path: str, prompt: str = None, language: str = None) -> Dict:
+def _transcribe_single(
+    audio_path: str,
+    prompt: str = None,
+    language: str = None,
+    provider: str | None = None,
+) -> Dict:
     """
     Transcribe un audio. Prueba Groq primero (mejor/más rápido/barato),
     cae a OpenAI si Groq no está configurado o falla.
+
+    `provider` fuerza uno solo ("groq" | "openai"); si no está configurado se
+    levanta RuntimeError en vez de caer al otro. El dict devuelto incluye
+    `provider` con el que efectivamente transcribió.
     """
+    if provider not in (None, "groq", "openai"):
+        raise ValueError(f"provider inválido: {provider!r}")
+
     # ── Intento 1: Groq Whisper Large v3 Turbo ──────────────────────────────
-    groq = _groq_client()
+    groq = _groq_client() if provider in (None, "groq") else None
+    if provider == "groq" and not groq:
+        raise RuntimeError("GROQ_API_KEY no configurada: no se puede forzar provider=groq")
     if groq:
         try:
             print(f"📝 Transcribing with Groq (whisper-large-v3-turbo)...")
@@ -211,8 +230,11 @@ def _transcribe_single(audio_path: str, prompt: str = None, language: str = None
             print(f"   Language: {result.get('language', 'unknown')}, "
                   f"Duration: {result.get('duration', 'N/A')}s")
             _record_whisper_result("groq", "whisper-large-v3-turbo", result, audio_path)
+            result["provider"] = "groq"
             return result
         except Exception as e:
+            if provider == "groq":
+                raise
             print(f"⚠️ Groq falló ({e}) — fallback a OpenAI")
 
     # ── Intento 2: OpenAI Whisper-1 ─────────────────────────────────────────
@@ -238,6 +260,7 @@ def _transcribe_single(audio_path: str, prompt: str = None, language: str = None
         print(f"   Language: {result.get('language', 'unknown')}, "
               f"Duration: {result.get('duration', 'N/A')}s")
         _record_whisper_result("openai", "whisper-1", result, audio_path)
+        result["provider"] = "openai"
         return result
     except Exception as e:
         print(f"❌ OpenAI transcription failed: {e}")

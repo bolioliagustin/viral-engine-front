@@ -9,6 +9,7 @@ import sys
 import json
 import time
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -41,6 +42,7 @@ from services.downloader import (
     get_stream_urls,
     download_clip_ytdlp,
     download_clip_via_stream_urls,
+    _clip_margins_sec,
     download_clips_parallel,
     download_clip_apify,
     should_use_stream_urls_fallback,
@@ -287,26 +289,56 @@ def _resolve_moment_video_source(
     clip_paths_cache: dict[int, ClipDownloadResult],
     partial_download_failed: bool,
     sync_attempt: int = 0,
-) -> tuple[str, float, float, float, str | None]:
-    """Resuelve fuente de video para un clip."""
+    muxed_avail_end: float | None = None,
+    extend_after_sec: float = 0.0,
+) -> "_MomentSource":
+    """Resuelve fuente de video para un clip.
+
+    `extend_after_sec` > 0 (W1: la última frase no apareció) exige que la fuente
+    llegue hasta end_s + margen_después + extend; un segmento per-clip cacheado
+    que no llega se re-descarga con ese margen.
+    """
+    _, m_after = _clip_margins_sec()
+    needed_end = min(float(video_duration), end_s + m_after + extend_after_sec) if video_duration else end_s + m_after + extend_after_sec
+    muxed_end = float(muxed_avail_end) if muxed_avail_end is not None else float(video_duration)
+
     cached = clip_paths_cache.get(moment_index)
-    if cached and Path(cached.path).exists() and sync_attempt == 0:
+    if (
+        cached and Path(cached.path).exists() and sync_attempt == 0
+        and (extend_after_sec <= 0 or cached.download_end >= needed_end - 1.0)
+    ):
         print(f"   ✓ Usando segmento per-clip cacheado (paralelo)")
-        return (
+        return _MomentSource(
             cached.path,
             start_s - cached.download_start,
             end_s - cached.download_start,
             start_s,
             cached.path,
+            cached.download_start,
+            cached.download_end,
+            "cached",
         )
 
-    if muxed_video_path and Path(muxed_video_path).exists():
+    if muxed_video_path and Path(muxed_video_path).exists() and (
+        extend_after_sec <= 0
+        or muxed_end >= needed_end - 1.0
+        or not _should_use_ytdlp_for_clips()
+    ):
         print(f"   ✓ Usando video muxeado cacheado")
-        return muxed_video_path, start_s, end_s, start_s, None
+        return _MomentSource(
+            muxed_video_path, start_s, end_s, start_s, None, 0.0, muxed_end, "muxed",
+        )
 
     if _should_use_ytdlp_for_clips():
         try:
-            seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{moment_index}_{int(start_s)}")
+            suffix = ""
+            if sync_attempt > 0:
+                suffix += f"_a{sync_attempt}"
+            if extend_after_sec > 0:
+                suffix += f"_ext{int(extend_after_sec)}"
+            # Stem distinto por reintento/extensión: yt-dlp no re-descarga sobre
+            # un archivo existente y devolvería el segmento viejo con rango nuevo.
+            seg_out = str(DOWNLOADS_DIR / f"{video_id}_seg_{moment_index}_{int(start_s)}{suffix}")
             proxy = None
             if sync_attempt > 0:
                 from services.downloader import _get_proxy_list
@@ -318,19 +350,30 @@ def _resolve_moment_video_source(
                 start_sec=start_s,
                 end_sec=end_s,
                 output_path=seg_out,
+                margin_after_sec=(m_after + extend_after_sec) if extend_after_sec > 0 else None,
                 video_duration=video_duration,
                 proxy_url=proxy,
             )
             print(f"   ✓ yt-dlp per-clip OK")
-            return (
+            return _MomentSource(
                 dl_result.path,
                 start_s - dl_result.download_start,
                 end_s - dl_result.download_start,
                 start_s,
                 dl_result.path,
+                dl_result.download_start,
+                dl_result.download_end,
+                "ytdlp",
             )
         except Exception as e_ytdlp:
             print(f"   ⚠️ yt-dlp per-clip falló: {e_ytdlp}")
+
+    if muxed_video_path and Path(muxed_video_path).exists():
+        # No se pudo extender por yt-dlp: el muxeado sigue siendo válido
+        print(f"   ✓ Usando video muxeado cacheado (sin extensión)")
+        return _MomentSource(
+            muxed_video_path, start_s, end_s, start_s, None, 0.0, muxed_end, "muxed",
+        )
 
     if _use_apify_fallback():
         try:
@@ -342,7 +385,10 @@ def _resolve_moment_video_source(
                 output_path=apify_out,
             )
             print(f"   ✓ Apify per-clip OK")
-            return dl_result.path, 0.0, end_s - start_s, start_s, dl_result.path
+            return _MomentSource(
+                dl_result.path, 0.0, end_s - start_s, start_s, dl_result.path,
+                start_s, end_s, "apify",
+            )
         except Exception as e_apify:
             print(f"   ⚠️ Apify per-clip falló: {e_apify}")
 
@@ -366,7 +412,10 @@ def _resolve_moment_video_source(
                     video_id=video_id,
                     temp_id=f"{video_id}_m{moment_index}",
                 )
-                return seg_path, 0.0, end_s - start_s, start_s, seg_path
+                return _MomentSource(
+                    seg_path, 0.0, end_s - start_s, start_s, seg_path,
+                    start_s, end_s, "stream",
+                )
             except Exception as e_stream:
                 last_stream_err = e_stream
                 print(f"   ⚠️ Stream partial per-clip falló: {e_stream}")
@@ -456,6 +505,446 @@ def _log_download_config() -> None:
         )
 
 
+# W1: si la última frase no aparece en el segmento, se re-descarga UNA vez con
+# este margen extra al final (el remate suele estar poco después del end_time).
+_PAYOFF_EXTEND_AFTER_SEC = 25.0
+
+
+@dataclass
+class _MomentSource:
+    """Fuente de video resuelta para un momento.
+
+    `src_start`/`src_end` son start_time/end_time en la línea de tiempo del
+    archivo; `avail_start_abs`/`avail_end_abs` el rango absoluto del video que
+    ese archivo realmente contiene (para armar el segmento ancho de W1).
+    """
+    path: str
+    src_start: float
+    src_end: float
+    src_offset: float
+    seg_path: str | None
+    avail_start_abs: float
+    avail_end_abs: float
+    kind: str   # cached | muxed | ytdlp | apify | stream
+
+
+def _unlink_quiet(path) -> None:
+    try:
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _moment_phrases(moment) -> tuple[str, str]:
+    """(first_phrase_in_audio, last_phrase_in_audio) de la Verificación, o vacías."""
+    verification = getattr(moment, "verification", None)
+    if not verification:
+        return "", ""
+    first = (getattr(verification, "first_phrase_in_audio", "") or "").strip()
+    last = (getattr(verification, "last_phrase_in_audio", "") or "").strip()
+    return first, last
+
+
+def _log_whisper_assessment(assessment: dict) -> None:
+    if assessment.get("plausible"):
+        return
+    print(
+        f"   🩺 Whisper no plausible: {', '.join(assessment['reasons'])} "
+        f"(density={assessment['density']:.2f}, "
+        f"effective={assessment['effective_density']:.2f}, "
+        f"leading_gap={assessment['leading_gap']:.1f}s, "
+        f"unique={assessment['unique_words']}/{assessment['n_words']}, "
+        f"repeated_run={assessment['repeated_run']})"
+    )
+
+
+def _whisper_clip_words(
+    media_path: str,
+    duration: float,
+    *,
+    video_id: str,
+    moment_index: int,
+    moment,
+    transcript: dict,
+    video_info: dict,
+    ctx_start_abs: float,
+    ctx_end_abs: float,
+    provider: str | None = None,
+    tag: str = "clip",
+) -> dict:
+    """
+    Transcripción del clip: extrae audio de `media_path`, arma el prompt de
+    contexto (vocabulario de marca + título + slice del transcript YT del
+    rango absoluto [ctx_start_abs, ctx_end_abs]) y llama a Whisper word-level.
+    Las palabras quedan en la línea de tiempo de `media_path` (0..duration),
+    filtradas y con correcciones de marca. Levanta la excepción de Whisper.
+
+    Returns {"words", "segments", "n_raw_words", "n_raw_segments", "vocab", "provider"}.
+    """
+    from services.transcriber import (
+        transcribe_with_whisper_openrouter,
+        build_whisper_vocabulary,
+        format_whisper_vocabulary_prompt,
+    )
+    from services.clip_generator import apply_whisper_brand_corrections
+
+    audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
+    try:
+        extract_whisper_audio(str(media_path), str(audio_path))
+
+        prompt_parts = []
+        video_title = (video_info.get("title") or "").strip()
+        if video_title:
+            prompt_parts.append(video_title)
+        ctx_texts = []
+        for sg in transcript.get("segments") or []:
+            sg_start = float(sg.get("start", 0))
+            sg_end = float(sg.get("end", 0))
+            if sg_end >= ctx_start_abs and sg_start <= ctx_end_abs:
+                ctx_texts.append((sg.get("text") or "").strip())
+        yt_slice = " ".join(ctx_texts).strip()
+        if ctx_texts:
+            prompt_parts.append(yt_slice)
+        whisper_vocab = build_whisper_vocabulary(
+            video_title=video_title,
+            hook=moment.hook or "",
+            yt_slice=yt_slice,
+        )
+        vocab_prompt = format_whisper_vocabulary_prompt(whisper_vocab)
+        if vocab_prompt:
+            prompt_parts.insert(0, vocab_prompt)
+        whisper_prompt = None
+        if prompt_parts:
+            whisper_prompt = ". ".join(prompt_parts)[:800]
+
+        whisper_lang = transcript.get("language")
+        if whisper_lang and len(whisper_lang) > 2:
+            whisper_lang = whisper_lang.split("-")[0].lower()
+
+        print(f"   🎙️ Transcribiendo {tag} {moment_index} con Whisper "
+              f"(lang={whisper_lang}, prompt={len(whisper_prompt or '')} chars"
+              f"{', provider=' + provider if provider else ''})...")
+        clip_tr = transcribe_with_whisper_openrouter(
+            str(audio_path),
+            prompt=whisper_prompt,
+            language=whisper_lang,
+            provider=provider,
+        )
+        raw_words = clip_tr.get("words") or []
+        raw_segments = clip_tr.get("segments") or []
+        words = filter_whisper_words(raw_words, duration)
+        words = fix_ghost_leading_words(words)
+        words = apply_whisper_brand_corrections(words, whisper_vocab)
+
+        segments = []
+        for sg in raw_segments:
+            ss = float(sg.get("start", 0))
+            se = float(sg.get("end", ss + 0.1))
+            if se <= 0 or ss >= duration + 0.25:
+                continue
+            sg2 = dict(sg)
+            sg2["start"] = max(0.0, ss)
+            sg2["end"] = min(duration + 0.10, se)
+            segments.append(sg2)
+
+        n_raw = len(raw_words)
+        n_kept = len(words)
+        retention = (n_kept / n_raw * 100) if n_raw else 0
+        words_per_sec = (n_kept / duration) if duration > 0 else 0
+        print(f"   ✅ Whisper: {n_kept}/{n_raw} words ({retention:.0f}%), "
+              f"{len(segments)}/{len(raw_segments)} segments "
+              f"(clip_duration={duration:.1f}s, density={words_per_sec:.2f} w/s)")
+        return {
+            "words": words,
+            "segments": segments,
+            "n_raw_words": n_raw,
+            "n_raw_segments": len(raw_segments),
+            "vocab": whisper_vocab,
+            "provider": clip_tr.get("provider"),
+        }
+    finally:
+        _unlink_quiet(audio_path)
+
+
+def _transcribe_with_guards(
+    media_path: str,
+    duration: float,
+    *,
+    video_id: str,
+    moment_index: int,
+    moment,
+    transcript: dict,
+    video_info: dict,
+    ctx_start_abs: float,
+    ctx_end_abs: float,
+    tag: str = "clip",
+) -> dict:
+    """
+    Transcripción del clip + guardas W3 (assess_whisper_words). Si los
+    timestamps son sospechosos, re-transcribe UNA vez con el OTRO proveedor
+    (Groq ↔ OpenAI); si el segundo también es sospechoso, devuelve
+    subs_disabled_timestamps=True (decisión: sin subtítulos antes que con
+    tiempos falsos). Levanta la excepción si la primera transcripción falla.
+
+    Returns {"words", "segments", "provider", "assessment", "bad_segment",
+             "timestamps_suspect", "subs_disabled_timestamps"}.
+    """
+    from services.validation import assess_whisper_words
+
+    common = dict(
+        video_id=video_id, moment_index=moment_index, moment=moment,
+        transcript=transcript, video_info=video_info,
+        ctx_start_abs=ctx_start_abs, ctx_end_abs=ctx_end_abs,
+    )
+    wtr = _whisper_clip_words(media_path, duration, tag=tag, **common)
+    words, segments = wtr["words"], wtr["segments"]
+    provider_used = wtr.get("provider")
+    assessment = assess_whisper_words(words, duration)
+    _log_whisper_assessment(assessment)
+    bad_segment = assessment["bad_segment"]
+    timestamps_suspect = assessment["timestamps_suspect"]
+    subs_disabled = False
+
+    if timestamps_suspect and not bad_segment:
+        first = provider_used or ("groq" if os.getenv("GROQ_API_KEY") else "openai")
+        other = "openai" if first == "groq" else "groq"
+        print(f"   🔁 Re-transcribiendo con {other} (timestamps sospechosos en {first})")
+        try:
+            wtr2 = _whisper_clip_words(
+                media_path, duration, provider=other, tag=f"{tag}/{other}", **common
+            )
+            assessment2 = assess_whisper_words(wtr2["words"], duration)
+            _log_whisper_assessment(assessment2)
+            if not assessment2["timestamps_suspect"]:
+                words, segments = wtr2["words"], wtr2["segments"]
+                provider_used = other
+                assessment = assessment2
+                timestamps_suspect = False
+                bad_segment = assessment2["bad_segment"]
+            else:
+                subs_disabled = True
+        except Exception as e_re:
+            print(f"   ⚠️ Re-transcripción con {other} falló ({e_re})")
+            subs_disabled = True
+        if subs_disabled:
+            print("   🚫 Timestamps sospechosos en ambos proveedores — clip sin subtítulos")
+
+    return {
+        "words": words,
+        "segments": segments,
+        "provider": provider_used,
+        "assessment": assessment,
+        "bad_segment": bad_segment,
+        "timestamps_suspect": timestamps_suspect,
+        "subs_disabled_timestamps": subs_disabled,
+    }
+
+
+def _refine_bounds_legacy(
+    *,
+    clip_words: list[dict],
+    clip_duration: float,
+    clip_segments_whisper: list[dict],
+    moment,
+    precut_path,
+    video_id: str,
+    moment_index: int,
+    whisper_timestamps_suspect: bool,
+) -> dict:
+    """
+    Refinamiento numérico (pre-W1): snap por silencio → oraciones → ancla de
+    hook → relleno inicial → ancla de primera frase → duración mínima (W3), y
+    re-corte del precut si cambió algo. Se usa cuando el momento NO trae
+    frases de Verificación (jobs legacy / prompt sin verificación).
+
+    Returns dict con precut_path, clip_duration, clip_words,
+    clip_segments_whisper, snap_trim_start, tail_snapped_by_sentence,
+    min_duration_reverted.
+    """
+    snap_trim_start = 0.0
+    min_duration_reverted = False
+    # Fase A: snap trim silencio + refinamiento a oración
+    from services.validation import (
+        verify_phrases_after_snap,
+        find_phrase_start_in_words,
+        find_hook_start_in_words,
+        hook_keyword_overlap,
+    )
+    from services.clip_generator import (
+        refine_bounds_to_sentences,
+        has_incomplete_tail,
+        detect_sentence_boundaries,
+    )
+    # Guarda W3: historial de límites para enforce_min_duration
+    bound_candidates = [(0.0, clip_duration)]
+    trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
+    bound_candidates.append((trim_start, trim_end))
+    tail_snapped_by_sentence = False
+
+    # Fase 3: límites a boundaries de oración (puntuación +
+    # gaps >0.6s + fin de segmentos Whisper)
+    s_start, s_end = refine_bounds_to_sentences(
+        clip_words, clip_duration,
+        segments=clip_segments_whisper,
+        max_duration=60.0,
+    )
+    if s_start > trim_start:
+        print(f"   📝 Sentence snap start: {trim_start:.2f} → {s_start:.2f}")
+        trim_start = s_start
+    if s_end < trim_end:
+        print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
+        trim_end = s_end
+        tail_snapped_by_sentence = True
+    bound_candidates.append((trim_start, trim_end))
+
+    # Hook anchor: overlay > hook > first_phrase (después de sentence snap)
+    _overlay = getattr(moment, "viral_overlay", None) or ""
+    _first_phrase = getattr(
+        getattr(moment, "verification", None),
+        "first_phrase_in_audio", None,
+    )
+    hook_anchor = find_hook_start_in_words(
+        clip_words,
+        hook=moment.hook or "",
+        overlay=_overlay,
+        first_phrase=_first_phrase or "",
+        clip_duration=clip_duration,
+    )
+    if hook_anchor is not None:
+        new_start = max(0.0, hook_anchor - 0.2)
+        if (
+            0.5 <= hook_anchor <= clip_duration * 0.4
+            and (trim_end - new_start) >= 8.0
+            and new_start > trim_start
+        ):
+            print(
+                f"   🎯 Hook anchor: {hook_anchor:.2f}s — "
+                f"inicio {trim_start:.2f} → {new_start:.2f}"
+            )
+            trim_start = new_start
+            bound_candidates.append((trim_start, trim_end))
+    elif moment.hook and len(clip_words) >= 3:
+        head_tokens = [
+            (w.get("word") or "").strip()
+            for w in clip_words[:3]
+        ]
+        if hook_keyword_overlap(head_tokens, moment.hook) < 0.2:
+            bounds = detect_sentence_boundaries(
+                clip_words, clip_segments_whisper
+            )
+            alt = [b for b in bounds if 2.0 < b <= clip_duration * 0.35]
+            if alt:
+                remaining = [
+                    w for w in clip_words
+                    if float(w.get("start", 0)) > alt[0]
+                ]
+                if remaining and (trim_end - float(remaining[0]["start"])) >= 8.0:
+                    new_start = max(0.0, float(remaining[0]["start"]) - 0.15)
+                    print(
+                        f"   🧹 Head filler trim: {trim_start:.2f} → {new_start:.2f}"
+                    )
+                    trim_start = new_start
+                    bound_candidates.append((trim_start, trim_end))
+
+    # First-phrase anchor (fallback si hook anchor no corrió)
+    if _first_phrase and trim_start < 0.5:
+        anchor_t = find_phrase_start_in_words(clip_words, _first_phrase)
+        if (
+            anchor_t is not None
+            and anchor_t - trim_start > 0.8
+            and anchor_t < clip_duration * 0.5
+            and (trim_end - anchor_t) >= 8.0
+        ):
+            print(
+                f"   ⚓ First-phrase anchor: frase en "
+                f"{anchor_t:.2f}s — inicio "
+                f"{trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f}"
+            )
+            trim_start = max(0.0, anchor_t - 0.35)
+            bound_candidates.append((trim_start, trim_end))
+
+    # Guarda W3: con timestamps sospechosos ningún límite
+    # derivado de las palabras es confiable → clip entero.
+    if whisper_timestamps_suspect and (trim_start, trim_end) != (0.0, clip_duration):
+        print(
+            f"   ⚠️ Timestamps Whisper sospechosos — ignoro refinamiento "
+            f"(start={trim_start:.2f}, end={trim_end:.2f}) y dejo el clip entero"
+        )
+        trim_start, trim_end = 0.0, clip_duration
+
+    # Guarda W3: duración mínima post-refinamiento (15 s).
+    # Si el refinamiento dejó el clip corto, volver al último
+    # conjunto de límites que cumplía (o a los originales).
+    bound_candidates.append((trim_start, trim_end))
+    (trim_start, trim_end), min_duration_reverted = enforce_min_duration(
+        bound_candidates
+    )
+    if min_duration_reverted:
+        print(
+            f"   ↩️ Duración mínima: refinamiento dejó "
+            f"{bound_candidates[-1][1] - bound_candidates[-1][0]:.1f}s — "
+            f"revierto a start={trim_start:.2f}, end={trim_end:.2f} "
+            f"({trim_end - trim_start:.1f}s)"
+        )
+    if trim_end - trim_start < 3.0:
+        trim_start, trim_end = 0.0, clip_duration
+
+    if trim_start > 0.05 or trim_end < clip_duration - 0.05:
+        snap_trim_start = trim_start
+        words_before_snap = len(clip_words)
+        print(
+            f"   ✂️ Snap trim: {clip_duration:.1f}s → "
+            f"{trim_end - trim_start:.1f}s "
+            f"(start={trim_start:.2f}, end={trim_end:.2f})"
+        )
+        snapped_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_snapped.mp4"
+        try:
+            cut_clip(
+                video_path=str(precut_path),
+                start_sec=trim_start,
+                end_sec=trim_end,
+                output_path=str(snapped_path),
+            )
+            precut_path = snapped_path
+            clip_duration = trim_end - trim_start
+            clip_words = shift_words_timeline(
+                clip_words, trim_start, clip_duration=clip_duration
+            )
+            clip_words = fix_ghost_leading_words(clip_words)
+            clip_words = filter_whisper_words(clip_words, clip_duration)
+            print(
+                f"   📊 Snap words: {words_before_snap} → "
+                f"{len(clip_words)} (after shift+filter)"
+            )
+            clip_segments_whisper = [
+                {
+                    **sg,
+                    "start": max(0.0, float(sg["start"]) - trim_start),
+                    "end": max(0.0, float(sg["end"]) - trim_start),
+                }
+                for sg in clip_segments_whisper
+                if float(sg.get("end", 0)) > trim_start
+                and float(sg.get("start", 0)) < trim_end
+            ]
+        except ClipGenerationError as e_snap:
+            print(f"   ⚠️ Snap trim falló ({e_snap}) — continuando sin snap")
+            snap_trim_start = 0.0
+            try:
+                snapped_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    return {
+        "precut_path": precut_path,
+        "clip_duration": clip_duration,
+        "clip_words": clip_words,
+        "clip_segments_whisper": clip_segments_whisper,
+        "snap_trim_start": snap_trim_start,
+        "tail_snapped_by_sentence": tail_snapped_by_sentence,
+        "min_duration_reverted": min_duration_reverted,
+    }
+
+
 def process_job(job_data: dict) -> None:
     """
     Process a single job: download, analyze, clip, upload, save results.
@@ -471,6 +960,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
     video_url = job_data["videoUrl"]
     video_id = None
     muxed_video_path = None  # se setea solo en path B (partial download fallback)
+    muxed_avail_end = None   # hasta qué segundo absoluto llega el muxeado (W1)
     timed_out = threading.Event()  # C5: timeout flag
     
     # C5: Start a timeout timer (Windows-compatible, using threading instead of signal)
@@ -630,6 +1120,13 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         float(m.end_time) for m in result.viral_moments
                         if m.end_time is not None
                     )
+                    # W1: el segmento ancho del último momento necesita el
+                    # margen posterior (+25 s si hay que buscar el remate)
+                    max_end = min(
+                        float(video_duration),
+                        max_end + _clip_margins_sec()[1] + _PAYOFF_EXTEND_AFTER_SEC,
+                    )
+                    muxed_avail_end = max_end
                     print(f"\n📥 upfront_partial: 0→{max_end:.0f}s (1 descarga)...")
                     muxed_video_path = prepare_muxed_video_from_streams(
                         video_url=stream_urls["video_url"],
@@ -721,10 +1218,14 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             clip_quality_issues = []    # flags de calidad (incomplete_tail, etc.)
             clip_generation_error = None
             clip_rendered_ok = False
-            # Guardas W3 (flags por momento; se recalculan en cada intento)
+            # Guardas W3 + cortes W1 (flags por momento; se recalculan en cada intento)
             whisper_bad_segment = False
             whisper_timestamps_suspect = False
             min_duration_reverted = False
+            hook_not_found = False
+            payoff_not_found = False
+            margin_extended = False
+            subs_disabled_timestamps = False
 
             # Generate clip (Fase 1.6 — orden invertido):
             #   1. PRIMARY: usar muxed_video_path (partial download ya hecha upfront)
@@ -760,163 +1261,264 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             overlay_text = getattr(tp, 'overlay_text', None) if tp else None
 
                         seg_path = None
-                        src_path, src_start, src_end, src_offset, seg_path = _resolve_moment_video_source(
-                            moment_index=moment_index,
-                            start_s=start_s,
-                            end_s=end_s,
-                            video_url=video_url,
-                            video_id=video_id,
-                            video_duration=video_duration,
-                            muxed_video_path=muxed_video_path,
-                            clip_paths_cache=clip_paths_cache,
-                            partial_download_failed=partial_download_failed,
-                            sync_attempt=sync_attempt,
-                        )
+                        # ── W1: cortes anclados a las frases de Verificación ──────────
+                        # La verdad son first/last_phrase_in_audio; start_time/end_time
+                        # solo dicen qué descargar. Sin frases → flujo numérico legacy.
+                        first_phrase, last_phrase = _moment_phrases(moment)
+                        anchored_mode = bool(first_phrase or last_phrase)
+                        anchored = None          # resultado del corte anclado (dict) o None
+                        extend_after_sec = 0.0
+                        margin_extended = False
+                        subs_disabled_timestamps = False
+                        hook_not_found = False
+                        payoff_not_found = False
+                        wide_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_wide.mp4"
 
-                        # ── Pre-corte frame-accurate (seek DESPUÉS de -i) ─────────────
-                        # Whisper y el encode final usan el MISMO archivo → subs en sync.
-                        clip_duration = src_end - src_start
-                        precut_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_precut.mp4"
-                        print(f"   ✂️ Pre-corte preciso ({clip_duration:.1f}s)...")
-                        cut_clip(
-                            video_path=src_path,
-                            start_sec=src_start,
-                            end_sec=src_end,
-                            output_path=str(precut_path),
-                        )
-                        if not seg_path:
-                            seg_path = str(precut_path)
+                        while True:
+                            source = _resolve_moment_video_source(
+                                moment_index=moment_index,
+                                start_s=start_s,
+                                end_s=end_s,
+                                video_url=video_url,
+                                video_id=video_id,
+                                video_duration=video_duration,
+                                muxed_video_path=muxed_video_path,
+                                muxed_avail_end=muxed_avail_end,
+                                clip_paths_cache=clip_paths_cache,
+                                partial_download_failed=partial_download_failed,
+                                sync_attempt=sync_attempt,
+                                extend_after_sec=extend_after_sec,
+                            )
+                            src_path, src_start, src_end = source.path, source.src_start, source.src_end
+                            seg_path = source.seg_path
+                            if not anchored_mode:
+                                break
 
-                        # ── Whisper sobre el clip ya cortado (timestamps 0..duration) ─
+                            # Segmento ancho: [start − antes, end + después] ∩ disponible
+                            m_before, m_after = _clip_margins_sec()
+                            seg_start_abs = max(source.avail_start_abs, start_s - m_before)
+                            seg_end_abs = min(source.avail_end_abs, end_s + m_after + extend_after_sec)
+                            if seg_end_abs - seg_start_abs < (end_s - start_s) - 0.5:
+                                print(
+                                    f"   ⚠️ Fuente {source.kind} no cubre el momento "
+                                    f"({seg_start_abs:.0f}–{seg_end_abs:.0f}s) — flujo numérico"
+                                )
+                                anchored_mode = False
+                                break
+                            base_abs = start_s - src_start   # tiempo absoluto del t=0 de la fuente
+                            wide_duration = seg_end_abs - seg_start_abs
+                            print(
+                                f"   📐 Segmento ancho {seg_start_abs:.1f}–{seg_end_abs:.1f}s "
+                                f"({wide_duration:.0f}s; numérico {start_s:.0f}–{end_s:.0f}s, "
+                                f"fuente={source.kind}"
+                                f"{', +' + str(int(extend_after_sec)) + 's' if extend_after_sec else ''})"
+                            )
+                            cut_clip(
+                                video_path=src_path,
+                                start_sec=seg_start_abs - base_abs,
+                                end_sec=seg_end_abs - base_abs,
+                                output_path=str(wide_path),
+                            )
+
+                            # Whisper sobre el segmento ancho (0 = seg_start_abs) + guardas W3
+                            # + re-transcripción con el otro proveedor si los tiempos son sospechosos
+                            try:
+                                tw = _transcribe_with_guards(
+                                    str(wide_path), wide_duration,
+                                    video_id=video_id, moment_index=moment_index,
+                                    moment=moment, transcript=transcript, video_info=video_info,
+                                    ctx_start_abs=seg_start_abs, ctx_end_abs=seg_end_abs,
+                                    tag="segmento ancho",
+                                )
+                            except Exception as e_wide:
+                                print(f"   ⚠️ Whisper del segmento ancho falló ({e_wide}) — flujo numérico")
+                                anchored_mode = False
+                                _unlink_quiet(wide_path)
+                                break
+                            wide_words, wide_segments = tw["words"], tw["segments"]
+                            whisper_bad_segment = tw["bad_segment"]
+                            whisper_timestamps_suspect = tw["timestamps_suspect"]
+                            subs_disabled_timestamps = tw["subs_disabled_timestamps"]
+
+                            if whisper_bad_segment:
+                                _unlink_quiet(wide_path)
+                                if (
+                                    strict_sync
+                                    and sync_attempt < min(sync_retries, _BAD_SEGMENT_MAX_RETRIES)
+                                    and _should_sync_retry_download(None, bad_segment=True)
+                                ):
+                                    sync_retry_reason = "segmento sin habla plausible"
+                                    raise _SyncRetryNeeded(
+                                        "bad_segment: Whisper no devolvió habla plausible — re-download"
+                                    )
+                                print(
+                                    f"   🚩 bad_segment persiste en clip {moment_index} — "
+                                    f"corte numérico sin subtítulos"
+                                )
+                                anchored_mode = False
+                                break
+
+                            if subs_disabled_timestamps:
+                                # Sin tiempos fiables no hay dónde anclar frases: corte
+                                # numérico, sin subtítulos (decisión: antes sin subs que
+                                # con tiempos falsos).
+                                bounds = {
+                                    "start_rel": max(0.0, start_s - seg_start_abs),
+                                    "end_rel": min(wide_duration, end_s - seg_start_abs),
+                                    "flags": [], "evidence": {},
+                                }
+                                wide_words, wide_segments = None, None
+                            else:
+                                from services.validation import compute_clip_bounds
+                                bounds = compute_clip_bounds(
+                                    wide_words, first_phrase, last_phrase,
+                                    seg_start_abs=seg_start_abs, seg_end_abs=seg_end_abs,
+                                    video_duration=video_duration,
+                                    hint_start_abs=start_s, hint_end_abs=end_s,
+                                    segments=wide_segments,
+                                    hook=moment.hook or "", overlay=overlay_text or "",
+                                )
+                                ev = bounds["evidence"]
+                                print(
+                                    f"   ⚓ Frases: first={'✓' if ev.get('first_found') else '✗'}"
+                                    f"({ev.get('first_score')}) last={'✓' if ev.get('last_found') else '✗'}"
+                                    f"({ev.get('last_score')}) → start={ev.get('start_source')} "
+                                    f"end={ev.get('end_source')} flags={bounds['flags']}"
+                                )
+                                can_extend = source.kind in ("muxed", "cached", "ytdlp")
+                                if (
+                                    ev.get("extend_recommended")
+                                    and not margin_extended
+                                    and can_extend
+                                    and seg_end_abs < video_duration - 0.5
+                                ):
+                                    margin_extended = True
+                                    extend_after_sec = _PAYOFF_EXTEND_AFTER_SEC
+                                    print(
+                                        f"   🔎 Última frase no aparece — extiendo el segmento "
+                                        f"+{extend_after_sec:.0f}s y reintento"
+                                    )
+                                    _unlink_quiet(wide_path)
+                                    continue
+                            anchored = {
+                                "bounds": bounds,
+                                "words": wide_words,
+                                "segments": wide_segments,
+                                "seg_start_abs": seg_start_abs,
+                                "seg_end_abs": seg_end_abs,
+                                "wide_duration": wide_duration,
+                            }
+                            break
+
                         clip_words = None
                         clip_segments_whisper = None
-                        clip_audio_path = None
-                        whisper_vocab: list[str] = []
-                        try:
-                            from services.transcriber import transcribe_with_whisper_openrouter
-                            clip_audio_path = DOWNLOADS_DIR / f"{video_id}_clip_{moment_index}_audio.mp3"
-                            extract_whisper_audio(str(precut_path), str(clip_audio_path))
+                        precut_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_precut.mp4"
 
-                            whisper_prompt = None
-                            prompt_parts = []
-                            video_title = (video_info.get("title") or "").strip()
-                            if video_title:
-                                prompt_parts.append(video_title)
-                            yt_segments = transcript.get("segments") or []
-                            ctx_texts = []
-                            for sg in yt_segments:
-                                sg_start = float(sg.get("start", 0))
-                                sg_end = float(sg.get("end", 0))
-                                if sg_end >= start_s and sg_start <= end_s:
-                                    ctx_texts.append(sg.get("text", "").strip())
-                            yt_slice = " ".join(ctx_texts).strip()
-                            if ctx_texts:
-                                prompt_parts.append(yt_slice)
-                            from services.transcriber import (
-                                build_whisper_vocabulary,
-                                format_whisper_vocabulary_prompt,
-                            )
-                            whisper_vocab = build_whisper_vocabulary(
-                                video_title=video_title,
-                                hook=moment.hook or "",
-                                yt_slice=yt_slice,
-                            )
-                            vocab_prompt = format_whisper_vocabulary_prompt(whisper_vocab)
-                            if vocab_prompt:
-                                prompt_parts.insert(0, vocab_prompt)
-                            if prompt_parts:
-                                whisper_prompt = ". ".join(prompt_parts)
-                                if len(whisper_prompt) > 800:
-                                    whisper_prompt = whisper_prompt[:800]
-
-                            whisper_lang = transcript.get("language")
-                            if whisper_lang and len(whisper_lang) > 2:
-                                whisper_lang = whisper_lang.split("-")[0].lower()
-
-                            print(f"   🎙️ Transcribiendo clip {moment_index} con Whisper "
-                                  f"(lang={whisper_lang}, prompt={len(whisper_prompt or '')} chars)...")
-                            clip_tr = transcribe_with_whisper_openrouter(
-                                str(clip_audio_path),
-                                prompt=whisper_prompt,
-                                language=whisper_lang,
-                            )
-                            raw_words = clip_tr.get("words") or []
-                            raw_segments = clip_tr.get("segments") or []
-                            clip_words = filter_whisper_words(raw_words, clip_duration)
-                            clip_words = fix_ghost_leading_words(clip_words)
-                            from services.clip_generator import apply_whisper_brand_corrections
-                            clip_words = apply_whisper_brand_corrections(clip_words, whisper_vocab)
-
-                            clip_segments_whisper = []
-                            for sg in raw_segments:
-                                ss = float(sg.get("start", 0))
-                                se = float(sg.get("end", ss + 0.1))
-                                if se <= 0 or ss >= clip_duration + 0.25:
-                                    continue
-                                sg2 = dict(sg)
-                                sg2["start"] = max(0.0, ss)
-                                sg2["end"] = min(clip_duration + 0.10, se)
-                                clip_segments_whisper.append(sg2)
-
-                            n_raw = len(raw_words)
-                            n_kept = len(clip_words)
-                            retention = (n_kept / n_raw * 100) if n_raw else 0
-                            words_per_sec = (n_kept / clip_duration) if clip_duration > 0 else 0
-                            print(f"   ✅ Whisper: {n_kept}/{n_raw} words ({retention:.0f}%), "
-                                  f"{len(clip_segments_whisper)}/{len(raw_segments)} segments "
-                                  f"(clip_duration={clip_duration:.1f}s, density={words_per_sec:.2f} w/s)")
-
-                            # Guarda W3: plausibilidad de la Transcripción del clip
-                            from services.validation import assess_whisper_words
-                            whisper_assessment = assess_whisper_words(clip_words, clip_duration)
-                            whisper_bad_segment = whisper_assessment["bad_segment"]
-                            whisper_timestamps_suspect = whisper_assessment["timestamps_suspect"]
-                            if not whisper_assessment["plausible"]:
-                                print(
-                                    f"   🩺 Whisper no plausible: {', '.join(whisper_assessment['reasons'])} "
-                                    f"(density={whisper_assessment['density']:.2f}, "
-                                    f"effective={whisper_assessment['effective_density']:.2f}, "
-                                    f"leading_gap={whisper_assessment['leading_gap']:.1f}s, "
-                                    f"unique={whisper_assessment['unique_words']}/"
-                                    f"{whisper_assessment['n_words']}, "
-                                    f"repeated_run={whisper_assessment['repeated_run']})"
-                                )
-
-                            if n_kept == 0:
-                                print(f"   🔄 Whisper devolvió 0 words — fallback a YT transcript")
-                                clip_words = None
-                                clip_segments_whisper = None
-                        except Exception as e_whisper:
-                            print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
-                                  f"fallback a YT Transcript API")
-                            clip_words = None
-                            clip_segments_whisper = None
-                        finally:
-                            if clip_audio_path:
-                                try:
-                                    Path(clip_audio_path).unlink(missing_ok=True)
-                                except Exception:
-                                    pass
-
-                        # Guarda W3: segmento sin habla plausible → re-descargar UNA vez
-                        # con otro proxy/estrategia; si persiste, el clip va sin
-                        # subtítulos (nunca con las palabras basura) y queda flaggeado.
-                        if whisper_bad_segment:
-                            if (
-                                strict_sync
-                                and sync_attempt < min(sync_retries, _BAD_SEGMENT_MAX_RETRIES)
-                                and _should_sync_retry_download(None, bad_segment=True)
-                            ):
-                                sync_retry_reason = "segmento sin habla plausible"
-                                raise _SyncRetryNeeded(
-                                    "bad_segment: Whisper no devolvió habla plausible — re-download"
-                                )
+                        if anchored_mode and anchored is not None:
+                            # ── Corte final desde el segmento ancho ───────────────────
+                            b = anchored["bounds"]
+                            start_rel, end_rel = float(b["start_rel"]), float(b["end_rel"])
+                            clip_duration = end_rel - start_rel
+                            abs_start = anchored["seg_start_abs"] + start_rel
+                            abs_end = anchored["seg_start_abs"] + end_rel
                             print(
-                                f"   🚩 bad_segment persiste en clip {moment_index} — "
-                                f"se renderiza sin subtítulos"
+                                f"   ✂️ Corte anclado: {abs_start:.1f}–{abs_end:.1f}s "
+                                f"({clip_duration:.1f}s; numérico {start_s:.0f}–{end_s:.0f}s, "
+                                f"Δstart={abs_start - start_s:+.1f}s Δend={abs_end - end_s:+.1f}s)"
                             )
-                            clip_words = None
-                            clip_segments_whisper = None
+                            cut_clip(
+                                video_path=str(wide_path),
+                                start_sec=start_rel,
+                                end_sec=end_rel,
+                                output_path=str(precut_path),
+                            )
+                            _unlink_quiet(wide_path)
+                            if not seg_path:
+                                seg_path = str(precut_path)
+                            hook_not_found = "hook_not_found" in b["flags"]
+                            payoff_not_found = "payoff_not_found" in b["flags"]
+                            # Palabras y segmentos a la línea de tiempo del clip final (0-based)
+                            if anchored["words"]:
+                                clip_words = shift_words_timeline(
+                                    anchored["words"], start_rel, clip_duration=clip_duration
+                                )
+                                clip_words = fix_ghost_leading_words(clip_words)
+                                clip_words = filter_whisper_words(clip_words, clip_duration)
+                                clip_segments_whisper = [
+                                    {
+                                        **sg,
+                                        "start": max(0.0, float(sg["start"]) - start_rel),
+                                        "end": min(clip_duration + 0.10, float(sg["end"]) - start_rel),
+                                    }
+                                    for sg in (anchored["segments"] or [])
+                                    if float(sg.get("end", 0)) > start_rel
+                                    and float(sg.get("start", 0)) < end_rel
+                                ]
+                                print(f"   📊 Palabras en el clip final: {len(clip_words)} "
+                                      f"({len(clip_words) / clip_duration:.2f} w/s)")
+                        else:
+                            anchored = None
+                            # ── Pre-corte numérico (flujo legacy) ─────────────────────
+                            # Whisper y el encode final usan el MISMO archivo → subs en sync.
+                            clip_duration = src_end - src_start
+                            print(f"   ✂️ Pre-corte preciso ({clip_duration:.1f}s)...")
+                            cut_clip(
+                                video_path=src_path,
+                                start_sec=src_start,
+                                end_sec=src_end,
+                                output_path=str(precut_path),
+                            )
+                            if not seg_path:
+                                seg_path = str(precut_path)
+
+                            if whisper_bad_segment:
+                                # bad_segment ya detectado en el segmento ancho: sin subs
+                                pass
+                            else:
+                                # ── Whisper sobre el clip ya cortado (0..duration) + guardas ─
+                                try:
+                                    tw = _transcribe_with_guards(
+                                        str(precut_path), clip_duration,
+                                        video_id=video_id, moment_index=moment_index,
+                                        moment=moment, transcript=transcript, video_info=video_info,
+                                        ctx_start_abs=start_s, ctx_end_abs=end_s,
+                                    )
+                                    clip_words, clip_segments_whisper = tw["words"], tw["segments"]
+                                    whisper_bad_segment = tw["bad_segment"]
+                                    whisper_timestamps_suspect = tw["timestamps_suspect"]
+                                    subs_disabled_timestamps = tw["subs_disabled_timestamps"]
+                                    if subs_disabled_timestamps:
+                                        clip_words = None
+                                        clip_segments_whisper = None
+                                    elif not clip_words:
+                                        print(f"   🔄 Whisper devolvió 0 words — fallback a YT transcript")
+                                        clip_words = None
+                                        clip_segments_whisper = None
+                                except Exception as e_whisper:
+                                    print(f"   ⚠️ Whisper per-clip falló ({e_whisper}) — "
+                                          f"fallback a YT Transcript API")
+                                    clip_words = None
+                                    clip_segments_whisper = None
+
+                                # Guarda W3: segmento sin habla plausible → re-descargar UNA vez
+                                # con otro proxy/estrategia; si persiste, el clip va sin
+                                # subtítulos (nunca con las palabras basura) y queda flaggeado.
+                                if whisper_bad_segment:
+                                    if (
+                                        strict_sync
+                                        and sync_attempt < min(sync_retries, _BAD_SEGMENT_MAX_RETRIES)
+                                        and _should_sync_retry_download(None, bad_segment=True)
+                                    ):
+                                        sync_retry_reason = "segmento sin habla plausible"
+                                        raise _SyncRetryNeeded(
+                                            "bad_segment: Whisper no devolvió habla plausible — re-download"
+                                        )
+                                    print(
+                                        f"   🚩 bad_segment persiste en clip {moment_index} — "
+                                        f"se renderiza sin subtítulos"
+                                    )
+                                    clip_words = None
+                                    clip_segments_whisper = None
 
                         if clip_words or clip_segments_whisper:
                             subs_segments = clip_segments_whisper
@@ -925,190 +1527,78 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             snap_trim_start = 0.0
                             incomplete_tail = False
                             late_hook = False
-
-                            # Fase A: snap trim silencio + refinamiento a oración
                             from services.validation import (
                                 verify_phrases_after_snap,
-                                find_phrase_start_in_words,
-                                find_hook_start_in_words,
-                                hook_keyword_overlap,
+                                verify_phrases_against_whisper,
+                                sync_verification_phrases_from_words,
                             )
-                            from services.clip_generator import (
-                                refine_bounds_to_sentences,
-                                has_incomplete_tail,
-                                detect_sentence_boundaries,
-                            )
-                            # Guarda W3: historial de límites para enforce_min_duration
-                            bound_candidates = [(0.0, clip_duration)]
-                            trim_start, trim_end = snap_trim_bounds(clip_words, clip_duration)
-                            bound_candidates.append((trim_start, trim_end))
-                            tail_snapped_by_sentence = False
+                            from services.clip_generator import has_incomplete_tail
 
-                            # Fase 3: límites a boundaries de oración (puntuación +
-                            # gaps >0.6s + fin de segmentos Whisper)
-                            s_start, s_end = refine_bounds_to_sentences(
-                                clip_words, clip_duration,
-                                segments=clip_segments_whisper,
-                                max_duration=60.0,
-                            )
-                            if s_start > trim_start:
-                                print(f"   📝 Sentence snap start: {trim_start:.2f} → {s_start:.2f}")
-                                trim_start = s_start
-                            if s_end < trim_end:
-                                print(f"   📝 Sentence snap end: {trim_end:.2f} → {s_end:.2f}")
-                                trim_end = s_end
-                                tail_snapped_by_sentence = True
-                            bound_candidates.append((trim_start, trim_end))
-
-                            # Hook anchor: overlay > hook > first_phrase (después de sentence snap)
-                            _overlay = getattr(moment, "viral_overlay", None) or ""
-                            _first_phrase = getattr(
-                                getattr(moment, "verification", None),
-                                "first_phrase_in_audio", None,
-                            )
-                            hook_anchor = find_hook_start_in_words(
-                                clip_words,
-                                hook=moment.hook or "",
-                                overlay=_overlay,
-                                first_phrase=_first_phrase or "",
-                                clip_duration=clip_duration,
-                            )
-                            if hook_anchor is not None:
-                                new_start = max(0.0, hook_anchor - 0.2)
-                                if (
-                                    0.5 <= hook_anchor <= clip_duration * 0.4
-                                    and (trim_end - new_start) >= 8.0
-                                    and new_start > trim_start
-                                ):
-                                    print(
-                                        f"   🎯 Hook anchor: {hook_anchor:.2f}s — "
-                                        f"inicio {trim_start:.2f} → {new_start:.2f}"
-                                    )
-                                    trim_start = new_start
-                                    bound_candidates.append((trim_start, trim_end))
-                            elif moment.hook and len(clip_words) >= 3:
-                                head_tokens = [
-                                    (w.get("word") or "").strip()
-                                    for w in clip_words[:3]
-                                ]
-                                if hook_keyword_overlap(head_tokens, moment.hook) < 0.2:
-                                    bounds = detect_sentence_boundaries(
-                                        clip_words, clip_segments_whisper
-                                    )
-                                    alt = [b for b in bounds if 2.0 < b <= clip_duration * 0.35]
-                                    if alt:
-                                        remaining = [
-                                            w for w in clip_words
-                                            if float(w.get("start", 0)) > alt[0]
-                                        ]
-                                        if remaining and (trim_end - float(remaining[0]["start"])) >= 8.0:
-                                            new_start = max(0.0, float(remaining[0]["start"]) - 0.15)
-                                            print(
-                                                f"   🧹 Head filler trim: {trim_start:.2f} → {new_start:.2f}"
-                                            )
-                                            trim_start = new_start
-                                            bound_candidates.append((trim_start, trim_end))
-
-                            # First-phrase anchor (fallback si hook anchor no corrió)
-                            if _first_phrase and trim_start < 0.5:
-                                anchor_t = find_phrase_start_in_words(clip_words, _first_phrase)
-                                if (
-                                    anchor_t is not None
-                                    and anchor_t - trim_start > 0.8
-                                    and anchor_t < clip_duration * 0.5
-                                    and (trim_end - anchor_t) >= 8.0
-                                ):
-                                    print(
-                                        f"   ⚓ First-phrase anchor: frase en "
-                                        f"{anchor_t:.2f}s — inicio "
-                                        f"{trim_start:.2f} → {max(0.0, anchor_t - 0.35):.2f}"
-                                    )
-                                    trim_start = max(0.0, anchor_t - 0.35)
-                                    bound_candidates.append((trim_start, trim_end))
-
-                            # Guarda W3: con timestamps sospechosos ningún límite
-                            # derivado de las palabras es confiable → clip entero.
-                            if whisper_timestamps_suspect and (trim_start, trim_end) != (0.0, clip_duration):
-                                print(
-                                    f"   ⚠️ Timestamps Whisper sospechosos — ignoro refinamiento "
-                                    f"(start={trim_start:.2f}, end={trim_end:.2f}) y dejo el clip entero"
+                            if anchored is not None:
+                                # Límites ya decididos por frases: no hay snap ni anclas.
+                                ev = anchored["bounds"]["evidence"]
+                                start_rel = float(anchored["bounds"]["start_rel"])
+                                snap_trim_start = max(0.0, (anchored["seg_start_abs"] + start_rel) - start_s)
+                                incomplete_tail = has_incomplete_tail(
+                                    clip_words, tail_already_snapped=bool(ev.get("last_found"))
                                 )
-                                trim_start, trim_end = 0.0, clip_duration
-
-                            # Guarda W3: duración mínima post-refinamiento (15 s).
-                            # Si el refinamiento dejó el clip corto, volver al último
-                            # conjunto de límites que cumplía (o a los originales).
-                            bound_candidates.append((trim_start, trim_end))
-                            (trim_start, trim_end), min_duration_reverted = enforce_min_duration(
-                                bound_candidates
-                            )
-                            if min_duration_reverted:
-                                print(
-                                    f"   ↩️ Duración mínima: refinamiento dejó "
-                                    f"{bound_candidates[-1][1] - bound_candidates[-1][0]:.1f}s — "
-                                    f"revierto a start={trim_start:.2f}, end={trim_end:.2f} "
-                                    f"({trim_end - trim_start:.1f}s)"
+                                # late_hook: el gancho (primera frase) aparece >3 s después del inicio
+                                fp_rel = ev.get("first_phrase_rel_start")
+                                late_hook = bool(
+                                    fp_rel is not None and (float(fp_rel) - start_rel) > 3.0
                                 )
-                            if trim_end - trim_start < 3.0:
-                                trim_start, trim_end = 0.0, clip_duration
-
-                            if trim_start > 0.05 or trim_end < clip_duration - 0.05:
-                                snap_trim_start = trim_start
-                                words_before_snap = len(clip_words)
-                                print(
-                                    f"   ✂️ Snap trim: {clip_duration:.1f}s → "
-                                    f"{trim_end - trim_start:.1f}s "
-                                    f"(start={trim_start:.2f}, end={trim_end:.2f})"
+                                # Verificación por construcción: las frases se localizaron
+                                # dentro del clip (locate_phrase). El chequeo textual clásico
+                                # (primeras/últimas 5 palabras) solo se loguea como evidencia.
+                                verification_info = {
+                                    "first_ok": bool(ev.get("first_found")) or not first_phrase,
+                                    "last_ok": bool(ev.get("last_found")) or not last_phrase,
+                                }
+                                verification_info["failed"] = not (
+                                    verification_info["first_ok"] and verification_info["last_ok"]
                                 )
-                                snapped_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_snapped.mp4"
-                                try:
-                                    cut_clip(
-                                        video_path=str(precut_path),
-                                        start_sec=trim_start,
-                                        end_sec=trim_end,
-                                        output_path=str(snapped_path),
-                                    )
-                                    precut_path = snapped_path
-                                    clip_duration = trim_end - trim_start
-                                    clip_words = shift_words_timeline(
-                                        clip_words, trim_start, clip_duration=clip_duration
-                                    )
-                                    clip_words = fix_ghost_leading_words(clip_words)
-                                    clip_words = filter_whisper_words(clip_words, clip_duration)
+                                classic = verify_phrases_against_whisper(moment, clip_words)
+                                if classic.get("failed") and not verification_info["failed"]:
                                     print(
-                                        f"   📊 Snap words: {words_before_snap} → "
-                                        f"{len(clip_words)} (after shift+filter)"
+                                        "   ℹ️ Verificación textual clásica discrepa "
+                                        f"(first_ok={classic.get('first_ok')}, last_ok={classic.get('last_ok')}): "
+                                        "las frases están dentro del clip pero no en los bordes "
+                                        "(el clip arranca/termina en oración completa)"
                                     )
-                                    clip_segments_whisper = [
-                                        {
-                                            **sg,
-                                            "start": max(0.0, float(sg["start"]) - trim_start),
-                                            "end": max(0.0, float(sg["end"]) - trim_start),
-                                        }
-                                        for sg in clip_segments_whisper
-                                        if float(sg.get("end", 0)) > trim_start
-                                        and float(sg.get("start", 0)) < trim_end
-                                    ]
-                                    subs_words = clip_words
-                                    subs_segments = clip_segments_whisper
-                                except ClipGenerationError as e_snap:
-                                    print(f"   ⚠️ Snap trim falló ({e_snap}) — continuando sin snap")
-                                    snap_trim_start = 0.0
-                                    try:
-                                        snapped_path.unlink(missing_ok=True)
-                                    except Exception:
-                                        pass
+                                if snap_trim_start >= 0.5 or abs(
+                                    (anchored["seg_start_abs"] + float(anchored["bounds"]["end_rel"])) - end_s
+                                ) >= 0.5:
+                                    sync_verification_phrases_from_words(moment, clip_words)
+                            else:
+                                refined = _refine_bounds_legacy(
+                                    clip_words=clip_words,
+                                    clip_duration=clip_duration,
+                                    clip_segments_whisper=clip_segments_whisper or [],
+                                    moment=moment,
+                                    precut_path=precut_path,
+                                    video_id=video_id,
+                                    moment_index=moment_index,
+                                    whisper_timestamps_suspect=whisper_timestamps_suspect,
+                                )
+                                precut_path = refined["precut_path"]
+                                clip_duration = refined["clip_duration"]
+                                clip_words = refined["clip_words"]
+                                clip_segments_whisper = refined["clip_segments_whisper"]
+                                snap_trim_start = refined["snap_trim_start"]
+                                min_duration_reverted = refined["min_duration_reverted"]
+                                subs_words = clip_words
+                                subs_segments = clip_segments_whisper
 
-                            # Post-snap: cola incompleta (omitir si sentence snap ya recortó tail)
-                            incomplete_tail = has_incomplete_tail(
-                                clip_words, tail_already_snapped=tail_snapped_by_sentence
-                            )
-                            late_hook = snap_trim_start > 3.0
+                                # Post-snap: cola incompleta (omitir si sentence snap ya recortó tail)
+                                incomplete_tail = has_incomplete_tail(
+                                    clip_words, tail_already_snapped=refined["tail_snapped_by_sentence"]
+                                )
+                                late_hook = snap_trim_start > 3.0
 
-                            # Fase 4: verificación anti-alucinación (frases post-snap)
-                            verification_info = verify_phrases_after_snap(
-                                moment, clip_words, snap_trim_start, clip_duration
-                            )
+                                # Fase 4: verificación anti-alucinación (frases post-snap)
+                                verification_info = verify_phrases_after_snap(
+                                    moment, clip_words, snap_trim_start, clip_duration
+                                )
                             if (
                                 verification_info.get("failed")
                                 or incomplete_tail
@@ -1139,9 +1629,13 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             from services.processor import _clip_text_from_words
                             clip_text_final = _clip_text_from_words(clip_words)
                         else:
-                            # bad_segment: sin subtítulos (los captions de YT
-                            # tampoco corresponden a un segmento sin habla)
-                            subs_segments = None if whisper_bad_segment else transcript.get("segments")
+                            # bad_segment / subs_disabled_timestamps: sin subtítulos (los
+                            # captions de YT tampoco sirven para un segmento sin habla o
+                            # con tiempos falsos)
+                            subs_segments = (
+                                None if (whisper_bad_segment or subs_disabled_timestamps)
+                                else transcript.get("segments")
+                            )
                             subs_words = None
                             subs_offset = start_s
                             # Sin Whisper: el texto real del clip es el slice del
@@ -1270,7 +1764,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                             clip_url = f"https://www.youtube.com/watch?v={video_id}&t={int(moment.start_time)}s"
                             print(f"🔗 Fallback a link de YouTube: {clip_url}")
                         break
-                for tmp in (locals().get("seg_path"), locals().get("precut_path")):
+                for tmp in (locals().get("seg_path"), locals().get("precut_path"), locals().get("wide_path")):
                     if tmp:
                         try:
                             Path(tmp).unlink(missing_ok=True)
@@ -1302,6 +1796,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     timestamps_suspect=locals().get("whisper_timestamps_suspect", False),
                     bad_segment=locals().get("whisper_bad_segment", False),
                     min_duration_reverted=locals().get("min_duration_reverted", False),
+                    hook_not_found=locals().get("hook_not_found", False),
+                    payoff_not_found=locals().get("payoff_not_found", False),
+                    margin_extended=locals().get("margin_extended", False),
+                    subs_disabled_timestamps=locals().get("subs_disabled_timestamps", False),
                 )
             elif clip_rendered_ok or verification_info:
                 clip_quality_issues = build_clip_quality_issues(
@@ -1313,6 +1811,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     timestamps_suspect=locals().get("whisper_timestamps_suspect", False),
                     bad_segment=locals().get("whisper_bad_segment", False),
                     min_duration_reverted=locals().get("min_duration_reverted", False),
+                    hook_not_found=locals().get("hook_not_found", False),
+                    payoff_not_found=locals().get("payoff_not_found", False),
+                    margin_extended=locals().get("margin_extended", False),
+                    subs_disabled_timestamps=locals().get("subs_disabled_timestamps", False),
                 )
 
             if (
