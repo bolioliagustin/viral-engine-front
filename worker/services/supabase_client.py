@@ -217,6 +217,9 @@ def save_content_result(
     words_per_sec: float = None,  # Fase 4: densidad de palabras del clip
     clip_quality_issues: list = None,  # flags: incomplete_tail, clip_not_rendered, etc.
     clip_generation_error: str = None,  # error si el MP4 no se generó
+    title: str = None,  # W10: título ≤60 chars para publicar
+    description: str = None,  # W10: 2 oraciones (qué se ve + invitación)
+    hashtags: list = None,  # W10: 10 hashtags, español, CamelCase, con '#'
 ) -> str:
     """Save content result to Supabase"""
     import uuid
@@ -254,6 +257,9 @@ def save_content_result(
             "words_per_sec": words_per_sec,
             "clip_quality_issues": clip_quality_issues,
             "clip_generation_error": clip_generation_error,
+            "title": title,
+            "description": description,
+            "hashtags": hashtags,
         })
         return result_id
 
@@ -318,6 +324,16 @@ def save_content_result(
     if clip_generation_error:
         data["clip_generation_error"] = clip_generation_error[:500]
         _quality_keys.append("clip_generation_error")
+    # W10: copy por clip (requiere supabase/migrations/*_copy_por_clip.sql)
+    if title:
+        data["title"] = title[:60]
+        _quality_keys.append("title")
+    if description:
+        data["description"] = description
+        _quality_keys.append("description")
+    if hashtags:
+        data["hashtags"] = hashtags
+        _quality_keys.append("hashtags")
 
     def _insert(payload):
         supabase.table("content_results").insert(payload).execute()

@@ -59,7 +59,8 @@ SHAREABILITY (¿alguien lo compartiría o etiquetaría a un amigo?):
 REGLAS:
 - Evalúa SOLO el texto real del clip (transcript) + el overlay. No asumas contenido visual.
 - Un clip que corta a mitad de frase NO puede tener retention > 5.
-- Responde SOLO JSON: {"hook": n, "retention": n, "shareability": n, "reasoning": "1-2 frases explicando los scores"}"""
+- reasoning: SIEMPRE en español, 2-3 frases, tono constructivo — no solo "por qué" el score, sino qué cambiarías para mejorarlo (ej: "El hook engancha con la comparación directa, pero tarda en concretar el dato; empezar con el número exacto lo haría más contundente. El remate se siente completo."). Nunca en inglés, nunca una sola palabra.
+- Responde SOLO JSON: {"hook": n, "retention": n, "shareability": n, "reasoning": "..."}"""
 
 
 def judge_moment_scores(
@@ -129,7 +130,12 @@ Puntúa contra la rúbrica. Responde SOLO JSON."""
             if val is None:
                 return None
             scores[key] = max(1, min(10, int(round(float(val)))))
-        scores["reasoning"] = str(data.get("reasoning") or "")[:500]
+        # W10: reasoning constructivo de 2-3 frases se muestra completo en
+        # la UI ("Por qué este score"); 500 chars lo cortaba a mitad de
+        # palabra. TASK_MAX_TOKENS["judge"] (config/model_tiers.py) ya
+        # acota el tamaño total de la respuesta — este cap es una red de
+        # seguridad, no debería activarse en uso normal.
+        scores["reasoning"] = str(data.get("reasoning") or "")[:2000]
         return scores
     except Exception as e:
         print(f"   ⚠️ Judge falló (conservamos scores del análisis): {str(e)[:120]}")

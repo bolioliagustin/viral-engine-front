@@ -155,6 +155,15 @@ class ViralMoment(BaseModel):
     verification_failed: Optional[bool] = None
     # Sprint 2: Fidelity & Verification
     verification: Optional[Verification] = None  # Validates AI didn't hallucinate
+    # W10 (docs/PLAN_CALIDAD.md §9 Fase 0, docs/ANALISIS_OPUS_CLIP.md §2.4):
+    # copy por clip — lo que la persona pega al publicar en YouTube Shorts /
+    # TikTok, además de las piezas de hilo/post/caption. Lo llena la Pasada B
+    # (generate_moment_copy_full); nivel-momento como hook/viral_overlay, no
+    # dentro de content_pieces, porque se repite en las 3 filas de
+    # content_results igual que el resto de los metadatos del momento.
+    title: Optional[str] = None  # ≤60 chars, "Tema: ¡afirmación o pregunta!"
+    description: Optional[str] = None  # 2 oraciones: qué se ve + invitación
+    hashtags: Optional[List[str]] = None  # 10, español, sin acentos, CamelCase, con '#'
     
     # Validators to convert float to int for timestamps
     @field_validator('start_time', 'end_time', mode='before')
