@@ -1083,3 +1083,102 @@ class TestWorkerLogging:
             assert "hello" in formatted
         finally:
             reset_trace(token)
+
+
+class TestSupadataRetry:
+    """Reintentos ante timeout/429/5xx transitorios en el fetch de transcript (Supadata)."""
+
+    def _make_response(self, status_code, json_data=None, text=""):
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.ok = 200 <= status_code < 300
+        resp.text = text
+        if json_data is not None:
+            resp.json.return_value = json_data
+        return resp
+
+    def test_retries_on_timeout_then_succeeds(self):
+        import requests
+        from services.yt_transcript import _get_transcript_via_supadata
+
+        ok_response = self._make_response(200, json_data={
+            "lang": "es",
+            "content": [{"text": "hola mundo", "offset": 0, "duration": 2000}],
+        })
+
+        call_count = {"n": 0}
+
+        def fake_get(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise requests.exceptions.Timeout("timed out")
+            return ok_response
+
+        with patch("services.yt_transcript.requests.get", side_effect=fake_get), \
+             patch("services.yt_transcript.time.sleep"), \
+             patch("services.yt_transcript.get_video_metadata", return_value={
+                 "id": "abc", "title": "t", "duration": 0, "uploader": "u", "view_count": 0,
+             }), \
+             patch.dict(os.environ, {"SUPADATA_API_KEY": "test-key"}):
+            transcript, video_info = _get_transcript_via_supadata("https://youtube.com/watch?v=abc", "abc")
+
+        assert call_count["n"] == 2  # 1 timeout + 1 éxito
+        assert transcript["segments"][0]["text"] == "hola mundo"
+
+    def test_retries_on_429_then_succeeds(self):
+        from services.yt_transcript import _get_transcript_via_supadata
+
+        responses = [
+            self._make_response(429, text="rate limited"),
+            self._make_response(200, json_data={
+                "lang": "es",
+                "content": [{"text": "hola", "offset": 0, "duration": 1000}],
+            }),
+        ]
+
+        with patch("services.yt_transcript.requests.get", side_effect=responses), \
+             patch("services.yt_transcript.time.sleep"), \
+             patch("services.yt_transcript.get_video_metadata", return_value={
+                 "id": "abc", "title": "t", "duration": 0, "uploader": "u", "view_count": 0,
+             }), \
+             patch.dict(os.environ, {"SUPADATA_API_KEY": "test-key"}):
+            transcript, _ = _get_transcript_via_supadata("https://youtube.com/watch?v=abc", "abc")
+
+        assert transcript["segments"][0]["text"] == "hola"
+
+    def test_gives_up_after_max_attempts(self):
+        import requests
+        from services.yt_transcript import _get_transcript_via_supadata, _SUPADATA_MAX_ATTEMPTS
+
+        with patch("services.yt_transcript.requests.get",
+                   side_effect=requests.exceptions.Timeout("timed out")) as mock_get, \
+             patch("services.yt_transcript.time.sleep"), \
+             patch.dict(os.environ, {"SUPADATA_API_KEY": "test-key"}):
+            with pytest.raises(Exception, match="Supadata API error"):
+                _get_transcript_via_supadata("https://youtube.com/watch?v=abc", "abc")
+
+        assert mock_get.call_count == _SUPADATA_MAX_ATTEMPTS
+
+    def test_does_not_retry_on_401(self):
+        from services.yt_transcript import _get_transcript_via_supadata
+
+        with patch("services.yt_transcript.requests.get",
+                   return_value=self._make_response(401, text="invalid key")) as mock_get, \
+             patch("services.yt_transcript.time.sleep"), \
+             patch.dict(os.environ, {"SUPADATA_API_KEY": "test-key"}):
+            with pytest.raises(Exception, match="Invalid SUPADATA_API_KEY"):
+                _get_transcript_via_supadata("https://youtube.com/watch?v=abc", "abc")
+
+        assert mock_get.call_count == 1  # sin reintentos — error determinista
+
+    def test_does_not_retry_on_404(self):
+        from services.yt_transcript import _get_transcript_via_supadata
+
+        with patch("services.yt_transcript.requests.get",
+                   return_value=self._make_response(404, text="not found")) as mock_get, \
+             patch("services.yt_transcript.time.sleep"), \
+             patch.dict(os.environ, {"SUPADATA_API_KEY": "test-key"}):
+            with pytest.raises(Exception, match="No transcript available"):
+                _get_transcript_via_supadata("https://youtube.com/watch?v=abc", "abc")
+
+        assert mock_get.call_count == 1
