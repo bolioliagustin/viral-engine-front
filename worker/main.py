@@ -1385,6 +1385,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                     f"({ev.get('last_score')}) → start={ev.get('start_source')} "
                                     f"end={ev.get('end_source')} flags={bounds['flags']}"
                                 )
+                                if ev.get("first_matched_text"):
+                                    print(f"      first: «{first_phrase[:70]}» ≈ «{ev['first_matched_text'][:70]}»")
+                                if ev.get("last_matched_text"):
+                                    print(f"      last:  «{last_phrase[:70]}» ≈ «{ev['last_matched_text'][:70]}»")
                                 can_extend = source.kind in ("muxed", "cached", "ytdlp")
                                 if (
                                     ev.get("extend_recommended")
@@ -1444,6 +1448,11 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                 )
                                 clip_words = fix_ghost_leading_words(clip_words)
                                 clip_words = filter_whisper_words(clip_words, clip_duration)
+                                # El fin cae justo donde arranca la palabra siguiente: por
+                                # redondeo puede quedar 1 ms adentro → no es audible, afuera.
+                                clip_words = [
+                                    w for w in clip_words if float(w["start"]) < clip_duration - 0.02
+                                ]
                                 clip_segments_whisper = [
                                     {
                                         **sg,
@@ -1599,6 +1608,8 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                                 verification_info = verify_phrases_after_snap(
                                     moment, clip_words, snap_trim_start, clip_duration
                                 )
+                            # Tri-estado persistido: None = sin Whisper, False = pasó, True = falló
+                            moment.verification_failed = False
                             if (
                                 verification_info.get("failed")
                                 or incomplete_tail

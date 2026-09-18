@@ -335,6 +335,40 @@ class TestComputeClipBounds:
         start_word = next(w for w in words if abs(w["start"] - 0.25 - r["start_rel"]) < 0.01)
         assert start_word["word"] == "Mirá,"
 
+    def test_pads_never_cross_adjacent_words(self):
+        # Habla continua: Whisper deja las palabras pegadas (end == next.start).
+        # El pad de 0,25 s NO debe meter la última sílaba de la oración anterior
+        # ni el de 0,40 s la primera de la siguiente (caso real e2e: los clips
+        # arrancaban con "pasaba. Entraba en Claude…").
+        words = []
+        t = 0.0
+        for tok in ("relleno relleno relleno pasaba. " + FIRST + " Y algo más. " + PAYOFF + " Para entenderlo hay que verlo.").split():
+            words.append({"word": tok, "start": round(t, 3), "end": round(t + 0.7, 3)})
+            t += 0.7
+        dur = t + 1.0
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        first_w = words[locate_phrase(words, FIRST)["start_idx"]]
+        last_w = words[locate_phrase(words, PAYOFF, prefer="last")["end_idx"]]
+        assert r["start_rel"] == pytest.approx(first_w["start"], abs=0.001)   # sin pad: pegadas
+        assert r["end_rel"] == pytest.approx(last_w["end"], abs=0.001)
+        # y con las palabras desplazadas, la primera del clip es "El" y la última "barrés."
+        from services.clip_generator import shift_words_timeline, filter_whisper_words
+        shifted = filter_whisper_words(
+            shift_words_timeline(words, r["start_rel"], clip_duration=r["end_rel"] - r["start_rel"]),
+            r["end_rel"] - r["start_rel"],
+        )
+        assert shifted[0]["word"] == "El"
+        assert shifted[-1]["word"] == "barrés."
+
+    def test_numbers_in_digits_match_words(self):
+        words = _speak("bueno pasamos ahora al hack número 5 que es el mejor", 0.0)
+        r = locate_phrase(words, "pasamos ahora al hack número cinco")
+        assert r is not None
+        assert words[r["end_idx"]]["word"] == "5"
+
     def test_no_words_returns_hint_bounds(self):
         r = compute_clip_bounds(
             [], FIRST, PAYOFF,

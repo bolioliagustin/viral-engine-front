@@ -505,11 +505,26 @@ _SENTENCE_MAX_LOOKBACK_SEC = 10.0   # oración "infinita" sin puntuación: no re
 _SENTENCE_MAX_LOOKAHEAD_SEC = 10.0
 
 
+_ES_NUMBER_WORDS = {
+    "0": "cero", "1": "uno", "2": "dos", "3": "tres", "4": "cuatro", "5": "cinco",
+    "6": "seis", "7": "siete", "8": "ocho", "9": "nueve", "10": "diez", "11": "once",
+    "12": "doce", "13": "trece", "14": "catorce", "15": "quince", "16": "dieciseis",
+    "17": "diecisiete", "18": "dieciocho", "19": "diecinueve", "20": "veinte",
+    "30": "treinta", "40": "cuarenta", "50": "cincuenta", "60": "sesenta",
+    "70": "setenta", "80": "ochenta", "90": "noventa", "100": "cien", "1000": "mil",
+}
+
+
 def _fold_token(text: str) -> str:
-    """Minúsculas, sin acentos ni puntuación (Whisper y Gemini difieren en ambos)."""
+    """
+    Minúsculas, sin acentos ni puntuación (Whisper y Gemini difieren en ambos);
+    los números chicos en cifra pasan a palabra ("5" → "cinco": Whisper escribe
+    "hack número 5" y el modelo cita "hack número cinco").
+    """
     norm = _normalize_phrase(text)
     norm = unicodedata.normalize("NFD", norm)
-    return "".join(ch for ch in norm if unicodedata.category(ch) != "Mn")
+    norm = "".join(ch for ch in norm if unicodedata.category(ch) != "Mn")
+    return _ES_NUMBER_WORDS.get(norm, norm)
 
 
 def _tokens_match(a: str, b: str) -> bool:
@@ -713,6 +728,10 @@ def compute_clip_bounds(
     `hint_start_abs` / `hint_end_abs` son el start_time / end_time numéricos
     de la Pasada A (solo respaldo cuando una frase no aparece).
 
+    Los pads (0,25 s antes / 0,40 s después) nunca cruzan la palabra vecina:
+    con habla continua Whisper deja las palabras pegadas y el pad metería la
+    última sílaba de la oración anterior (o la primera de la siguiente).
+
     Returns {"start_rel", "end_rel", "flags", "evidence"}; flags ⊆
     {hook_not_found, payoff_not_found}; evidence incluye
     `extend_recommended` (la última frase no está y el segmento no llega al
@@ -753,10 +772,24 @@ def compute_clip_bounds(
     sentence_starts = _sentence_start_indices(words, boundaries)
     w_start = [float(w.get("start", 0)) for w in words]
     w_end = [float(w.get("end", 0)) for w in words]
-    sentence_ends_t = sorted(
-        {round(w_end[k], 3) for k in range(n) if round(w_end[k], 3) in boundaries}
-        | {round(w_end[-1], 3)}
+    sentence_end_idxs = sorted(
+        {k for k in range(n) if round(w_end[k], 3) in boundaries} | {n - 1}
     )
+
+    def _start_at(idx: int) -> float:
+        """Inicio del clip para arrancar en la palabra idx, sin pisar la anterior."""
+        t = w_start[idx] - start_pad
+        if idx > 0:
+            t = max(t, w_end[idx - 1])
+        return max(0.0, min(t, w_start[idx]))
+
+    def _end_at(idx: int) -> float:
+        """Fin del clip para terminar en la palabra idx, sin pisar la siguiente."""
+        t = w_end[idx] + end_pad
+        if idx + 1 < n:
+            nxt = w_start[idx + 1]
+            t = min(t, nxt) if nxt > w_end[idx] else w_end[idx]
+        return min(seg_duration, t)
 
     # ── a) primera frase → inicio de oración ────────────────────────────────
     fi = locate_phrase(words, first_phrase or "", prefer="first") if first_phrase else None
@@ -766,6 +799,9 @@ def compute_clip_bounds(
         evidence.update(first_found=True, first_idx=fi["start_idx"],
                         first_score=fi["score"], start_source="first_phrase")
         evidence["first_phrase_rel_start"] = round(w_start[fi["start_idx"]], 3)
+        evidence["first_matched_text"] = " ".join(
+            (w.get("word") or "").strip() for w in words[fi["start_idx"]:fi["end_idx"] + 1]
+        )
     else:
         flags.append("hook_not_found")
         start_idx = None
@@ -802,7 +838,7 @@ def compute_clip_bounds(
             start_idx = earlier[-1]
             evidence["lowercase_fix"] = True
 
-    start_rel = max(0.0, w_start[start_idx] - start_pad)
+    start_rel = _start_at(start_idx)
 
     # ── b) última frase, buscada solo DESPUÉS de la primera ─────────────────
     search_from = (fi["end_idx"] + 1) if fi else start_idx
@@ -812,10 +848,14 @@ def compute_clip_bounds(
     )
     if li:
         _, e_idx = sentence_bounds_around(words, li["end_idx"], segments)
-        end_rel = min(seg_duration, w_end[e_idx] + end_pad)
+        end_idx = e_idx
+        end_rel = _end_at(end_idx)
         evidence.update(last_found=True, last_idx=li["end_idx"],
                         last_score=li["score"], end_source="last_phrase")
         evidence["last_phrase_rel_end"] = round(w_end[li["end_idx"]], 3)
+        evidence["last_matched_text"] = " ".join(
+            (w.get("word") or "").strip() for w in words[li["start_idx"]:li["end_idx"] + 1]
+        )
         payoff_end_rel = w_end[li["end_idx"]]
     else:
         flags.append("payoff_not_found")
@@ -826,22 +866,25 @@ def compute_clip_bounds(
         # Fin de oración que deje [min_s, max_s] desde start, el primero en o
         # después del end_time numérico (el remate suele estar justo después).
         lo, hi = start_rel + min_s, start_rel + max_s
-        fitting = [b for b in sentence_ends_t if lo <= b + end_pad <= hi]
-        after_hint = [b for b in fitting if b >= hint_end_rel - 0.5]
+        fitting = [k for k in sentence_end_idxs if lo <= _end_at(k) <= hi]
+        after_hint = [k for k in fitting if w_end[k] >= hint_end_rel - 0.5]
         if after_hint:
-            end_rel = min(seg_duration, after_hint[0] + end_pad)
+            end_idx = after_hint[0]
             evidence["end_source"] = "sentence_after_hint"
         elif fitting:
-            end_rel = min(seg_duration, fitting[-1] + end_pad)
+            end_idx = fitting[-1]
             evidence["end_source"] = "last_fitting_sentence"
         else:
-            end_rel = min(seg_duration, max(hint_end_rel, start_rel + min_s))
+            end_idx = None
             evidence["end_source"] = "hint"
+        end_rel = _end_at(end_idx) if end_idx is not None else min(
+            seg_duration, max(hint_end_rel, start_rel + min_s)
+        )
 
     # ── f) duración mínima: extender el fin al siguiente fin de oración ─────
     if end_rel - start_rel < min_s:
-        for b in sentence_ends_t:
-            cand = min(seg_duration, b + end_pad)
+        for k in sentence_end_idxs:
+            cand = _end_at(k)
             if cand > end_rel:
                 end_rel = cand
                 evidence["extended_for_min"] = True
@@ -861,7 +904,7 @@ def compute_clip_bounds(
             for k in sentence_starts:
                 if k <= start_idx:
                     continue
-                cand_start = max(0.0, w_start[k] - start_pad)
+                cand_start = _start_at(k)
                 if max_s >= end_rel - cand_start >= min_s:
                     start_idx = k
                     start_rel = cand_start
@@ -873,9 +916,9 @@ def compute_clip_bounds(
                     break
         if end_rel - start_rel > max_s:
             limit = start_rel + max_s
-            fitting = [b for b in sentence_ends_t if start_rel + min_s <= b + end_pad <= limit]
+            fitting = [k for k in sentence_end_idxs if start_rel + min_s <= _end_at(k) <= limit]
             if fitting:
-                end_rel = min(seg_duration, fitting[-1] + end_pad)
+                end_rel = _end_at(fitting[-1])
             else:
                 end_rel = min(seg_duration, limit)
             evidence["end_cut_for_max"] = True
