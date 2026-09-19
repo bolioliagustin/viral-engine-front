@@ -267,6 +267,27 @@ Decisiones nuevas para §7:
 
 Agustín aprobó el análisis completo (`ANALISIS_OPUS_CLIP.md`) y las dos decisiones de §8: **tope de duración 120 s** y **entrega tipo "todos los clips viables como preview, HD y copy al descargar"**. Este plan reordena las líneas W0–W8 y agrega W9–W11. La regla no cambia: cada cambio se mide en el tier `e2e` contra la corrida anterior, una medición a la vez.
 
+### Estado real de cada línea (19-sep-2026, fuente única para el PR de `integracion/fase-0`)
+
+Todas las líneas de código de la Fase 0 (W0–W11, más las dos que nacieron después: W9-A y F1) están mergeadas en `integracion/fase-0` (INT-1 + INT-2). Lo que falta en cada una es **medición** (correr el tier `e2e` y comparar) o **trabajo de producto** todavía no encarado — nunca código sin mergear.
+
+| Línea | Qué era | Estado | Fecha | Nota |
+|---|---|---|---|---|
+| **W0** Eval e2e + baseline | Tier `e2e`, `compare_runs.py`, baseline | **Hecho y medido** | 17-sep | Es la infraestructura que mide a todas las demás |
+| **W1** Cortes anclados a frases | Corte por oración, no por `start_time`/`end_time` numérico | **Hecho y medido** | 18-sep | Run vs baseline v4 en `eval/runs/2026-09-18-w1-cortes.json` |
+| **W2 + W2-B + W2-C** El juez elige, tope 120 s, penalizaciones con nombre | Juez antes del render, ranking por juez con 3 niveles de penalización, tope 120 s | **Hecho, medición pendiente** | 18-sep (código) | Suite verde (211+/211+) desde entonces; la corrida e2e post-merge quedó frenada por pedido explícito de Agustín (§4 W2) y sigue **PENDIENTE DE CRÉDITO** — mismo bloqueo que la medición final de abajo |
+| **W3** Guardas de sanidad | Plausibilidad de timestamps Whisper, segmento sin habla, duración mínima | **Hecho** | 18-sep | Entró junto con W1 (mismos archivos); tests de los casos reales (`1b1007c4 m=1`, "O R m Y TleK E") en verde |
+| **W4** Transcript puntuado (Whisper full) | `TRANSCRIPT_SOURCE=supadata\|whisper_full\|hybrid` | **Hecho** | 18-sep (merge INT-1) | Default `supadata` (sin cambio de comportamiento); activar `whisper_full`/`hybrid` en producción es una decisión de Agustín, no medida todavía con ese flag activo |
+| **W5** Reencuadre vertical (Split/Fill/Fit) | Encuadre por escena en vez de fondo desenfocado fijo | **Hecho** | 19-sep (merge INT-1) | Verificado por el coordinador (278 tests, 2 renders reales) antes del merge; `REFRAME_MODE=off` default, activar `auto` en el VPS es decisión pendiente de Agustín (§11) |
+| **W6** Hook/overlay/copy fieles al clip | Hook y overlay validados contra el texto real del clip | **Hecho** | 18-sep (merge INT-1) | Remedición con el fix de `hook_is_faithful` mencionada en Fase 0 no se volvió a correr aparte: queda incluida en la medición final pendiente |
+| **W7** Feedback humano | Botones "lo publicaría/no", motivo, panel admin | **Hecho** | 18-sep (merge INT-1) | Es la fuente de verdad para calibrar el juez (§7 punto 1); sin datos reales todavía (la beta no está corriendo) |
+| **W8** Modelos y prompts | Experimentos de modelo/prompt calibrados contra W7 | **Pendiente** | — | Fase 2, explícitamente "recién después de W1–W3"; no arrancó |
+| **W9-A** Galería + HD a pedido (mitad producto) | `/results/[jobId]` en galería, `POST /api/clips/:id/hd`, ADR 0008 | **Hecho** | 19-sep (merge INT-2) | Mitad worker (evaluar todos los candidatos viables, renderizar preview por candidato, `clip_edit_processor.py` distinguiendo `hd_upgrade` para subir resolución real) sigue **pendiente**, ver §10 |
+| **W10** Copy por clip + score visible | Título/descripción/hashtags, score curvado con letras A-D | **Hecho** | 18-sep (merge INT-1) | Sin medición de juez (no cambia el ranking interno, es capa de presentación); revisión visual hecha en preview de Vercel antes del merge |
+| **W11** Subtítulos v2 | 1-3 palabras por bloque, palabra clave resaltada | **Hecho** | 18-sep (merge INT-1) | Gap de integración (b)/(c) cerrado con test (INT-1); pendiente de producto: `EditClipDrawer.tsx` no ofrece `tiktok_viral_v2` como opción manual todavía (§9 Frontend de `PROYECTO.md`) |
+| **F1** Fiabilidad de la beta | ADR 0005 (créditos reservados), tope 90 min, Telegram, Sentry | **Hecho** | 19-sep (merge INT-2) | Suite backend 98/98 en verde con Node 20 puro; nada pendiente de código |
+| **Medición final de la integración** | Tier `e2e` sobre `integracion/fase-0` completa vs `2026-09-18-w2c-verificacion.json` | **Pendiente de crédito** | — | OpenRouter en saldo negativo (instrucción explícita de Agustín en INT-2); comando exacto en `worker/eval/README.md` ("Tier `e2e`: cómo funciona") y en el `worker_done` de INT-1/INT-2 |
+
 ### Fase 0 — esta semana, en paralelo (tres agentes)
 
 | Línea | Qué | Agente / rama | Mide contra |
