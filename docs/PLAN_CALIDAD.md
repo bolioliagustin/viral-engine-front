@@ -236,6 +236,18 @@ Conflictos previsibles: `main.py` es tocado por guardas, cortes y selección →
 
 ---
 
+## 8. W9 — Muchos clips, ranking relativo, preview + HD a pedido (estado 19-sep-2026)
+
+`docs/ANALISIS_OPUS_CLIP.md` §1 y §6 fila B: Opus entrega 42 clips de un video de 77 min como galería con preview liviano y HD a pedido; nosotros 5 en HD directo. `feat/galeria-clips` (W9-A) hizo la mitad producto de esta línea:
+
+- **Hecho:** `docs/adr/0008-entrega-galeria-y-creditos.md` (propuesta, pendiente de confirmación de Agustín) — crédito por job sin cambios, galería y HD ilimitados dentro del job. Backend: `POST /api/clips/:contentResultId/hd` (HD a pedido, reusa `clip_edits` con `edit_type='hd_upgrade'`, sin columnas de estado nuevas); `GET /status/:jobId` agrega `preview_url`, `hd_url`, `hd_status`. Frontend: `/results/[jobId]` pasa a galería (grilla + filtro Todos/Mejores, detalle al abrir una tarjeta). Migración `galeria_hd` (columna `content_results.preview_url`, columna `clip_edits.edit_type`).
+- **Falta (mitad worker, va sobre la rama de integración porque toca `main.py`):**
+  1. Evaluar **todos** los candidatos viables de un video (objetivo ≥1 cada 2-3 min), no solo el `target` de hoy — cambia `moment_selector`/el loop de `main.py`.
+  2. Renderizar un **preview 480×854 `veryfast`** de cada candidato viable y escribir `content_results.preview_url` — hoy esa columna existe pero ningún job la llena, así que la galería de hoy sigue mostrando 5 tarjetas con `clip_url` como thumbnail (compatible, pero no es todavía "30 clips").
+  3. `services/clip_edit_processor.py` necesita distinguir `edit_type='hd_upgrade'` para renderizar a una resolución real mayor que el preview — hoy un pedido de HD re-renderiza al mismo `target_width=720, target_height=1280` que ya usa el original, así que el botón funciona (estado, cache, idempotencia) pero no sube la calidad todavía.
+
+---
+
 ## Apéndice — Datos crudos
 
 Los datos de los 20 clips (scores, razonamientos del juez, palabras Whisper, flags) se extrajeron de Supabase el 17-sep-2026 con los scripts de esta sesión y quedan como baseline cualitativo. El baseline cuantitativo reproducible lo produce W0 (`worker/eval/runs/`).

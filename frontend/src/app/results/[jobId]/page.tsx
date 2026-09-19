@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ViralMomentCard } from "@/components/ViralMomentCard";
+import { MomentGalleryCard } from "@/components/MomentGalleryCard";
 import { AnalyticsSummary } from "@/components/AnalyticsSummary";
 import { ToastProvider } from "@/components/ui/use-toast";
 import { ProcessingScreen } from "@/components/ProcessingScreen";
@@ -47,6 +48,13 @@ interface Result {
   /** Curvado 60-99 por el backend (score-curve.js); null si no hay juez. */
   score_display?: number | null;
   grades?: { hook: string; retention: string; shareability: string } | null;
+  // W9-A (docs/adr/0008): galería + HD a pedido.
+  /** Preview 480x854 del worker (pendiente — mitad worker de W9). null en todo job de hoy. */
+  preview_url?: string | null;
+  /** URL del re-render HD ya completado, o null si nunca se pidió. */
+  hd_url?: string | null;
+  /** 'none' | 'queued' | 'processing' | 'ready' | 'error'. */
+  hd_status?: string | null;
 }
 
 
@@ -69,6 +77,10 @@ export default function ResultsPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // W9-A (docs/adr/0008): galería. null = grilla; un número = detalle abierto.
+  const [selectedMoment, setSelectedMoment] = useState<number | null>(null);
+  const [galleryFilter, setGalleryFilter] = useState<"all" | "best">("all");
+  const BEST_SCORE_THRESHOLD = 85;
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -243,65 +255,92 @@ export default function ResultsPage() {
             {/* Analytics Summary Dashboard */}
             <AnalyticsSummary results={job.results} />
 
-            {/* List of Viral Moments */}
-            <div className="space-y-8">
-              {Object.entries(moments)
+            {/* W9-A (docs/adr/0008): galería — grilla ordenada por Score
+                visible con filtro "todos / mejores", o el detalle de UN
+                momento a la vez (reproductor + acciones) cuando se abre una
+                tarjeta. Jobs viejos (5 Momentos, sin preview_url) usan el
+                mismo camino: la grilla se ve igual, solo con menos tarjetas,
+                y el botón de descarga cae directo a clipUrl (sin pedir HD)
+                porque ya es el entregable final. */}
+            {(() => {
+              const momentsArray = Object.entries(moments)
                 .sort(([a], [b]) => Number(a) - Number(b))
-                .map(([momentIndex, results], index) => {
-                  const firstResult = results[0];
-                  const twitterContent = results.find(r => r.type === "twitter_thread")?.content;
-                  const tiktokContent = results.find(r => r.type === "tiktok_caption")?.content;
-                  const linkedinContent = results.find(r => r.type === "linkedin_post")?.content;
-                  const scriptContent = results.find(r => r.type === "short_video_script")?.content;
-                  const whisperWords = parseWhisperWords(firstResult.whisper_words);
-                  const clipDuration = effectiveClipDuration(
-                    whisperWords,
-                    firstResult.end_time - firstResult.start_time
-                  );
+                .map(([momentIndex, results]) => ({
+                  momentIndex: Number(momentIndex),
+                  results,
+                  firstResult: results[0],
+                }));
 
-                  let justifications = [];
+              const selected =
+                selectedMoment !== null
+                  ? momentsArray.find((m) => m.momentIndex === selectedMoment)
+                  : undefined;
+
+              if (selected) {
+                const { firstResult, results, momentIndex } = selected;
+                const twitterContent = results.find(r => r.type === "twitter_thread")?.content;
+                const tiktokContent = results.find(r => r.type === "tiktok_caption")?.content;
+                const linkedinContent = results.find(r => r.type === "linkedin_post")?.content;
+                const scriptContent = results.find(r => r.type === "short_video_script")?.content;
+                const whisperWords = parseWhisperWords(firstResult.whisper_words);
+                const clipDuration = effectiveClipDuration(
+                  whisperWords,
+                  firstResult.end_time - firstResult.start_time
+                );
+
+                let justifications = [];
+                try {
+                  justifications = firstResult.score_justifications
+                    ? JSON.parse(firstResult.score_justifications)
+                    : [];
+                } catch (e) {
+                  console.error("Failed to parse justifications:", e);
+                }
+
+                const parseJsonField = <T,>(raw: unknown): T | undefined => {
+                  if (!raw) return undefined;
+                  if (typeof raw === "object") return raw as T;
                   try {
-                    justifications = firstResult.score_justifications
-                      ? JSON.parse(firstResult.score_justifications)
-                      : [];
-                  } catch (e) {
-                    console.error("Failed to parse justifications:", e);
+                    return JSON.parse(raw as string) as T;
+                  } catch {
+                    return undefined;
                   }
+                };
 
-                  const parseJsonField = <T,>(raw: unknown): T | undefined => {
-                    if (!raw) return undefined;
-                    if (typeof raw === "object") return raw as T;
-                    try {
-                      return JSON.parse(raw as string) as T;
-                    } catch {
-                      return undefined;
-                    }
-                  };
+                const scoreJudge = parseJsonField<{
+                  hook: number;
+                  retention: number;
+                  shareability: number;
+                  reasoning?: string;
+                }>(firstResult.score_judge);
+                const scoreLlm = parseJsonField<{
+                  hook: number;
+                  retention: number;
+                  shareability: number;
+                }>(firstResult.score_llm);
+                const clipQualityIssues = parseJsonField<string[]>(
+                  firstResult.clip_quality_issues
+                );
 
-                  const scoreJudge = parseJsonField<{
-                    hook: number;
-                    retention: number;
-                    shareability: number;
-                    reasoning?: string;
-                  }>(firstResult.score_judge);
-                  const scoreLlm = parseJsonField<{
-                    hook: number;
-                    retention: number;
-                    shareability: number;
-                  }>(firstResult.score_llm);
-                  const clipQualityIssues = parseJsonField<string[]>(
-                    firstResult.clip_quality_issues
-                  );
-
-                  return (
+                return (
+                  <div className="space-y-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-slate-400 hover:text-white hover:bg-slate-800"
+                      onClick={() => setSelectedMoment(null)}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Volver a la galería
+                    </Button>
                     <motion.div
                       key={momentIndex}
-                      initial={{ opacity: 0, y: 30 }}
+                      initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.15, duration: 0.5 }}
+                      transition={{ duration: 0.3 }}
                     >
                       <ViralMomentCard
-                        momentIndex={Number(momentIndex)}
+                        momentIndex={momentIndex}
                         contentResultId={firstResult.id}
                         hook={firstResult.hook}
                         clipUrl={firstResult.clip_url}
@@ -335,12 +374,108 @@ export default function ResultsPage() {
                         hashtags={firstResult.hashtags}
                         scoreDisplay={firstResult.score_display}
                         grades={firstResult.grades}
+                        previewUrl={firstResult.preview_url}
+                        hdUrl={firstResult.hd_url}
+                        hdStatus={firstResult.hd_status}
                       />
                     </motion.div>
-                  );
-                })}
-            </div>
-            
+                  </div>
+                );
+              }
+
+              // Grilla: ordenada por Score visible descendente (los que no
+              // tienen juez, al final, en su orden original). "Mejores"
+              // filtra >= BEST_SCORE_THRESHOLD; sin score_display, un
+              // momento nunca puede ser "mejor" (no hay con qué medirlo),
+              // pero siempre aparece en "todos".
+              const sorted = [...momentsArray].sort((a, b) => {
+                const sa = a.firstResult.score_display;
+                const sb = b.firstResult.score_display;
+                if (sa === null || sa === undefined) return sb === null || sb === undefined ? 0 : 1;
+                if (sb === null || sb === undefined) return -1;
+                return sb - sa;
+              });
+              const galleryItems =
+                galleryFilter === "best"
+                  ? sorted.filter(
+                      (m) => (m.firstResult.score_display ?? 0) >= BEST_SCORE_THRESHOLD
+                    )
+                  : sorted;
+
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant={galleryFilter === "all" ? "default" : "outline"}
+                      className={
+                        galleryFilter === "all"
+                          ? "bg-white text-slate-950 hover:bg-slate-200"
+                          : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                      }
+                      onClick={() => setGalleryFilter("all")}
+                    >
+                      Todos ({momentsArray.length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={galleryFilter === "best" ? "default" : "outline"}
+                      className={
+                        galleryFilter === "best"
+                          ? "bg-white text-slate-950 hover:bg-slate-200"
+                          : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                      }
+                      onClick={() => setGalleryFilter("best")}
+                    >
+                      Mejores (score ≥ {BEST_SCORE_THRESHOLD})
+                    </Button>
+                  </div>
+
+                  {galleryItems.length === 0 ? (
+                    <p className="text-slate-500 text-sm py-8 text-center">
+                      Ningún Momento supera el score {BEST_SCORE_THRESHOLD} en este job.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                      {galleryItems.map(({ momentIndex, firstResult }, index) => {
+                        const whisperWords = parseWhisperWords(firstResult.whisper_words);
+                        const clipDuration = effectiveClipDuration(
+                          whisperWords,
+                          firstResult.end_time - firstResult.start_time
+                        );
+                        const globalScoreFallback = (
+                          ((firstResult.score_hook ?? 0) +
+                            (firstResult.score_retention ?? 0) +
+                            (firstResult.score_shareability ?? 0)) /
+                          3
+                        ).toFixed(1);
+                        return (
+                          <motion.div
+                            key={momentIndex}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: Math.min(index, 10) * 0.04, duration: 0.35 }}
+                          >
+                            <MomentGalleryCard
+                              momentIndex={momentIndex}
+                              title={firstResult.title}
+                              hook={firstResult.hook}
+                              thumbnailUrl={firstResult.preview_url || firstResult.clip_url}
+                              duration={clipDuration}
+                              scoreDisplay={firstResult.score_display}
+                              grades={firstResult.grades}
+                              globalScoreFallback={globalScoreFallback}
+                              onOpen={() => setSelectedMoment(momentIndex)}
+                            />
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Footer Area */}
             <div className="text-center pt-8 border-t border-slate-800/50">
                <p className="text-slate-600 text-sm">
