@@ -378,6 +378,89 @@ render mostraba hasta 4 palabras por línea sin resaltado.
   el cambio de frontend (fuera del alcance de este worker).
 - **Tests:** `worker/tests/test_subtitulos_v2.py`.
 
+### Encuadre vertical — Split/Fill/Fit (W5, `docs/PLAN_CALIDAD.md` §9 Fase 1)
+
+Motivación: `docs/ANALISIS_OPUS_CLIP.md` §2.5, §4 punto 3 — "la diferencia
+visual más grande de la captura" era el 16:9 original flotando centrado
+sobre fondo desenfocado, con las dos caras diminutas; Opus, sobre el mismo
+video, apila las dos caras a pantalla completa (layout `Split`, medido
+~48 %/45 % del ancho por cara).
+
+Alcance deliberadamente acotado (`docs/ANALISIS_OPUS_CLIP.md` §6 fila D):
+sin seguimiento cuadro a cuadro, sin TalkNet (hablante activo), sin YOLOX
+(paneles/objetos). Detección de escena + muestreo por escena + un layout
+FIJO por clip (no por escena).
+
+- **Módulo:** `worker/services/reframe.py` — aislado, no importa nada de
+  `services.*`; `clip_generator.py` lo consume (arma el filtro FFmpeg a
+  partir de un `LayoutPlan`), no al revés.
+- **Escenas** (`detect_scenes`): PySceneDetect `ContentDetector`
+  (threshold 27.0, el default de la librería); si scenedetect no está
+  instalado o falla, una sola escena que cubre todo el archivo.
+- **Caras** (`detect_faces`): OpenCV YuNet (`cv2.FaceDetectorYN`,
+  `worker/models/face_detection_yunet_2023mar.onnx`, ~230 KB, licencia
+  Apache-2.0 — ver `worker/models/README.md`). Nota: con
+  `opencv-python-headless` 5.x tira un warning ("Targets are not supported
+  by the new graph engine") pero detecta bien — el modelo es la variante
+  de input shape fijo, pensada para el motor DNN 4.x (ver README del
+  modelo); se mantuvo por ser la más chica y la más documentada.
+- **Análisis por escena** (`analyze_scene`): muestrea 5 frames repartidos
+  en la escena más larga del clip, agrupa detecciones por posición (misma
+  cara si los centros están a <15 % del ancho/alto), exige que una cara
+  aparezca en ≥3 de 5 muestras para contar como **estable**, y aplica una
+  heurística de panel de videollamada (dos mitades de brillo/color
+  distinto separadas por una línea vertical de alto contraste, a ±10 % del
+  centro).
+- **Decisión** (`choose_layout`, función pura — recibe datos, no video):
+  - **Split**: 2 caras estables en mitades horizontales distintas, o panel
+    detectado. Cada cara se recorta a 40-55 % del ancho original (según su
+    tamaño detectado) y se apila a pantalla completa (mitad superior =
+    cara más a la izquierda, mitad inferior = la otra; 640 px de alto cada
+    una en 720×1280).
+  - **Fill**: 1 cara estable → recorte 9:16 centrado en ella, con la cara
+    al ~38 % de la altura del recorte (zoom fijo del 72 % de la altura
+    original — no hay detección de hombros/torso, así que no es un valor
+    calculado).
+  - **Fit**: 0 caras, 3+, o 2 caras sin condiciones claras → el fondo
+    desenfocado de siempre, sin cambios (comportamiento anterior a W5).
+- **Render** (`clip_generator._build_reframe_filter`): arma el filtro
+  FFmpeg (fit = igual que siempre; fill = un `crop`+`scale`; split = dos
+  `crop`+`scale` apilados con `vstack`) en la MISMA pasada de siempre —
+  sin renders extra. `to_vertical_9_16` y `generate_clip` lo usan.
+- **Subtítulos en Split**: `tiktok_viral_v2` se corre de ~58 % de altura a
+  la costura (50 %, `MarginV=H//2`) para no tapar ninguna de las dos caras.
+- **Activación** (`REFRAME_MODE=off|auto`, default `off`): `generate_clip`
+  tiene un parámetro `layout: Optional[LayoutPlan] = None`. Si queda `None`
+  y `REFRAME_MODE=auto` y hay `video_path` local (no aplica al modo de
+  descarga selectiva por stream URLs), analiza automáticamente con
+  `reframe.plan_reframe_for_clip` sobre el mismo `video_path` que ya recibe
+  `generate_clip` en producción (`precut_path` en `main.py` — el segmento
+  ya descargado del clip, no el video completo). **No hace falta tocar
+  `main.py`**: con `REFRAME_MODE=off` (default) el comportamiento es
+  idéntico a antes de W5; para activarlo alcanza con setear la variable de
+  entorno en el servicio (Render/Docker).
+- **Costo medido:** ~1,2 s de CPU por clip (5 muestras/escena, clip de
+  30 s) en la validación — muy por debajo del presupuesto de 10 s, así que
+  se mantuvo el default de 5 muestras (no hizo falta bajar a 3).
+- **Dependencias** (`requirements.txt`, `Dockerfile`): `scenedetect`
+  declara `opencv-python` (con GUI) como dependencia dura; instalarlo
+  normal arrastraría una build de OpenCV que pisa los archivos de
+  `opencv-python-headless` (ambos exponen el mismo `cv2`, no pueden
+  convivir, y la build con GUI necesita `libGL.so.1`, ausente en la imagen
+  slim). Por eso `requirements.txt` solo trae `opencv-python-headless` +
+  las deps reales de scenedetect (`click`/`numpy`/`platformdirs`/`tqdm`), y
+  el `Dockerfile` instala `scenedetect` aparte con `pip install --no-deps`.
+  Verificado con `pip` real (no solo `uv`) en un venv limpio.
+- **Pendiente:** nada de frontend/editor para esta versión (el Encuadre no
+  es una opción manual del usuario, se decide solo); si más adelante se
+  quiere un override manual (`layout=speaker|blur` per job, mencionado en
+  la versión original de W5 en `PLAN_CALIDAD.md`), `generate_clip(layout=)`
+  ya acepta un `LayoutPlan` explícito — falta la UI y el wiring en
+  `main.py`/`clip_edit_processor.py`.
+- **Tests:** `worker/tests/test_reframe.py` (20 tests: `choose_layout` para
+  split/fill/fit/3+caras, agrupado de caras estables, snapshot de que
+  `layout=None` da el filtro de "fit" de siempre).
+
 ### Step 6: Finalización
 
 - `jobs.status` → `completed`

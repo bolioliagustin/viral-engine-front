@@ -21,6 +21,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# W5: `scenedetect` (services/reframe.py) declara `opencv-python` (con GUI)
+# como dependencia dura. requirements.txt ya trae opencv-python-headless +
+# las deps reales de scenedetect (click/numpy/platformdirs/tqdm); acá se
+# instala scenedetect solo, con --no-deps, para que pip no arrastre encima
+# la build con GUI (necesita libGL.so.1, ausente en esta imagen slim, y
+# pisaría los archivos de la variante headless — ambas exponen el mismo
+# paquete `cv2` y no pueden convivir).
+RUN pip install --no-cache-dir --no-deps scenedetect
+
 # Copy source code
 COPY . .
 

@@ -9,3 +9,19 @@ youtube-transcript-api>=0.6.2
 requests
 json-repair
 pydub
+
+# W5 (docs/PLAN_CALIDAD.md §9 Fase 1, fila D): reencuadre vertical por escena
+# (services/reframe.py). `scenedetect` declara `opencv-python` (con GUI, no
+# headless) como dependencia dura — instalarlo normal arrastraría una build
+# de OpenCV con libGL que no existe en la imagen slim y pisaría los archivos
+# de opencv-python-headless (ambos paquetes exponen el mismo `cv2`, no
+# pueden convivir). Por eso: opencv-python-headless + las deps reales de
+# scenedetect explícitas acá, y `scenedetect` se instala aparte con
+# --no-deps en el Dockerfile (ver Dockerfile). Mismo patrón para el venv
+# local: `uv pip install opencv-python-headless click numpy platformdirs
+# tqdm && uv pip install --no-deps scenedetect`.
+opencv-python-headless
+click
+numpy
+platformdirs
+tqdm
