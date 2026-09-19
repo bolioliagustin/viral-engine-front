@@ -123,6 +123,77 @@ class TestGapEPromptVersion:
         assert PROMPT_VERSION == "v7"
 
 
+class TestGapDReframeModeDefaultOff:
+    """(d) generate_clip: el reencuadre de W5 (services/reframe.py) se
+    dispara solo con REFRAME_MODE=auto; no hace falta ningún cambio en
+    main.py (lee video_path, que ya se pasaba). Con la variable sin
+    definir, el comportamiento tiene que ser IDÉNTICO al de antes de W5:
+    layout None -> filtro "fit" de siempre, sin llamar a
+    plan_reframe_for_clip (docs/PROYECTO.md §11 y §5.5 punto 9)."""
+
+    def test_reframe_mode_sin_definir_no_analiza_layout(self, monkeypatch, tmp_path):
+        from services import clip_generator
+
+        monkeypatch.delenv("REFRAME_MODE", raising=False)
+        video = tmp_path / "in.mp4"
+        video.write_bytes(b"x")
+
+        with patch.object(clip_generator, "plan_reframe_for_clip") as mock_plan:
+            try:
+                clip_generator.generate_clip(
+                    video_path=str(video), start_sec=0.0, end_sec=5.0,
+                    output_path=str(tmp_path / "out.mp4"), segments=[],
+                )
+            except Exception:
+                pass  # el render en sí falla sin ffmpeg real; solo interesa si se llamó al análisis
+
+        mock_plan.assert_not_called()
+
+    def test_reframe_mode_off_explicito_tampoco_analiza(self, monkeypatch, tmp_path):
+        from services import clip_generator
+
+        monkeypatch.setenv("REFRAME_MODE", "off")
+        video = tmp_path / "in.mp4"
+        video.write_bytes(b"x")
+
+        with patch.object(clip_generator, "plan_reframe_for_clip") as mock_plan:
+            try:
+                clip_generator.generate_clip(
+                    video_path=str(video), start_sec=0.0, end_sec=5.0,
+                    output_path=str(tmp_path / "out.mp4"), segments=[],
+                )
+            except Exception:
+                pass
+
+        mock_plan.assert_not_called()
+        monkeypatch.delenv("REFRAME_MODE", raising=False)
+
+    def test_reframe_mode_auto_si_analiza(self, monkeypatch, tmp_path):
+        """Control positivo: con REFRAME_MODE=auto sí se intenta analizar
+        (confirma que el test anterior no pasa "por accidente")."""
+        from services import clip_generator
+        from services.reframe import LayoutPlan
+
+        monkeypatch.setenv("REFRAME_MODE", "auto")
+        video = tmp_path / "in.mp4"
+        video.write_bytes(b"x")
+
+        with patch.object(
+            clip_generator, "plan_reframe_for_clip",
+            return_value=LayoutPlan(name="fit", crops=[]),
+        ) as mock_plan:
+            try:
+                clip_generator.generate_clip(
+                    video_path=str(video), start_sec=0.0, end_sec=5.0,
+                    output_path=str(tmp_path / "out.mp4"), segments=[],
+                )
+            except Exception:
+                pass
+
+        mock_plan.assert_called_once()
+        monkeypatch.delenv("REFRAME_MODE", raising=False)
+
+
 class TestGapCClipEditFallback:
     """(c) clip_edit_processor.py: fallback de subtitle_style a tiktok_viral_v2 (W11)."""
 
