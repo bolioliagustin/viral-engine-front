@@ -114,6 +114,15 @@ class TestGapBSubtitleStyleDefault:
             assert main.SUBTITLE_STYLE_DEFAULT == "tiktok_viral_v2"
 
 
+class TestGapEPromptVersion:
+    """(e) PROMPT_VERSION sube a v7 una sola vez (W4 agregó una línea al
+    prompt de la Pasada A sin subirla, por acuerdo con el coordinador)."""
+
+    def test_prompt_version_es_v7(self):
+        from services.analysis_cache import PROMPT_VERSION
+        assert PROMPT_VERSION == "v7"
+
+
 class TestGapCClipEditFallback:
     """(c) clip_edit_processor.py: fallback de subtitle_style a tiktok_viral_v2 (W11)."""
 

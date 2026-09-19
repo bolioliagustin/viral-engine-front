@@ -27,7 +27,11 @@ from services.supabase_client import get_supabase
 #     de duración del Momento 60 → 120 s (CLIP_MIN/MAX_DURATION_SEC en
 #     services/validation.py). Esta vez el TEXTO del prompt de la Pasada A sí
 #     cambió (moment_selector.get_selection_prompt: la guía de duración nueva).
-PROMPT_VERSION = "v6"
+# v7: INT-1 (integración de la Fase 0) — W4 agregó una línea al prompt de la
+#     Pasada A (start_time/end_time SIEMPRE en segundos absolutos, conversión
+#     de marcas [mm:ss]) sin bumpear la versión, por acuerdo: se sube una sola
+#     vez acá, al cerrar la integración de las siete ramas.
+PROMPT_VERSION = "v7"
 
 
 def effective_prompt_version(transcript_source: str | None = None) -> str:

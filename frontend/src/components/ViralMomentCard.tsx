@@ -22,16 +22,34 @@ import {
   Heart,
   Target,
   Flame,
+  ThumbsUp,
+  ThumbsDown,
+  Check,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getClipFeedback, submitClipFeedback, type ClipFeedback, type FeedbackMotivo } from "@/lib/api";
 import {
   type WhisperWordsData,
   computeSubtitleCoverage,
   isSubtitleCoverageComplete,
 } from "@/types/subtitles";
+
+// ─── Feedback: motivos ("no lo publicaría") ────────────────────────────────
+const MOTIVO_OPTIONS: { value: FeedbackMotivo; label: string }[] = [
+  { value: "arranca_mal", label: "Arranca mal" },
+  { value: "termina_mal", label: "Termina mal" },
+  { value: "momento_flojo", label: "Momento flojo" },
+  { value: "subtitulos_mal", label: "Subtítulos mal" },
+  { value: "se_ve_mal", label: "Se ve mal" },
+  { value: "copy_malo", label: "Copy malo" },
+  { value: "otro", label: "Otro" },
+];
+const MOTIVO_LABELS: Record<FeedbackMotivo, string> = MOTIVO_OPTIONS.reduce(
+  (acc, { value, label }) => ({ ...acc, [value]: label }),
+  {} as Record<FeedbackMotivo, string>
+);
 
 interface ScoreJustification {
   metric: string;
@@ -250,6 +268,15 @@ export function ViralMomentCard({
   const [ringsOpen, setRingsOpen] = useState(false);
   // Si hay un re-render completado, este reemplaza al clipUrl original.
   const [renderedOverride, setRenderedOverride] = useState<string | null>(null);
+  // W7: etiqueta humana "¿lo publicarías tal cual?" — fuente de verdad de
+  // calidad (docs/PLAN_CALIDAD.md §2); el juez se calibra contra esto.
+  const [feedback, setFeedback] = useState<ClipFeedback | null>(null);
+  const [feedbackLoaded, setFeedbackLoaded] = useState(false);
+  const [feedbackEditing, setFeedbackEditing] = useState(false);
+  const [pendingNo, setPendingNo] = useState(false);
+  const [selectedMotivo, setSelectedMotivo] = useState<FeedbackMotivo | null>(null);
+  const [comentario, setComentario] = useState("");
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const { toast } = useToast();
 
   // Al montar, ver si ya existe un re-render completado para este clip
@@ -275,6 +302,58 @@ export function ViralMomentCard({
       cancelled = true;
     };
   }, [contentResultId]);
+
+  // Al montar, ver si el usuario ya etiquetó este clip antes. Sin sesión o
+  // con el backend caído, getClipFeedback devuelve null — no debe romper
+  // el render de la card.
+  useEffect(() => {
+    if (!contentResultId) return;
+    let cancelled = false;
+    (async () => {
+      const existing = await getClipFeedback(contentResultId);
+      if (cancelled) return;
+      setFeedback(existing);
+      setFeedbackLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contentResultId]);
+
+  const saveFeedback = async (posteable: boolean, motivo: FeedbackMotivo | null) => {
+    try {
+      setSubmittingFeedback(true);
+      const saved = await submitClipFeedback(contentResultId, {
+        posteable,
+        motivo,
+        comentario: comentario.trim() || undefined,
+      });
+      setFeedback(saved);
+      setFeedbackEditing(false);
+      setPendingNo(false);
+      toast({
+        title: posteable ? "👍 ¡Gracias!" : "Gracias por el detalle",
+        description: posteable
+          ? "Etiquetado como publicable tal cual."
+          : "Nos ayuda a mejorar el corte.",
+      });
+    } catch (e) {
+      toast({
+        title: "❌ No se pudo guardar el feedback",
+        description: e instanceof Error ? e.message : "Error",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const startChangeFeedback = () => {
+    setFeedbackEditing(true);
+    setPendingNo(false);
+    setSelectedMotivo(feedback?.motivo ?? null);
+    setComentario(feedback?.comentario ?? "");
+  };
 
   const effectiveClipUrl = renderedOverride || clipUrl;
 
@@ -566,6 +645,122 @@ export function ViralMomentCard({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* ═══════════ W7: feedback humano — "¿lo publicarías tal cual?" ═══════════ */}
+          {/* Esperamos a que resuelva el GET inicial para no mostrar los
+              botones "en blanco" y luego pegar el salto a la etiqueta ya
+              guardada (o quedar sin sesión, en cuyo caso getClipFeedback
+              devuelve null y la card sigue funcionando igual). */}
+          <div className="border-t border-slate-800/70 pt-3 min-h-[28px]">
+            {!feedbackLoaded ? null : feedback && !feedbackEditing ? (
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <Badge
+                  className={
+                    feedback.posteable
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 font-semibold border"
+                      : "bg-red-500/15 text-red-300 border-red-500/30 font-semibold border"
+                  }
+                >
+                  {feedback.posteable ? (
+                    <ThumbsUp className="w-3 h-3 mr-1" />
+                  ) : (
+                    <ThumbsDown className="w-3 h-3 mr-1" />
+                  )}
+                  Etiquetado: {feedback.posteable ? "Sí" : "No"}
+                  {!feedback.posteable && feedback.motivo && ` — ${MOTIVO_LABELS[feedback.motivo]}`}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px] text-slate-500 hover:text-slate-300"
+                  onClick={startChangeFeedback}
+                >
+                  Cambiar
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">
+                    ¿Lo publicarías tal cual?
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={submittingFeedback}
+                    className="h-7 px-2.5 text-xs border-emerald-500/30 text-emerald-300 hover:bg-emerald-600 hover:text-white hover:border-emerald-500"
+                    onClick={() => saveFeedback(true, null)}
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5 mr-1.5" />
+                    Lo publicaría
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={submittingFeedback}
+                    className="h-7 px-2.5 text-xs border-red-500/30 text-red-300 hover:bg-red-600 hover:text-white hover:border-red-500"
+                    onClick={() => setPendingNo(true)}
+                  >
+                    <ThumbsDown className="w-3.5 h-3.5 mr-1.5" />
+                    No lo publicaría
+                  </Button>
+                  {feedback && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-[11px] text-slate-500 hover:text-slate-300"
+                      onClick={() => {
+                        setFeedbackEditing(false);
+                        setPendingNo(false);
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+
+                {pendingNo && (
+                  <div className="space-y-2 bg-slate-950/40 border border-slate-800 rounded-lg p-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {MOTIVO_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setSelectedMotivo(opt.value)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border transition-colors ${
+                            selectedMotivo === opt.value
+                              ? "bg-red-500/20 border-red-500/50 text-red-200"
+                              : "bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500"
+                          }`}
+                        >
+                          {selectedMotivo === opt.value && <Check className="w-3 h-3" />}
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={comentario}
+                      onChange={(e) => setComentario(e.target.value.slice(0, 280))}
+                      placeholder="Comentario opcional (ej: el remate se corta)"
+                      rows={2}
+                      className="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring resize-none"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={!selectedMotivo || submittingFeedback}
+                      className="h-7 px-3 text-xs bg-red-600 hover:bg-red-700 text-white"
+                      onClick={() => saveFeedback(false, selectedMotivo)}
+                    >
+                      {submittingFeedback ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      ) : null}
+                      Guardar
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardHeader>
 

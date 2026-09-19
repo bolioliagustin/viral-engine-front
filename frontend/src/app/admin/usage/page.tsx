@@ -9,13 +9,16 @@ import { UsageKpiGrid } from "@/components/admin/UsageKpiGrid";
 import { MarginBar } from "@/components/admin/MarginBar";
 import { CostBreakdownCharts } from "@/components/admin/CostBreakdownCharts";
 import { JobsUsageTable } from "@/components/admin/JobsUsageTable";
+import { FeedbackPanel, type FeedbackAdminSummary } from "@/components/admin/FeedbackPanel";
 import {
   fetchAdminUsageData,
+  periodQuery,
   type UsageSummary,
   type UsageBreakdown,
   type JobUsageRow,
   type UsageBenchmarks,
 } from "@/lib/admin-usage";
+import { apiFetch } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
 function AdminUsageContent() {
@@ -26,6 +29,7 @@ function AdminUsageContent() {
   const [breakdown, setBreakdown] = useState<UsageBreakdown | null>(null);
   const [jobs, setJobs] = useState<JobUsageRow[]>([]);
   const [benchmarks, setBenchmarks] = useState<UsageBenchmarks | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackAdminSummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,6 +44,12 @@ function AdminUsageContent() {
     setBreakdown(data.breakdown);
     setJobs(data.jobs);
     setBenchmarks(data.benchmarks);
+
+    // W7: /admin/usage/feedback no forma parte de fetchAdminUsageData
+    // (lib/admin-usage.ts) — se pide acá con el mismo rango de fechas.
+    const feedbackRes = await apiFetch(`/admin/usage/feedback${periodQuery(days)}`);
+    setFeedback(feedbackRes.ok ? await feedbackRes.json() : null);
+
     setLoading(false);
   }, [days, router]);
 
@@ -104,6 +114,9 @@ function AdminUsageContent() {
           <CostBreakdownCharts breakdown={breakdown} />
           <JobsUsageTable jobs={jobs} />
         </div>
+
+        {/* W7: feedback humano — fuente de verdad de calidad */}
+        <FeedbackPanel data={feedback} />
 
         {/* Benchmarks footer */}
         {benchmarks && benchmarks.sample_size > 0 && (

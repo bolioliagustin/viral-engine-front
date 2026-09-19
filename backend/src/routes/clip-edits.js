@@ -156,4 +156,9 @@ router.post('/api/clips/:contentResultId/regenerate', requireAuth, async (req, r
     }
 });
 
+// Exportada para reutilizar la misma verificación de dueño en otras rutas
+// que operan sobre un content_result (ej. feedback.js — W7). El router de
+// Express es una función; le colgamos la propiedad sin romper `app.use(...)`.
+router.verifyClipOwnership = verifyClipOwnership;
+
 module.exports = router;
