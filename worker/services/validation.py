@@ -770,6 +770,66 @@ def _first_alpha_is_lower(text: str) -> bool:
     return False
 
 
+# ── W1-C: arrancar en el inicio de la Línea, no una palabra después ────────
+# docs/PLAN_CALIDAD.md (hallazgo del agente de W4, medido sobre 15 clips):
+# 6 de 7 clips que no arrancan con mayúscula arrancan EXACTAMENTE una palabra
+# después del inicio de la Línea ("Luego|tenemos otra skill") porque el
+# modelo cita first_phrase_in_audio sin el conector inicial y
+# sentence_bounds_around no puede retroceder: en las palabras del segmento
+# ancho (re-transcripción propia, sin relación 1 a 1 con las Líneas del
+# transcript completo) no hay puntuación ni gap antes de esa palabra. Las
+# Líneas (W4, transcript_lines.build_lines) sí conocen el límite real de la
+# oración porque se calculan sobre el audio completo con su propia lógica de
+# puntuación/pausas — son la fuente de verdad cuando existen.
+_LEADING_PARTICLES = frozenset({
+    "y", "pero", "luego", "para", "aqui", "entonces", "porque", "asi", "sea",
+})
+_PARTICLE_MAX_GAP_SEC = 0.6
+
+
+def _strip_accents(text: str) -> str:
+    norm = unicodedata.normalize("NFD", text or "")
+    return "".join(ch for ch in norm if unicodedata.category(ch) != "Mn")
+
+
+def _is_leading_particle(word_text: str) -> bool:
+    """Partícula inicial frecuente (y/pero/luego/para/aquí/entonces/porque/
+    así/sea), normalizada sin mayúsculas ni acentos ni puntuación."""
+    token = _strip_accents(_normalize_phrase(word_text))
+    return token in _LEADING_PARTICLES
+
+
+def _find_containing_line(lines: list[dict] | None, abs_time: float) -> dict | None:
+    """
+    Línea (tiempo absoluto de video) que contiene `abs_time`, con una
+    tolerancia chica porque las Líneas se calculan sobre el transcript
+    completo y `abs_time` sale de una re-transcripción Whisper aparte del
+    segmento ancho (mismo audio, timestamps aproximados, no idénticos). Si
+    ninguna la contiene exactamente, la más cercana que empieza antes.
+    """
+    best_before: dict | None = None
+    for ln in lines or []:
+        start = float(ln.get("start", 0.0))
+        end = float(ln.get("end", 0.0))
+        if start - 0.15 <= abs_time <= end + 0.15:
+            return ln
+        if start <= abs_time and (best_before is None or start > float(best_before["start"])):
+            best_before = ln
+    return best_before
+
+
+def _nearest_word_index(times: list[float], target: float) -> int:
+    """Índice en `times` (w_start o w_end del segmento ancho) más cercano a `target`."""
+    best_idx = 0
+    best_diff: float | None = None
+    for k, t in enumerate(times):
+        diff = abs(t - target)
+        if best_diff is None or diff < best_diff:
+            best_diff = diff
+            best_idx = k
+    return best_idx
+
+
 def compute_clip_bounds(
     words: list[dict],
     first_phrase: str | None,
@@ -787,10 +847,19 @@ def compute_clip_bounds(
     overlay: str = "",
     start_pad: float = 0.25,
     end_pad: float = 0.40,
+    lines: list[dict] | None = None,
 ) -> dict:
     """
     Decide los límites del Clip dentro del segmento ancho a partir de las
     frases de Verificación del modelo. Función pura (sin FFmpeg ni red).
+
+    `lines` (W1-C, opcional): Líneas del transcript completo (W4,
+    `transcript_lines.build_lines`), en tiempo ABSOLUTO de video — vacío o
+    None con Supadata/jobs legacy (comportamiento sin cambios). Cuando están,
+    mandan sobre las palabras del segmento ancho para decidir dónde empieza y
+    termina el Clip: el inicio se alinea al inicio de la Línea que contiene
+    la primera palabra de la primera frase, el fin al fin de la Línea que
+    contiene la última palabra de la última frase (evidence["line_aligned"]).
 
     `words` están en la línea de tiempo del segmento (0 = seg_start_abs).
     `hint_start_abs` / `hint_end_abs` son el start_time / end_time numéricos
@@ -862,8 +931,26 @@ def compute_clip_bounds(
     # ── a) primera frase → inicio de oración ────────────────────────────────
     fi = locate_phrase(words, first_phrase or "", prefer="first") if first_phrase else None
     if fi:
-        s_idx, _ = sentence_bounds_around(words, fi["start_idx"], segments)
-        start_idx = s_idx
+        # W1-C: con Líneas, alinear al inicio de la Línea que contiene la
+        # primera palabra de la frase citada — sentence_bounds_around no
+        # puede retroceder cuando el modelo citó sin el conector inicial
+        # ("Luego", "Para", "Aquí"...) porque en el segmento ancho no hay
+        # puntuación ni gap antes de esa palabra, pero la Línea sí conoce el
+        # límite real de la oración (se calculó sobre el audio completo).
+        line_start_idx = None
+        if lines:
+            first_abs = seg_start_abs + w_start[fi["start_idx"]]
+            line = _find_containing_line(lines, first_abs)
+            if line is not None:
+                line_start_rel = float(line["start"]) - seg_start_abs
+                if line_start_rel <= w_start[fi["start_idx"]] + 0.05:
+                    line_start_idx = _nearest_word_index(w_start, line_start_rel)
+        if line_start_idx is not None:
+            start_idx = line_start_idx
+            evidence["line_aligned"] = True
+        else:
+            s_idx, _ = sentence_bounds_around(words, fi["start_idx"], segments)
+            start_idx = s_idx
         evidence.update(first_found=True, first_idx=fi["start_idx"],
                         first_score=fi["score"], start_source="first_phrase")
         evidence["first_phrase_rel_start"] = round(w_start[fi["start_idx"]], 3)
@@ -905,6 +992,17 @@ def compute_clip_bounds(
         if earlier:
             start_idx = earlier[-1]
             evidence["lowercase_fix"] = True
+        elif not evidence.get("line_aligned") and start_idx > 0:
+            # W1-C: respaldo barato SIN Líneas (Supadata, jobs legacy) — si
+            # la palabra anterior es una partícula inicial frecuente pegada
+            # (<0,6s de gap), el modelo probablemente la citó sin ella.
+            # Retrocede UNA palabra, no más — el arreglo de verdad es (1),
+            # arriba, con Líneas.
+            prev = words[start_idx - 1]
+            gap = w_start[start_idx] - float(prev.get("end", 0.0))
+            if gap < _PARTICLE_MAX_GAP_SEC and _is_leading_particle(prev.get("word") or ""):
+                start_idx -= 1
+                evidence["particle_fix"] = True
 
     start_rel = _start_at(start_idx)
 
@@ -915,8 +1013,22 @@ def compute_clip_bounds(
         if last_phrase else None
     )
     if li:
-        _, e_idx = sentence_bounds_around(words, li["end_idx"], segments)
-        end_idx = e_idx
+        # W1-C: mismo criterio que el inicio — con Líneas, alinear al fin de
+        # la Línea que contiene la última palabra de la frase citada.
+        line_end_idx = None
+        if lines:
+            last_abs = seg_start_abs + w_end[li["end_idx"]]
+            line = _find_containing_line(lines, last_abs)
+            if line is not None:
+                line_end_rel = float(line["end"]) - seg_start_abs
+                if line_end_rel >= w_end[li["end_idx"]] - 0.05:
+                    line_end_idx = _nearest_word_index(w_end, line_end_rel)
+        if line_end_idx is not None:
+            end_idx = line_end_idx
+            evidence["line_aligned"] = True
+        else:
+            _, e_idx = sentence_bounds_around(words, li["end_idx"], segments)
+            end_idx = e_idx
         end_rel = _end_at(end_idx)
         evidence.update(last_found=True, last_idx=li["end_idx"],
                         last_score=li["score"], end_source="last_phrase")
@@ -968,8 +1080,20 @@ def compute_clip_bounds(
             # Preferir mover el START al siguiente inicio de oración antes que
             # perder el remate (decisión del brief W1): el primero que deje
             # ≤ max_s. Si eso deja afuera la primera frase, se flaggea.
+            # W1-C: con Líneas, el candidato preferido es el inicio de la
+            # Línea siguiente (más confiable que los boundaries del segmento
+            # ancho); se suma a sentence_starts, no lo reemplaza.
             phrase_start_idx = fi["start_idx"] if fi else start_idx
-            for k in sentence_starts:
+            candidate_starts = sentence_starts
+            if lines:
+                line_idxs = []
+                for ln in lines:
+                    ln_start_rel = float(ln.get("start", 0.0)) - seg_start_abs
+                    if 0.0 <= ln_start_rel <= seg_duration:
+                        line_idxs.append(_nearest_word_index(w_start, ln_start_rel))
+                if line_idxs:
+                    candidate_starts = sorted(set(sentence_starts) | set(line_idxs))
+            for k in candidate_starts:
                 if k <= start_idx:
                     continue
                 cand_start = _start_at(k)
@@ -1094,6 +1218,7 @@ def build_clip_quality_issues(
     margin_extended: bool = False,
     margin_extension_failed: bool = False,
     subs_disabled_timestamps: bool = False,
+    line_aligned: bool = False,
 ) -> list[str]:
     """
     Lista de flags de calidad para persistir en content_results.clip_quality_issues.
@@ -1118,6 +1243,11 @@ def build_clip_quality_issues(
         se siguió con el mejor segmento ya descargado en vez de perder el clip.
       - subs_disabled_timestamps: los dos proveedores Whisper dieron timestamps
         sospechosos; el clip se renderizó sin subtítulos.
+      - line_aligned (W1-C): el inicio y/o el fin del clip se alinearon al
+        borde de una Línea del transcript completo (`compute_clip_bounds`,
+        `evidence["line_aligned"]`) en vez de a los boundaries del segmento
+        ancho — informativo, para contarlo en el eval junto a
+        capitalized_start_rate.
     """
     issues: list[str] = []
     if incomplete_tail:
@@ -1140,6 +1270,8 @@ def build_clip_quality_issues(
         issues.append("margin_extension_failed")
     if subs_disabled_timestamps:
         issues.append("subs_disabled_timestamps")
+    if line_aligned:
+        issues.append("line_aligned")
     if verification_info:
         if not verification_info.get("first_ok", True):
             issues.append("whisper_mismatch_first")

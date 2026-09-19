@@ -448,6 +448,244 @@ class TestComputeClipBounds:
         assert set(r["flags"]) == {"hook_not_found", "payoff_not_found"}
 
 
+# ── W1-C: arrancar en el inicio de la Línea, no una palabra después ────────
+# Hallazgo del agente de W4 (docs/PLAN_CALIDAD.md): 6 de 7 clips que no
+# arrancan con mayúscula arrancan EXACTAMENTE una palabra después del inicio
+# de la Línea, porque el modelo cita first_phrase_in_audio sin el conector
+# inicial ("Luego", "Para", "Aquí"...) y sentence_bounds_around no puede
+# retroceder: en el segmento ancho (re-transcripción propia) no hay
+# puntuación ni gap antes de esa palabra. Casos reales medidos (conector →
+# lo que el modelo cita): "Luego|tenemos otra skill", "Y luego|tenemos",
+# "Para|probar esta funcionalidad", "Para|crear esta tienda",
+# "Aquí|estamos viendo", "Luego|tenemos una skill".
+
+class TestLineAlignedBounds:
+
+    REAL_CASES = [
+        ("Luego tenemos otra skill que ayuda mucho con esto", "tenemos otra skill que ayuda mucho con esto"),
+        ("Y luego tenemos una skill nueva para probar ahora", "tenemos una skill nueva para probar ahora"),
+        ("Para probar esta funcionalidad hacemos click en el botón", "probar esta funcionalidad hacemos click en el botón"),
+        ("Para crear esta tienda usamos el panel de control", "crear esta tienda usamos el panel de control"),
+        ("Aquí estamos viendo el resultado final del proceso", "estamos viendo el resultado final del proceso"),
+        ("Luego tenemos una skill que resuelve el problema", "tenemos una skill que resuelve el problema"),
+    ]
+
+    @pytest.mark.parametrize("full_sentence,quoted_phrase", REAL_CASES)
+    def test_start_lands_on_line_start_not_one_word_after(self, full_sentence, quoted_phrase):
+        # "prev" sin punto final y gap chico antes de full_sentence: simula
+        # que en el segmento ancho NO hay boundary detectable antes del
+        # conector (el bug real). Sin la Línea, sentence_bounds_around se
+        # quedaría en la primera palabra de quoted_phrase.
+        prev = "bueno dale vamos a ver algo importante ahora"
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        words = _segment([(prev, 0.0), (full_sentence, 0.3), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+
+        match = locate_phrase(words, full_sentence, prefer="first")
+        assert match is not None
+        line = {
+            "id": 0,
+            "start": seg_start_abs + words[match["start_idx"]]["start"],
+            "end": seg_start_abs + words[match["end_idx"]]["end"],
+            "text": full_sentence,
+            "n_words": match["end_idx"] - match["start_idx"] + 1,
+        }
+
+        r = compute_clip_bounds(
+            words, quoted_phrase, payoff,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+            hint_end_abs=seg_start_abs + dur,
+            lines=[line],
+        )
+        assert r["evidence"]["line_aligned"] is True
+        assert r["start_rel"] == pytest.approx((line["start"] - seg_start_abs) - 0.25, abs=0.02)
+        # El conector quedó DENTRO del clip (no arranca en la frase citada).
+        connector_word = full_sentence.split()[0].rstrip(".,").lower()
+        quoted_first_word = quoted_phrase.split()[0].lower()
+        assert connector_word != quoted_first_word
+
+    def test_end_aligns_to_line_containing_last_phrase(self):
+        first = "arrancamos con la idea central de todo esto"
+        full_last_sentence = "Luego cerramos con la conclusión final que buscabamos"
+        quoted_last = "cerramos con la conclusión final que buscabamos"
+        words = _segment([
+            (first, 0.0),
+            ("relleno en el medio que no importa mucho", 0.5),
+            (full_last_sentence, 0.3),
+        ], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+
+        match = locate_phrase(words, full_last_sentence, prefer="first")
+        assert match is not None
+        line = {
+            "id": 0,
+            "start": seg_start_abs + words[match["start_idx"]]["start"],
+            "end": seg_start_abs + words[match["end_idx"]]["end"],
+            "text": full_last_sentence,
+            "n_words": match["end_idx"] - match["start_idx"] + 1,
+        }
+
+        r = compute_clip_bounds(
+            words, first, quoted_last,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs, hint_end_abs=seg_start_abs + dur,
+            lines=[line],
+        )
+        assert r["evidence"]["line_aligned"] is True
+        assert r["end_rel"] == pytest.approx((line["end"] - seg_start_abs) + 0.40, abs=0.02)
+
+    def test_without_lines_unchanged_no_line_aligned_flag(self):
+        # Sin Líneas (Supadata/jobs legacy): no se activa el ajuste — no se
+        # marca line_aligned. (El respaldo de partículas es harina de otro
+        # costal, ver TestParticleFallback.)
+        r = _bounds(WIDE, FIRST, PAYOFF)  # sin lines=...
+        assert "line_aligned" not in r["evidence"]
+
+    def test_line_aligned_start_over_max_moves_to_next_line(self):
+        # Si alinear a la Línea deja el clip por encima de max_s, se mueve
+        # el inicio a la Línea SIGUIENTE (no a cualquier boundary del
+        # segmento ancho) sin perder el remate.
+        max_s, min_s = 10.0, 3.0
+        prev = "bueno dale vamos a ver algo importante ahora"
+        sentence_a = "Luego tenemos una skill que es larguisima de verdad"  # sin punto
+        sentence_b = "Después seguimos con otra parte del tutorial ahora."
+        payoff = "y ese es el final del tutorial que buscabas ver."
+        quoted_first = "tenemos una skill que es larguisima de verdad"
+
+        words = _segment([
+            (prev, 0.0), (sentence_a, 0.3), (sentence_b, 0.2), (payoff, 0.5),
+        ], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+
+        m_a = locate_phrase(words, sentence_a, prefer="first")
+        m_b = locate_phrase(words, sentence_b, prefer="first")
+        assert m_a and m_b
+        line_a = {
+            "id": 0, "start": seg_start_abs + words[m_a["start_idx"]]["start"],
+            "end": seg_start_abs + words[m_a["end_idx"]]["end"], "text": sentence_a, "n_words": 0,
+        }
+        line_b = {
+            "id": 1, "start": seg_start_abs + words[m_b["start_idx"]]["start"],
+            "end": seg_start_abs + words[m_b["end_idx"]]["end"], "text": sentence_b, "n_words": 0,
+        }
+
+        r = compute_clip_bounds(
+            words, quoted_first, payoff,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs + words[m_a["start_idx"]]["start"],
+            hint_end_abs=seg_start_abs + dur,
+            lines=[line_a, line_b],
+            max_s=max_s, min_s=min_s,
+        )
+        assert r["evidence"].get("start_moved_for_max") is True
+        assert r["start_rel"] == pytest.approx((line_b["start"] - seg_start_abs) - 0.25, abs=0.05)
+        assert min_s <= r["end_rel"] - r["start_rel"] <= max_s
+        payoff_match = locate_phrase(words, payoff, prefer="last")
+        assert r["end_rel"] >= words[payoff_match["end_idx"]]["end"] - 0.05
+
+
+class TestParticleFallback:
+    """W1-C item 2: respaldo barato SIN Líneas — retrocede una palabra y no
+    más cuando la anterior es una partícula inicial frecuente pegada."""
+
+    # sentence_bounds_around puede quedarse en la palabra citada por varias
+    # combinaciones de puntuación/gaps del segmento ancho (el mecanismo
+    # exacto varía caso a caso); acá se mockea para testear el respaldo de
+    # partículas de forma aislada, con su única precondición documentada:
+    # "sigue en la palabra citada" (sin retroceso).
+
+    def test_retreats_one_word_when_particle_precedes(self):
+        prev = "bueno dale vamos a ver algo importante ahora"
+        sentence = "Luego tenemos otra skill que ayuda mucho."
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        quoted_first = "tenemos otra skill que ayuda mucho"
+
+        words = _segment([(prev, 0.0), (sentence, 0.3), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+        match = locate_phrase(words, quoted_first, prefer="first")
+        assert match is not None
+
+        with patch(
+            "services.validation.sentence_bounds_around",
+            side_effect=lambda w, idx, segments=None, **kw: (idx, idx),
+        ):
+            r = compute_clip_bounds(
+                words, quoted_first, payoff,
+                seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+                video_duration=3000.0,
+                hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+                hint_end_abs=seg_start_abs + dur,
+                # sin lines -> respaldo de partículas
+            )
+        assert r["evidence"].get("particle_fix") is True
+        connector_idx = match["start_idx"] - 1
+        assert words[connector_idx]["word"].rstrip(".,").lower() == "luego"
+        assert r["start_rel"] == pytest.approx(words[connector_idx]["start"] - 0.25, abs=0.02)
+
+    def test_does_not_retreat_past_one_word(self):
+        # La palabra dos atrás ("ahora", fin de "prev") NO es una partícula
+        # -> el retroceso se detiene en "luego", no sigue.
+        prev = "bueno dale vamos a ver algo importante ahora"
+        sentence = "Luego tenemos otra skill que ayuda mucho."
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        quoted_first = "tenemos otra skill que ayuda mucho"
+        words = _segment([(prev, 0.0), (sentence, 0.3), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+        match = locate_phrase(words, quoted_first, prefer="first")
+
+        with patch(
+            "services.validation.sentence_bounds_around",
+            side_effect=lambda w, idx, segments=None, **kw: (idx, idx),
+        ):
+            r = compute_clip_bounds(
+                words, quoted_first, payoff,
+                seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+                video_duration=3000.0,
+                hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+                hint_end_abs=seg_start_abs + dur,
+            )
+        connector_idx = match["start_idx"] - 1
+        word_before_connector = words[connector_idx - 1]
+        assert not _is_leading_particle_for_test(word_before_connector["word"])
+        # start_rel corresponde a "luego", no a una palabra más atrás.
+        assert r["start_rel"] > word_before_connector["end"] - 0.25
+
+    def test_no_fix_when_gap_too_large(self):
+        # Partícula presente pero con pausa >= 0,6s antes de la frase: no es
+        # el mismo caso (probablemente sí hay corte de oración real ahí) ->
+        # no se activa el respaldo.
+        prev = "bueno dale vamos a ver algo importante ahora luego"
+        sentence = "tenemos otra skill que ayuda mucho."
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        words = _segment([(prev, 0.0), (sentence, 0.7), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+        match = locate_phrase(words, sentence, prefer="first")
+
+        r = compute_clip_bounds(
+            words, sentence, payoff,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+            hint_end_abs=seg_start_abs + dur,
+        )
+        assert r["evidence"].get("particle_fix") is not True
+
+
+def _is_leading_particle_for_test(word: str) -> bool:
+    from services.validation import _is_leading_particle
+    return _is_leading_particle(word)
+
+
 # ── W2-C: verification_failed = SOLO hook_not_found / payoff_not_found ──────
 # docs/PLAN_CALIDAD.md §9. late_hook/incomplete_tail quedan informativos: el
 # clip ancla al INICIO DE ORACIÓN de la primera frase, no a su primera
