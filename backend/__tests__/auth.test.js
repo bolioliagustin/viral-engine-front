@@ -27,6 +27,14 @@ jest.mock('../src/lib/supabase', () => ({
     }
 }));
 
+// F1: evita fetch real a YouTube/Telegram en cada POST /process de este archivo.
+jest.mock('../src/lib/youtube-duration', () => ({
+    getVideoDurationMinutes: jest.fn().mockResolvedValue(null),
+}));
+jest.mock('../src/lib/telegram', () => ({
+    notify: jest.fn().mockResolvedValue({ ok: true }),
+}));
+
 const app = require('../src/app');
 
 describe('POST /process - Authentication (C1)', () => {
