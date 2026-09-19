@@ -94,7 +94,9 @@ function useJobActions(onChange: () => void) {
       setBusyJobId(jobId);
       const res = await apiFetch(`/jobs/${jobId}/retry`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // F1: /retry ahora puede dar 402 (vuelve a reservar 1 crédito) — el
+      // mensaje en español viaja en data.message, no en data.error.
+      if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
       toast({ title: "🔄 Reintentando", description: "El worker lo va a tomar pronto." });
       onChange();
     } catch (e: unknown) {
