@@ -404,7 +404,7 @@ Postgres en Supabase. **El esquema base no está versionado** (las tablas `users
 | Tabla | Columnas relevantes | Notas |
 |---|---|---|
 | `users` | `id` (= `auth.users.id`), `email`, `name`, `avatar_url`, `credits` (default 5 vía trigger), `subscription_status` (`free|basic|pro|active|canceled|cancelled|expired|unpaid|paused`), `plan` (`free|starter`), `billing_subscription_id`, `display_name`, `professional_title` | Trigger `on_auth_user_created` → `handle_new_user()`. RLS: el usuario ve y edita solo su fila |
-| `jobs` | `id` (uuid), `user_id`, `video_url`, `video_title`, `status` (`pending|processing|completed|failed`), `error_message`, `current_step`, `progress_percentage`, `tone`, `usage_summary` (jsonb), `created_at`, `updated_at` | **Es la cola.** Índices por status y current_step. RLS: select/insert/update propios |
+| `jobs` | `id` (uuid), `user_id`, `video_url`, `video_title`, `status` (`pending|processing|completed|failed`), `error_message`, `current_step`, `progress_percentage`, `tone`, `usage_summary` (jsonb), `credit_reserved` (bool, default `false` — **F1/ADR 0005**: `true` si `POST /process`/`retry` ya reservó el crédito de este job), `failure_alert_sent` (bool, default `false` — **F1**: si ya se avisó por Telegram que este job falló), `created_at`, `updated_at` | **Es la cola.** Índices por status y current_step. RLS: select/insert/update propios. **F1:** trigger `trg_release_credit_on_job_failed` (`BEFORE UPDATE`) libera el crédito y pone `credit_reserved=false` cuando `status` pasa a `failed` |
 | `content_results` | `id`, `job_id`, `type` (`twitter_thread|linkedin_post|tiktok_caption|short_video_script`…), `content`, `clip_url`, `start_time`, `end_time`, `hook`, `emotional_trigger`, `moment_index`, `pillar_type`, `score_hook/retention/shareability`, `sentiment_detected`, `roi_time_saved`, `score_justifications`, `viral_overlay`, `raw_clip_url`, `whisper_words` (jsonb), `score_llm`, `score_judge`, `verification_failed`, `sub_coverage`, `words_per_sec`, `clip_quality_issues`, `clip_generation_error`, `title`, `description`, `hashtags` (`text[]`; **W10**, `docs/PLAN_CALIDAD.md` §9 Fase 0 — copy por clip: título ≤60 chars, descripción de 2 oraciones, 10 hashtags con "#"), `created_at` | **3 filas por momento** (una por tipo de pieza) con los metadatos del momento repetidos; el frontend agrupa por `moment_index`. Mezcla los conceptos Momento y Pieza de copy: deuda (§14). RLS: select si el job es del usuario |
 | `transactions` | `user_id`, `type` (`usage`), `credits` (−1), `description` | Solo la escribe el RPC `deduct_user_credit`. RLS: select propios |
 | `transcription_cache` | `video_id` (PK), `transcript` (jsonb), `language`, `duration_seconds` | Se escribe, no se lee |
@@ -413,25 +413,24 @@ Postgres en Supabase. **El esquema base no está versionado** (las tablas `users
 | `clip_edits` | `id`, `content_result_id` (FK cascade), `user_id`, `overlay_text`, `overlay_position`, `subtitle_style`, `overlay_style`, `word_corrections` (jsonb), `word_styles` (jsonb), `trim_start_offset`, `trim_end_offset`, `music_track_id`, `status` (`draft|queued|processing|completed|failed`), `rendered_clip_url`, `error_message` | Cola secundaria. Sin políticas RLS para usuarios (solo service role) |
 | `job_usage_events` | `job_id` (FK cascade), `user_id`, `event_type`, `provider`, `task`, `model`, `moment_index`, `input_tokens`, `output_tokens`, `reasoning_tokens`, `audio_seconds`, `estimated_cost_usd`, `cache_hit`, `latency_ms`, `metadata` | RLS activo sin políticas → solo service role. RPC `get_job_usage_summary` |
 
-RPCs: `deduct_user_credit(p_user_id, p_job_id, p_description)`, `check_duplicate_job(p_user_id, p_video_url, p_days_back)`, `get_job_usage_summary(p_job_id)`. Accesos: el frontend usa la **anon key + RLS** (lee `jobs`, `users`, `content_results`); backend y worker usan la **service role key** (bypass RLS). Backend y worker requieren Supabase; el antiguo fallback a SQLite se eliminó en la limpieza del 16-sep-2026.
+RPCs: `deduct_user_credit(p_user_id, p_job_id, p_description)` (**F1**: redefinida — no-op si `jobs.credit_reserved=true`, el worker la sigue llamando sin cambios al completar), `reserve_credit(p_user_id)` / `release_credit(p_user_id)` (**F1/ADR 0005**, atómicas, usadas por `POST /process` y `POST /jobs/:id/retry`), `check_duplicate_job(p_user_id, p_video_url, p_days_back)`, `get_job_usage_summary(p_job_id)`. Accesos: el frontend usa la **anon key + RLS** (lee `jobs`, `users`, `content_results`); backend y worker usan la **service role key** (bypass RLS). Backend y worker requieren Supabase; el antiguo fallback a SQLite se eliminó en la limpieza del 16-sep-2026.
 
 ---
 
 ## 8. API del backend
 
-Express en `backend/src/app.js` (helmet, compression, CORS restringido a `localhost:3000/3001`, `FRONTEND_URL` y `*.vercel.app`, `express.json` con `rawBody` para el webhook), logging Winston (JSON en producción + archivos `logs/`), Sentry (`tracesSampleRate 0.2`). Auth: `requireAuth` verifica el JWT con `supabase.auth.getUser(token)` y **sobrescribe `req.body.userId`** con el id verificado; `optionalAuth` lo intenta sin bloquear. Admin: allowlist `ADMIN_USER_IDS` / `ADMIN_EMAILS`.
+Express en `backend/src/app.js` (helmet, compression, CORS restringido a `localhost:3000/3001`, `FRONTEND_URL` y `*.vercel.app`, `express.json` con `rawBody` para el webhook), logging Winston (JSON en producción + archivos `logs/`), Sentry (`tracesSampleRate 0.2`, **F1:** solo se inicializa si `SENTRY_DSN_BACKEND` está seteada — antes tenía un DSN de producción hardcodeado como fallback). Auth: `requireAuth` verifica el JWT con `supabase.auth.getUser(token)` y **sobrescribe `req.body.userId`** con el id verificado; `optionalAuth` lo intenta sin bloquear. Admin: allowlist `ADMIN_USER_IDS` / `ADMIN_EMAILS`. **F1:** `backend/src/lib/failure-watcher.js` arranca al importar `app.js` (no en tests) — poll cada 60s de jobs `failed` sin alertar todavía, dispara Telegram (`lib/telegram.js`).
 
 | Método y ruta | Auth | Qué hace |
 |---|---|---|
 | `GET /` | — | Nombre y versión |
 | `GET /health` | — | Readiness: comprueba Supabase (`jobs`) y cuenta `pending`; 503 si falla |
 | `GET /health/live` | — | Liveness (Docker/Render) |
-| `GET /debug-sentry` | — | Lanza un error de prueba (**quitar**) |
-| `POST /process` `{videoUrl, tone?}` | JWT + rate limit 5/15 min | Valida regex de YouTube (`watch?v=`, `youtu.be/`, `shorts/`), tono, duplicado (7 días, `409`), créditos (`402`), inserta job `pending` (`201 {jobId}`) |
+| `POST /process` `{videoUrl, tone?}` | JWT + rate limit 5/15 min | Valida regex de YouTube (`watch?v=`, `youtu.be/`, `shorts/`), tono, duplicado (7 días, `409`). **F1 (ADR 0005):** tope de duración — `lib/youtube-duration.js` estima los minutos sin API key (scraping del HTML público, fail-open); si supera `MAX_VIDEO_MINUTES` (default 90) → `400 {error:'Video too long', message}`. Reserva 1 crédito vía RPC `reserve_credit` (`402` si no hay — y alerta Telegram si el usuario ya tenía jobs previos); inserta job `pending` con `credit_reserved=true` (`201 {jobId}`); si el insert falla después de reservar, libera el crédito |
 | `GET /status/:jobId` | opcional | Job + `content_results` ordenados por `moment_index`. Dueño obligatorio si el job tiene `user_id`; jobs sin dueño son públicos. **W10:** cada fila trae además `score_display` (entero 60-99, `null` sin juez) y `grades` (`{hook,retention,shareability}` con letra A-D) — curvados por `backend/src/lib/score-curve.js` sobre el ranking del juez dentro de ese job, calculado al leer, no persistido; es "Score visible" (`CONTEXT.md`), el juez interno (`score_judge`) y el ranking del pipeline no cambian. **W9-A (docs/adr/0008):** cada fila trae además `preview_url` (columna real, `null` hasta que el worker la llene — pendiente), `hd_url` y `hd_status` (`none\|queued\|processing\|ready\|error`) — estos dos NO son columnas: se derivan al leer del último `clip_edits` de `edit_type='hd_upgrade'` de ese `content_result_id` |
 | `GET /jobs` | JWT | Últimos 50 jobs del usuario |
 | `GET /user/me/credits` · `GET /user/:userId/credits` | JWT | `{credits, subscription}` del usuario del token (ignora el param) |
-| `POST /jobs/:jobId/retry` | JWT dueño | `failed|completed` → `pending` (mismo id, sin cobrar) |
+| `POST /jobs/:jobId/retry` | JWT dueño | `failed|completed` → `pending` (mismo id). **F1:** vuelve a reservar 1 crédito (`402` si no hay) y setea `credit_reserved=true` — un reintento es un nuevo procesamiento |
 | `DELETE /jobs/:jobId` | JWT dueño | Borra `content_results` + job (no si está `pending|processing`); los MP4 quedan en R2 |
 | `POST /billing/create-checkout` | JWT | Crea checkout en Lemon Squeezy con `custom.user_id`; redirige a `/dashboard?upgrade=success` |
 | `POST /billing/create-portal` | JWT | URL del portal de cliente de la suscripción |
@@ -446,6 +445,7 @@ Express en `backend/src/app.js` (helmet, compression, CORS restringido a `localh
 | `GET /admin/usage/jobs/:jobId` | admin | Eventos, agrupación por pipeline, comparación vs benchmark rolling (últimos 20 jobs) y estimaciones legacy |
 | `GET /admin/usage/breakdown?from&to` | admin | Costo por tarea / modelo / proveedor |
 | `GET /admin/usage/benchmarks` | admin | Promedios de los últimos N jobs |
+| `POST /admin/alerts/test` | admin | **F1:** manda un mensaje de prueba a Telegram (`lib/telegram.js::notify`); `{sent:false}` si `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` no están configuradas (no-op, no es un error) |
 
 Este cuadro es la referencia del API (no hay OpenAPI; el antiguo `API_DOCUMENTATION.md` se eliminó por desactualizado).
 
@@ -520,7 +520,7 @@ Plantilla completa en [`.env.example`](../.env.example). Un solo `.env` en la ra
 | Grupo | Variables | Obligatoria |
 |---|---|---|
 | Supabase | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (backend + worker); `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (frontend) | Sí |
-| Backend | `PORT=3000`, `NODE_ENV`, `FRONTEND_URL` (CORS y redirecciones), `LOG_LEVEL`, `SENTRY_DSN_BACKEND`, `ADMIN_USER_IDS`/`ADMIN_EMAILS`, `LEMONSQUEEZY_API_KEY/STORE_ID/VARIANT_ID/WEBHOOK_SECRET` | Sí (LS solo para cobrar) |
+| Backend | `PORT=3000`, `NODE_ENV`, `FRONTEND_URL` (CORS y redirecciones), `LOG_LEVEL`, `SENTRY_DSN_BACKEND` (sin ella, Sentry no se inicializa — **F1**), `ADMIN_USER_IDS`/`ADMIN_EMAILS`, `LEMONSQUEEZY_API_KEY/STORE_ID/VARIANT_ID/WEBHOOK_SECRET`, `MAX_VIDEO_MINUTES=90` (**F1**, tope de duración de la beta), `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (**F1**, alertas — sin ellas `lib/telegram.js::notify` es no-op) | Sí (LS solo para cobrar; Telegram y `MAX_VIDEO_MINUTES` recomendadas) |
 | Frontend | `NEXT_PUBLIC_API_URL` | Sí |
 | Worker: IA | `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `MODEL_*`, `MODEL_*_REASONING`, `LOG_LLM_USAGE`, `TWO_PASS_ANALYSIS`, `COMPACT_TRANSCRIPT`, `ENABLE_ENTERTAINMENT_CATEGORY` | Las dos primeras sí |
 | Worker: YouTube | `SUPADATA_API_KEY`, `RAPIDAPI_KEY`, `USE_RAPIDAPI_DOWNLOAD`, `WEBSHARE_PROXY_FILE|LIST|URL`, `YOUTUBE_COOKIES`, `DOWNLOAD_*`, `CLIP_*`, `STRICT_SYNC_VALIDATION`, `YTDLP_CLIP_FALLBACK`, `USE_APIFY_FALLBACK`, `APIFY_TOKEN` | En producción: Supadata, RapidAPI y proxies |
@@ -589,7 +589,7 @@ Plantilla completa en [`.env.example`](../.env.example). Un solo `.env` en la ra
 
 | Prioridad | Ítem | Notas |
 |---|---|---|
-| Fase 1 | Créditos reservados (ADR 0005); job exitoso = ≥1 clip; tope 90 min; sacar `/debug-sentry` y DSN hardcodeados; leer `transcription_cache`; alerta por Telegram de jobs fallidos; corregir pasos de la pantalla de progreso | Ver §15 |
+| Fase 1 | ~~Créditos reservados (ADR 0005)~~ **hecho (F1, 2026-09-19)**; ~~tope 90 min~~ **hecho (F1)**; ~~sacar `/debug-sentry` y DSN hardcodeados~~ **hecho (F1, backend — el worker tiene un DSN hardcodeado análogo en `main.py`, fuera del alcance de F1)**; ~~alerta por Telegram de jobs fallidos~~ **hecho (F1, poll cada 60s)**; **pendiente:** job exitoso = ≥1 clip (hoy el worker marca `completed` con 0 clips reales si no hubo excepción — requiere tocar `worker/main.py`, ver ADR 0005 "Límite conocido"); leer `transcription_cache`; corregir pasos de la pantalla de progreso | Ver §15, ADR 0005 |
 | Fase 2 | Subida directa (ADR 0007); endpoint admin para cargar créditos; textos del pricing y email de contacto; UI de perfil de creador (si sobra tiempo) | |
 | Backlog | Lifecycle rule en R2; normalizar `content_results` (1 fila por momento + tabla de piezas); unificar `/account` y `/settings`; corregir los 15 errores de ESLint y sumar `lint` al CI; OpenAPI para el API; tests de frontend; rate limit con Redis si hay varias instancias del API; `/status` sin auth para jobs sin dueño; mover el API al VPS cuando haya dominio; textos de la landing | |
 
