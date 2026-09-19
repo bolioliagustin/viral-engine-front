@@ -26,6 +26,14 @@ _Avoid_: clip (cuando se habla del fragmento elegido y no del archivo), viral mo
 El archivo de video vertical 9:16 renderizado a partir de un momento, con subtítulos y overlay quemados.
 _Avoid_: video, momento, MP4 (a secas)
 
+**Preview**:
+Render del Clip en baja resolución (480×854) que se muestra en la galería para que ver todos los Momentos de un Job sea barato. Sin Preview (job de hoy, o Momento sin worker de galería todavía), la miniatura y el reproductor usan el Clip final directo.
+_Avoid_: thumbnail, low-res
+
+**HD**:
+El Clip a resolución completa (720p), generado al pedirlo desde la galería si lo que se venía mostrando era un Preview; queda cacheado 7 días (`docs/adr/0007`). Pedirlo reusa el mecanismo de Edición (`clip_edits`); mientras se genera, su estado es `queued\|processing`, y `ready` cuando está listo para descargar.
+_Avoid_: full res, calidad completa, 1080p (reservado para cuando exista upsell de esa resolución)
+
 **Pieza de copy**:
 Texto listo para publicar generado para un momento: hilo de Twitter, post de LinkedIn o caption de TikTok.
 _Avoid_: contenido, content result, copy (a secas, cuando se refiere a una pieza concreta)

@@ -181,10 +181,51 @@ router.get('/status/:jobId', optionalAuth, async (req, res) => {
             }
         }
         const curved = curveMomentScores(Array.from(byMoment.values()));
-        const resultsWithDisplay = rows.map((r) => ({
-            ...r,
-            ...(curved.get(r.moment_index) || { score_display: null, grades: null }),
-        }));
+
+        // W9-A (docs/adr/0008): hd_status/hd_url no son columnas — se derivan
+        // en caliente del último clip_edits (edit_type='hd_upgrade') de cada
+        // content_result_id, el mismo mecanismo de W7. preview_url sí es una
+        // columna real (migración galeria_hd), la trae el select('*') de
+        // arriba; NULL hasta que el worker la llene (pendiente, mitad worker
+        // de W9) — la UI cae a clip_url cuando falta.
+        const resultIds = rows.map((r) => r.id);
+        const hdByResultId = new Map();
+        if (resultIds.length > 0) {
+            const { data: hdEdits } = await supabase
+                .from('clip_edits')
+                .select('content_result_id, status, rendered_clip_url, created_at')
+                .in('content_result_id', resultIds)
+                .eq('edit_type', 'hd_upgrade')
+                .order('created_at', { ascending: false });
+            for (const edit of hdEdits || []) {
+                if (!hdByResultId.has(edit.content_result_id)) {
+                    hdByResultId.set(edit.content_result_id, edit);
+                }
+            }
+        }
+
+        const resultsWithDisplay = rows.map((r) => {
+            const hdEdit = hdByResultId.get(r.id);
+            let hd_status = 'none';
+            let hd_url = null;
+            if (hdEdit) {
+                if (hdEdit.status === 'completed' && hdEdit.rendered_clip_url) {
+                    hd_status = 'ready';
+                    hd_url = hdEdit.rendered_clip_url;
+                } else if (hdEdit.status === 'queued' || hdEdit.status === 'processing') {
+                    hd_status = hdEdit.status;
+                } else if (hdEdit.status === 'failed') {
+                    hd_status = 'error';
+                }
+            }
+            return {
+                ...r,
+                ...(curved.get(r.moment_index) || { score_display: null, grades: null }),
+                preview_url: r.preview_url ?? null,
+                hd_url,
+                hd_status,
+            };
+        });
 
         res.json({
             id: job.id,

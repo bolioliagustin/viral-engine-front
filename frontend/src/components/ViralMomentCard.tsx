@@ -104,6 +104,13 @@ interface ViralMomentCardProps {
   scoreDisplay?: number | null;
   /** Letra A-D por dimensión, calculada sobre el score del juez (no sobre scoreDisplay). */
   grades?: { hook: string; retention: string; shareability: string } | null;
+  // W9-A (docs/adr/0008): galería + HD a pedido.
+  /** Preview 480x854 del worker (pendiente — mitad worker de W9). Sin esto, clipUrl ya es el entregable final: no hay HD que pedir. */
+  previewUrl?: string | null;
+  /** URL del re-render HD ya completado (derivado de clip_edits en el backend), o null si nunca se pidió. */
+  hdUrl?: string | null;
+  /** 'none' | 'queued' | 'processing' | 'ready' | 'error'. */
+  hdStatus?: string | null;
 }
 
 // ─── Pillar config ─────────────────────────────────────────────────────────
@@ -260,6 +267,9 @@ export function ViralMomentCard({
   hashtags,
   scoreDisplay,
   grades,
+  previewUrl,
+  hdUrl: hdUrlProp,
+  hdStatus: hdStatusProp,
 }: ViralMomentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -277,7 +287,49 @@ export function ViralMomentCard({
   const [selectedMotivo, setSelectedMotivo] = useState<FeedbackMotivo | null>(null);
   const [comentario, setComentario] = useState("");
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  // W9-A: solo tiene sentido pedir HD cuando lo que se está mostrando es un
+  // preview (worker de W9, pendiente) — si no hay previewUrl, clipUrl ya es
+  // el entregable final y el botón descarga directo, como siempre.
+  const hasPreview = Boolean(previewUrl);
+  const [hdUrl, setHdUrl] = useState<string | null>(hdUrlProp ?? null);
+  const [hdStatus, setHdStatus] = useState<string>(hdStatusProp ?? "none");
   const { toast } = useToast();
+
+  useEffect(() => {
+    setHdUrl(hdUrlProp ?? null);
+    setHdStatus(hdStatusProp ?? "none");
+  }, [hdUrlProp, hdStatusProp]);
+
+  // Poll mientras hay un pedido de HD en curso — reutiliza el mismo POST
+  // /hd (idempotente en el backend) como "estado actual" en vez de un GET
+  // separado, siguiendo el patrón de poll que ya usa results/[jobId]/page.tsx
+  // para el job completo.
+  useEffect(() => {
+    if (hdStatus !== "queued" && hdStatus !== "processing") return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await apiFetch(`/api/clips/${contentResultId}/hd`, {
+          method: "POST",
+        });
+        if (cancelled || !res.ok) return;
+        const data = await res.json();
+        if (res.status === 200 && data.hd_url) {
+          setHdUrl(data.hd_url);
+          setHdStatus("ready");
+        } else if (res.status === 202) {
+          setHdStatus(data.hd_status || "queued");
+        }
+      } catch {
+        // silencio — reintenta en el próximo tick
+      }
+    };
+    const interval = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hdStatus, contentResultId]);
 
   // Al montar, ver si ya existe un re-render completado para este clip
   // (persistente entre recargas de página).
@@ -396,24 +448,27 @@ export function ViralMomentCard({
     return `https://www.youtube.com/embed/${videoId}?start=${time}&rel=0`;
   };
 
+  const downloadBlobFrom = async (url: string) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Network response was not ok");
+
+    const blob = await response.blob();
+    const objectUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.style.display = "none";
+    a.href = objectUrl;
+    a.download = `clip_${momentIndex}_${hook
+      .substring(0, 20)
+      .replace(/\s+/g, "_")}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(objectUrl);
+  };
+
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      const response = await fetch(effectiveClipUrl!);
-      if (!response.ok) throw new Error("Network response was not ok");
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-      a.download = `clip_${momentIndex}_${hook
-        .substring(0, 20)
-        .replace(/\s+/g, "_")}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-
+      await downloadBlobFrom(effectiveClipUrl!);
       toast({
         title: "✅ Descarga completada",
         description: "El clip se ha guardado en tu dispositivo.",
@@ -423,6 +478,75 @@ export function ViralMomentCard({
       toast({
         title: "❌ Error en descarga",
         description: "No se pudo descargar el video. Intenta nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // W9-A: sin preview (jobs de hoy / viejos) el botón sigue descargando
+  // clipUrl directo — no hay "HD" que pedir porque ya es el entregable
+  // final (docs/adr/0008). Con preview, el botón pasa a pedir/pollear el
+  // re-render HD (clip_edits edit_type='hd_upgrade') antes de descargar.
+  const handleDownloadClick = async () => {
+    if (!hasPreview) {
+      return handleDownload();
+    }
+    if (hdUrl) {
+      try {
+        setIsDownloading(true);
+        await downloadBlobFrom(hdUrl);
+        toast({
+          title: "✅ Descarga completada",
+          description: "El clip HD se ha guardado en tu dispositivo.",
+        });
+      } catch {
+        toast({
+          title: "❌ Error en descarga",
+          description: "No se pudo descargar el HD. Intenta nuevamente.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsDownloading(false);
+      }
+      return;
+    }
+    if (hdStatus === "queued" || hdStatus === "processing") {
+      toast({
+        title: "⏳ Preparando HD…",
+        description: "Te avisamos apenas esté listo.",
+      });
+      return;
+    }
+    try {
+      setIsDownloading(true);
+      const res = await apiFetch(`/api/clips/${contentResultId}/hd`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.status === 200 && data.hd_url) {
+        setHdUrl(data.hd_url);
+        setHdStatus("ready");
+        await downloadBlobFrom(data.hd_url);
+        toast({
+          title: "✅ Descarga completada",
+          description: "El clip HD se ha guardado en tu dispositivo.",
+        });
+      } else if (res.status === 202) {
+        setHdStatus(data.hd_status || "queued");
+        toast({
+          title: "⏳ Preparando HD…",
+          description: "Puede tardar unos minutos. Te avisamos cuando esté listo.",
+        });
+      } else {
+        throw new Error(data.error || "No se pudo pedir el HD");
+      }
+    } catch (error) {
+      console.error("HD request failed:", error);
+      toast({
+        title: "❌ Error",
+        description: "No se pudo pedir el HD. Intenta nuevamente.",
         variant: "destructive",
       });
     } finally {
@@ -832,15 +956,28 @@ export function ViralMomentCard({
                   <Button
                     variant="outline"
                     className="w-full border-slate-700 bg-slate-800 text-slate-200 hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all"
-                    onClick={handleDownload}
-                    disabled={isDownloading || !effectiveClipUrl}
+                    onClick={handleDownloadClick}
+                    disabled={
+                      isDownloading ||
+                      !effectiveClipUrl ||
+                      hdStatus === "queued" ||
+                      hdStatus === "processing"
+                    }
                   >
-                    {isDownloading ? (
+                    {isDownloading || hdStatus === "queued" || hdStatus === "processing" ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    {isDownloading ? "Descargando..." : "Descargar MP4"}
+                    {hdStatus === "queued" || hdStatus === "processing"
+                      ? "Preparando HD…"
+                      : isDownloading
+                        ? "Descargando..."
+                        : hasPreview
+                          ? hdUrl
+                            ? "Descargar HD"
+                            : "Descargar (pedir HD)"
+                          : "Descargar MP4"}
                   </Button>
                 )}
 
