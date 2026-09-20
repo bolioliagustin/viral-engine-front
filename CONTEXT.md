@@ -7,7 +7,7 @@ Convierte un video de YouTube en momentos virales listos para publicar: clips ve
 ### Producto
 
 **Job**:
-El procesamiento de un video pedido por un usuario a partir de una fuente; produce de 1 a 5 momentos. Es exitoso si al menos un momento tiene clip; si ninguno lo tiene, falla y devuelve el crédito.
+El procesamiento de un video pedido por un usuario a partir de una fuente; produce uno o más momentos (tope fijo de 5 hasta W9-B; desde W9-B se entregan por umbral de calidad, hasta `DELIVERY_MAX_CLIPS`). Es exitoso si al menos un momento tiene clip; si ninguno lo tiene, falla y devuelve el crédito.
 _Avoid_: video, proceso, trabajo, request
 
 **Fuente**:
@@ -27,11 +27,11 @@ El archivo de video vertical 9:16 renderizado a partir de un momento, con subtí
 _Avoid_: video, momento, MP4 (a secas)
 
 **Preview**:
-Render del Clip en baja resolución (480×854) que se muestra en la galería para que ver todos los Momentos de un Job sea barato. Sin Preview (job de hoy, o Momento sin worker de galería todavía), la miniatura y el reproductor usan el Clip final directo.
+Render del Clip en baja resolución (480×854) que se entrega de entrada para que ver todos los Momentos de un Job en la galería sea barato (W9-B, `docs/PLAN_CALIDAD.md` §9 W9). En jobs de antes de W9-B, sin Preview, la miniatura y el reproductor usan el Clip final directo.
 _Avoid_: thumbnail, low-res
 
 **HD**:
-El Clip a resolución completa (720p), generado al pedirlo desde la galería si lo que se venía mostrando era un Preview; queda cacheado 7 días (`docs/adr/0007`). Pedirlo reusa el mecanismo de Edición (`clip_edits`); mientras se genera, su estado es `queued\|processing`, y `ready` cuando está listo para descargar.
+El Clip a resolución completa (720p), generado al pedirlo desde la galería a partir del segmento crudo cacheado en R2 (no hay TTL fijo documentado sobre esa cache). Pedirlo reusa el mecanismo de Edición (`clip_edits`, `edit_type='hd_upgrade'`); mientras se genera, su estado es `queued\|processing`, y `ready` cuando está listo para descargar. Pedirlo dos veces no vuelve a renderizar (idempotente).
 _Avoid_: full res, calidad completa, 1080p (reservado para cuando exista upsell de esa resolución)
 
 **Pieza de copy**:
