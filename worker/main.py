@@ -18,13 +18,18 @@ import sentry_sdk
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-# C4: Initialize Sentry error tracking
-sentry_sdk.init(
-    dsn=os.getenv("SENTRY_DSN_WORKER", "https://fa1819fcd1c305c1966bc49de239c99b@o4510909878632448.ingest.us.sentry.io/4510909933092864"),
-    send_default_pii=True,
-    environment=os.getenv("ENVIRONMENT", "development"),
-    traces_sample_rate=0.2,
-)
+# C4 + F1 (docs/PLAN_CALIDAD.md §9 W9-B): sin DSN, Sentry NO se inicializa —
+# antes había un DSN hardcodeado como fallback que mandaba errores de
+# cualquier fork/dev al proyecto de Sentry de producción aunque
+# SENTRY_DSN_WORKER no estuviera seteada (mismo fix que F1 ya hizo en el
+# backend, backend/src/app.js).
+if os.getenv("SENTRY_DSN_WORKER"):
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN_WORKER"),
+        send_default_pii=True,
+        environment=os.getenv("ENVIRONMENT", "development"),
+        traces_sample_rate=0.2,
+    )
 
 # Validate environment variables before proceeding
 sys.path.insert(0, str(Path(__file__).parent))
@@ -97,6 +102,20 @@ POLL_INTERVAL = 3  # seconds between Supabase polls
 # — el estilo nuevo nunca se usaba en producción pese a estar mergeado.
 # Configurable por env por si hace falta volver atrás sin deploy de código.
 SUBTITLE_STYLE_DEFAULT = os.getenv("SUBTITLE_STYLE_DEFAULT", "tiktok_viral_v2")
+
+# W9-B (docs/PLAN_CALIDAD.md §9 W9, docs/adr/0008): el clip que se entrega
+# de entrada es un PREVIEW liviano, no el HD de siempre — con más clips
+# entregados por job (select_finalists ya no limita a 1/3/5), renderizar
+# los 720x1280 de todos de una sería demasiado tiempo/CPU. `content_results
+# .clip_url` = este preview (compatibilidad: cualquier código que solo lea
+# `clip_url` sigue funcionando, aunque en resolución baja) y también se
+# guarda en `preview_url` para que la galería (W9-A) lo distinga del HD.
+# El HD real se genera a pedido (`clip_edit_processor.py`, edit_type=
+# 'hd_upgrade') a partir del raw clip cacheado en R2 (`raw_clip_url`, ya
+# se sube siempre, ver más abajo en `_deliver_moment`).
+PREVIEW_WIDTH = int(os.getenv("PREVIEW_WIDTH", "480"))
+PREVIEW_HEIGHT = int(os.getenv("PREVIEW_HEIGHT", "854"))
+PREVIEW_CRF = int(os.getenv("PREVIEW_CRF", "28"))
 
 
 def cleanup_old_files(max_age_hours: int = 24) -> None:
@@ -1559,6 +1578,7 @@ def _deliver_moment(
         True si el clip se renderizó y subió con éxito.
     """
     clip_url = None
+    preview_url = None
     raw_clip_url_cache = None
     whisper_words_cache = None
     clip_rendered_ok = False
@@ -1651,6 +1671,10 @@ def _deliver_moment(
                 except Exception as e_cache:
                     print(f"   ⚠️ Cache raw clip falló (no fatal): {e_cache}")
 
+            # W9-B: se entrega un PREVIEW liviano (480x854, crf 28), no el
+            # HD de siempre — el HD real se genera a pedido desde
+            # raw_clip_url_cache (clip_edit_processor.py, edit_type=
+            # 'hd_upgrade'). clip_url y preview_url apuntan al mismo archivo.
             gen_result = generate_clip(
                 video_path=str(precut_path),
                 start_sec=0.0,
@@ -1663,14 +1687,16 @@ def _deliver_moment(
                 keywords=getattr(moment, "keywords", None),
                 overlay_text=overlay_text,
                 overlay_style="tiktok_viral",
-                target_width=720,
-                target_height=1280,
+                target_width=PREVIEW_WIDTH,
+                target_height=PREVIEW_HEIGHT,
+                crf=PREVIEW_CRF,
             )
-            print(f"✅ Clip generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
-            print(f"📤 Subiendo clip {delivery_index} a R2...")
+            print(f"✅ Preview generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
+            print(f"📤 Subiendo preview {delivery_index} a R2...")
             clip_url = upload_clip_to_storage(str(clip_output), job_id, delivery_index)
             if clip_url:
-                print(f"✅ Clip subido: {clip_url[:70]}...")
+                print(f"✅ Preview subido: {clip_url[:70]}...")
+                preview_url = clip_url
                 clip_rendered_ok = True
                 if prepared.clip_words or prepared.clip_segments_whisper:
                     whisper_words_cache = {
@@ -1868,6 +1894,10 @@ def _deliver_moment(
         title=getattr(moment, "title", None),
         description=getattr(moment, "description", None),
         hashtags=getattr(moment, "hashtags", None),
+        # W9-B (docs/PLAN_CALIDAD.md §9 W9): mismo archivo que clip_url —
+        # la columna existe desde W9-A (migración galeria_hd) pero hasta
+        # ahora ningún job la llenaba.
+        preview_url=preview_url,
     )
 
     if moment.content_pieces.twitter_thread:

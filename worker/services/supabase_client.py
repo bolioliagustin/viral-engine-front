@@ -220,6 +220,7 @@ def save_content_result(
     title: str = None,  # W10: título ≤60 chars para publicar
     description: str = None,  # W10: 2 oraciones (qué se ve + invitación)
     hashtags: list = None,  # W10: 10 hashtags, español, CamelCase, con '#'
+    preview_url: str = None,  # W9-B: mismo archivo que clip_url (preview 480x854)
 ) -> str:
     """Save content result to Supabase"""
     import uuid
@@ -260,6 +261,7 @@ def save_content_result(
             "title": title,
             "description": description,
             "hashtags": hashtags,
+            "preview_url": preview_url,
         })
         return result_id
 
@@ -334,6 +336,10 @@ def save_content_result(
     if hashtags:
         data["hashtags"] = hashtags
         _quality_keys.append("hashtags")
+    # W9-B (docs/PLAN_CALIDAD.md §9 W9, requiere migración galeria_hd)
+    if preview_url:
+        data["preview_url"] = preview_url
+        _quality_keys.append("preview_url")
 
     def _insert(payload):
         supabase.table("content_results").insert(payload).execute()
