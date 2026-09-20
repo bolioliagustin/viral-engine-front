@@ -10,8 +10,8 @@ Funciones (por dia del sprint):
   - burn_overlay_text() ← Dia 5: hook text en primeros segundos
   - generate_clip()     ← Dia 6: pipeline completo (orquesta todo)
 
-Este modulo reemplaza a clipper.py (legacy, usa -c copy sin re-encode).
-El nuevo pipeline siempre re-encodea para frame accuracy.
+El pipeline siempre re-encodea para frame accuracy (el corte con -c copy
+solo era exacto en keyframes).
 """
 import subprocess
 import os
@@ -42,6 +42,16 @@ FFMPEG_PATH = _resolve_bin('FFMPEG_PATH', 'ffmpeg')
 FFPROBE_PATH = _resolve_bin('FFPROBE_PATH', 'ffprobe')
 
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
+
+
+def cleanup_clips(video_id: str) -> None:
+    """Borra los MP4 locales de un video ya subido a R2."""
+    try:
+        for clip_file in CLIPS_DIR.glob(f"{video_id}_*.mp4"):
+            clip_file.unlink()
+            print(f"🧹 Cleaned up: {clip_file}")
+    except Exception as e:
+        print(f"⚠️ Cleanup error: {e}")
 
 
 @dataclass
@@ -122,7 +132,7 @@ def cut_clip(
     """
     Corta un clip del video original con re-encode (frame accurate).
 
-    A diferencia del clipper.py legacy (-c copy), este SIEMPRE re-encodea
+    A diferencia de un corte con -c copy, este SIEMPRE re-encodea
     porque:
       1. -c copy solo corta en keyframes, no es preciso
       2. Necesitamos asegurar codec/resolucion consistente para el pipeline siguiente
@@ -1040,11 +1050,6 @@ SUBTITLE_STYLES = {
         "MarginV": "340",
     },
 }
-
-
-def _style_to_force_string(style: dict) -> str:
-    """Convierte dict de estilo a string de force_style para FFmpeg."""
-    return ",".join(f"{k}={v}" for k, v in style.items())
 
 
 def _srt_time_to_ass(srt_ts: str) -> str:

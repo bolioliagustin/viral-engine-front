@@ -454,20 +454,22 @@ class TestStreamProbe:
         assert _parse_content_range(None) is None
         assert _parse_content_range("invalid") is None
 
-    """Tests for S6 logging configuration."""
+    """Tests del logging con contexto de traza (config/logging.py)."""
 
     def test_logger_creation(self):
-        from config.logging_config import get_logger
-        logger = get_logger("test")
+        from config.logging import get_logger
+        logger = get_logger("worker.test")
         assert logger is not None
 
-    def test_logger_with_extra_fields(self, capsys):
-        from config.logging_config import get_logger
-        logger = get_logger("test_extra")
-        logger.info("test message", extra={"job_id": "123", "step": "download"})
-        
-        captured = capsys.readouterr()
-        assert "test message" in captured.out
+    def test_trace_formatter_injects_context(self):
+        import logging as _logging
+        from config.logging import TraceFormatter, trace
+        fmt = TraceFormatter("%(trace)s%(message)s")
+        record = _logging.LogRecord("worker", _logging.INFO, __file__, 1, "test message", None, None)
+        with trace(job_id="abcdef12-3456", moment_index=2, phase="clip"):
+            out = fmt.format(record)
+        assert out == "[job=abcdef12 m=2 phase=clip] test message"
+        assert fmt.format(record) == "test message"  # fuera del contexto no hay tags
 
 
 class TestApplyWordCorrections:

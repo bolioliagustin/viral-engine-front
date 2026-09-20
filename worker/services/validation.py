@@ -24,32 +24,6 @@ def validate_video_duration(duration_seconds: int, max_duration: int = 7200) -> 
         )
 
 
-def validate_viral_moment_duration(
-    moment,
-    min_duration: int = 10,
-    max_duration: int = 60,
-) -> bool:
-    """
-    Validate that a viral moment meets duration requirements.
-
-    Args:
-        moment: Viral moment object with start_time and end_time
-        min_duration: Minimum duration in seconds (default 10s)
-        max_duration: Maximum duration in seconds (default 60s)
-
-    Returns:
-        True if valid, False if out of range or missing timestamps
-    """
-    if not hasattr(moment, 'start_time') or not hasattr(moment, 'end_time'):
-        return False
-
-    if moment.start_time is None or moment.end_time is None:
-        return False
-
-    duration = moment.end_time - moment.start_time
-    return min_duration <= duration <= max_duration
-
-
 def _moment_overlap_ratio(a_start: float, a_end: float, b_start: float, b_end: float) -> float:
     """Fraction of the shorter clip covered by temporal overlap."""
     overlap = max(0.0, min(a_end, b_end) - max(a_start, b_start))

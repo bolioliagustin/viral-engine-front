@@ -4,7 +4,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn('⚠️ Supabase credentials not found. Using SQLite fallback.');
+    console.warn('⚠️ SUPABASE_URL / SUPABASE_SERVICE_KEY no configuradas');
 }
 
 // Service client (bypasses RLS for backend operations)

@@ -2,7 +2,6 @@ yt-dlp>=2025.10.01
 openai
 pydantic
 python-dotenv
-watchdog
 supabase>=2.10.0
 sentry-sdk
 boto3
