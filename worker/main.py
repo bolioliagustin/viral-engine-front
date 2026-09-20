@@ -117,6 +117,54 @@ PREVIEW_WIDTH = int(os.getenv("PREVIEW_WIDTH", "480"))
 PREVIEW_HEIGHT = int(os.getenv("PREVIEW_HEIGHT", "854"))
 PREVIEW_CRF = int(os.getenv("PREVIEW_CRF", "28"))
 
+# W9-B (docs/PLAN_CALIDAD.md §9 W9): contrato de progreso acordado con P1
+# (pantalla de progreso nueva, también sobre integracion/fase-0). Enum de
+# `jobs.current_step` — el worker es el único que lo escribe:
+JOB_STEPS = ("transcribing", "classifying", "analyzing", "evaluating", "ranking", "delivering", "finalizing")
+
+
+def compute_progress_percentage(
+    phase: str,
+    *,
+    candidate_index: int = 0,
+    candidates_total: int = 0,
+    delivered_index: int = 0,
+    delivered_total: int = 0,
+) -> int:
+    """
+    Progreso 0-100 del job, función pura (sin I/O, testeada en
+    tests/test_w9b.py). Cada valor es el PISO (inicio) de la fase que se
+    está por entrar — así que reportar `compute_progress_percentage(fase)`
+    justo al pasar a esa fase ya marca el techo de la anterior sin
+    necesidad de una llamada separada: transcript 0-15, análisis
+    (classifying+analyzing) 15-25, evaluación 25-70 lineal por candidato
+    evaluado, entrega 70-98 lineal por clip entregado, 100 al finalizar.
+    `ranking` (entre evaluar y entregar, sin trabajo por-ítem) es 70, el
+    mismo piso con el que arranca `delivering`.
+
+    `candidate_index`/`delivered_index` son cuántos YA se completaron
+    (0 antes del primero); con total 0 devuelve el piso de la fase.
+    """
+    if phase == "transcribing":
+        return 0
+    if phase in ("classifying", "analyzing"):
+        return 15
+    if phase == "evaluating":
+        if candidates_total <= 0:
+            return 25
+        frac = min(1.0, max(0.0, candidate_index / candidates_total))
+        return round(25 + frac * (70 - 25))
+    if phase == "ranking":
+        return 70
+    if phase == "delivering":
+        if delivered_total <= 0:
+            return 70
+        frac = min(1.0, max(0.0, delivered_index / delivered_total))
+        return round(70 + frac * (98 - 70))
+    if phase == "finalizing":
+        return 100
+    raise ValueError(f"fase de progreso desconocida: {phase!r} (ver JOB_STEPS)")
+
 
 def cleanup_old_files(max_age_hours: int = 24) -> None:
     """
@@ -2071,14 +2119,14 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         set_phase("transcript")
         print("\n📝 Steps 1+2: Fetching transcript from YouTube...")
         from services.supabase_client import update_job_progress
-        update_job_progress(job_id, current_step="downloading", progress_percentage=10)
+        update_job_progress(job_id, current_step="transcribing", progress_percentage=0)
 
         from services.yt_transcript import get_youtube_transcript
         transcript, video_info = get_youtube_transcript(video_url)
         video_id = video_info["id"]
 
         update_job_status(job_id, "processing", video_info["title"])
-        update_job_progress(job_id, progress_percentage=40)
+        update_job_progress(job_id, current_step="classifying", progress_percentage=compute_progress_percentage("classifying"))
         print(f"✅ Transcript ready: {len(transcript.get('segments', []))} segments")
         check_timeout()  # C5
 
@@ -2095,7 +2143,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # Step 3: Analyze transcript with AI (via OpenRouter)
         set_phase("analyze")
         print("\n🤖 Step 3: Analyzing transcript for viral moments...")
-        update_job_progress(job_id, current_step="analyzing", progress_percentage=50)
+        update_job_progress(job_id, current_step="analyzing")
 
         # Fase 5: personalización — tone del job + perfil real del usuario
         job_tone = (job_data.get("tone") or "").strip().lower() or "profesional"
@@ -2122,7 +2170,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             transcript, video_info,
             tone=job_tone, user_name=user_name, user_title=user_title,
         )
-        update_job_progress(job_id, progress_percentage=65)
+        update_job_progress(job_id, current_step="evaluating", progress_percentage=compute_progress_percentage("evaluating"))
         check_timeout()  # C5
         
         # Step 3.5: Quality Filter - Validate durations
@@ -2173,7 +2221,12 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
 
         download_strategy = _select_download_strategy(video_duration, result.viral_moments)
         _log_download_strategy(download_strategy, video_duration, result.viral_moments)
-        update_job_progress(job_id, current_step="downloading", progress_percentage=70)
+        # W9-B: la descarga del video fuente es preparación de la fase
+        # `evaluating` (hace falta el video para evaluar/renderizar
+        # candidatos) — no tiene su propio current_step en el contrato de
+        # progreso de P1, así que el % se queda en el piso de `evaluating`
+        # hasta que arranca el loop por candidato más abajo (Step 5a).
+        update_job_progress(job_id, current_step="evaluating", progress_percentage=compute_progress_percentage("evaluating"))
 
         stream_urls = None
         muxed_video_path = None
@@ -2238,12 +2291,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             )
 
             def _on_parallel_clip_done(done: int, total: int) -> None:
-                pct = 70 + int((done / max(total, 1)) * 10)
-                update_job_progress(
-                    job_id,
-                    current_step="downloading",
-                    progress_percentage=min(80, pct),
-                )
+                # W9-B: sigue en la fase `evaluating` (preparación), el %
+                # no avanza acá — el loop por candidato de Step 5a es el
+                # que reporta progreso fino dentro de esta fase.
                 print(f"   📥 Descargando clip {done}/{total}...")
 
             clip_paths_cache = download_clips_parallel(
@@ -2275,8 +2325,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         )
         check_timeout()
         print("\n💾 Step 5: Saving results...")
-        update_job_progress(job_id, current_step="generating", progress_percentage=85)
-        
+        # W9-B: seguimos en `evaluating` (ya seteado más arriba, Step 4) —
+        # el % avanza recién con el primer candidato evaluado, abajo.
+
         # Summary is now stored in jobs table, not content_results
         # save_content_result() is only for actual content pieces (twitter, tiktok, etc.)
 
@@ -2364,8 +2415,24 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 min_duration_reverted=prepared.min_duration_reverted,
             ))
 
+            # W9-B: progreso fino por candidato evaluado (contrato con P1).
+            update_job_progress(
+                job_id,
+                current_step="evaluating",
+                progress_percentage=compute_progress_percentage(
+                    "evaluating", candidate_index=cand_index, candidates_total=len(result.viral_moments),
+                ),
+                progress_detail={
+                    "current": cand_index,
+                    "total": len(result.viral_moments),
+                    "message": f"Evaluando candidato {cand_index} de {len(result.viral_moments)}",
+                    "clips_ready": 0,
+                },
+            )
+
         # Fase 5b: rankear por el juez (no por el auto-score, causa C4) y
-        # elegir los `target` finalistas, con diversidad.
+        # entregar por umbral, con diversidad (W9-B).
+        update_job_progress(job_id, current_step="ranking", progress_percentage=compute_progress_percentage("ranking"))
         selected, discarded = select_finalists(candidates, target)
         selected_idx = {c.index for c in selected}
         print(
@@ -2423,8 +2490,25 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             ):
                 clips_rendered_count += 1
 
+            # W9-B: progreso fino por clip entregado (contrato con P1);
+            # content_results ya se escribió DENTRO de _deliver_moment, así
+            # que clips_ready refleja lo que la galería ya puede mostrar.
+            update_job_progress(
+                job_id,
+                current_step="delivering",
+                progress_percentage=compute_progress_percentage(
+                    "delivering", delivered_index=delivery_index, delivered_total=len(selected),
+                ),
+                progress_detail={
+                    "current": delivery_index,
+                    "total": len(selected),
+                    "message": f"Entregando clip {delivery_index} de {len(selected)}",
+                    "clips_ready": clips_rendered_count,
+                },
+            )
+
         total_moments = len(result.viral_moments)
-        update_job_progress(job_id, current_step="completed", progress_percentage=100)
+        update_job_progress(job_id, current_step="finalizing", progress_percentage=compute_progress_percentage("finalizing"))
         _finalize_job_outcome(
             job_id=job_id,
             video_url=video_url,

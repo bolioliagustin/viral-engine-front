@@ -205,3 +205,108 @@ class TestSentryDsnDesdeEnv:
         assert mock_init.call_args.kwargs["dsn"] == "https://fake@example.ingest.sentry.io/1"
         monkeypatch.delenv("SENTRY_DSN_WORKER", raising=False)
         importlib.reload(main)
+
+
+class TestComputeProgressPercentage:
+    """Contrato de progreso acordado con P1 (pantalla de progreso nueva,
+    también sobre integracion/fase-0): función pura, sin I/O — main.py la
+    llama, pero no necesita mockear nada para testearla."""
+
+    def test_transcribing_es_piso_cero(self):
+        assert main.compute_progress_percentage("transcribing") == 0
+
+    def test_classifying_y_analyzing_son_15(self):
+        assert main.compute_progress_percentage("classifying") == 15
+        assert main.compute_progress_percentage("analyzing") == 15
+
+    def test_evaluating_sin_total_es_el_piso(self):
+        assert main.compute_progress_percentage("evaluating") == 25
+
+    def test_evaluating_interpola_linealmente(self):
+        assert main.compute_progress_percentage(
+            "evaluating", candidate_index=0, candidates_total=10,
+        ) == 25
+        assert main.compute_progress_percentage(
+            "evaluating", candidate_index=5, candidates_total=10,
+        ) == 48  # 25 + 0.5*(70-25) = 47.5 -> round() bankers: 48
+        assert main.compute_progress_percentage(
+            "evaluating", candidate_index=10, candidates_total=10,
+        ) == 70
+
+    def test_evaluating_nunca_pasa_del_techo_aunque_el_index_sea_mayor_al_total(self):
+        assert main.compute_progress_percentage(
+            "evaluating", candidate_index=99, candidates_total=10,
+        ) == 70
+
+    def test_ranking_es_70(self):
+        assert main.compute_progress_percentage("ranking") == 70
+
+    def test_delivering_interpola_entre_70_y_98(self):
+        assert main.compute_progress_percentage(
+            "delivering", delivered_index=0, delivered_total=4,
+        ) == 70
+        assert main.compute_progress_percentage(
+            "delivering", delivered_index=4, delivered_total=4,
+        ) == 98
+        assert main.compute_progress_percentage(
+            "delivering", delivered_index=2, delivered_total=4,
+        ) == 84
+
+    def test_finalizing_es_100(self):
+        assert main.compute_progress_percentage("finalizing") == 100
+
+    def test_fase_desconocida_explota_en_vez_de_devolver_cualquier_cosa(self):
+        import pytest
+        with pytest.raises(ValueError):
+            main.compute_progress_percentage("descargando")
+
+
+class TestUpdateJobProgressDetail:
+    """update_job_progress acepta progress_detail y degrada con gracia si
+    la columna todavía no existe (la agrega P1 en su migración)."""
+
+    def test_dry_run_guarda_progress_detail(self):
+        from services.supabase_client import update_job_progress, DRY_RUN_JOBS
+        DRY_RUN_JOBS.clear()
+        with patch("services.supabase_client.is_dry_run", return_value=True):
+            update_job_progress(
+                "job-1", current_step="evaluating", progress_percentage=40,
+                progress_detail={"current": 4, "total": 10, "message": "x", "clips_ready": 0},
+            )
+        job = DRY_RUN_JOBS["job-1"]
+        assert job["current_step"] == "evaluating"
+        assert job["progress_percentage"] == 40
+        assert job["progress_detail"]["clips_ready"] == 0
+
+    def test_degrada_con_gracia_si_progress_detail_no_existe_como_columna(self):
+        from services.supabase_client import update_job_progress
+
+        calls = []
+
+        class _FakeTable:
+            def update(self, data):
+                calls.append(dict(data))
+                return self
+
+            def eq(self, *a, **k):
+                return self
+
+            def execute(self):
+                if len(calls) == 1:
+                    raise RuntimeError("column jobs.progress_detail does not exist (PGRST204)")
+                return MagicMock()
+
+        fake_supabase = MagicMock()
+        fake_supabase.table.return_value = _FakeTable()
+
+        with patch("services.supabase_client.is_dry_run", return_value=False), \
+             patch("services.supabase_client._require_supabase", return_value=fake_supabase):
+            update_job_progress(
+                "job-1", current_step="evaluating", progress_percentage=40,
+                progress_detail={"current": 4, "total": 10},
+            )
+
+        assert len(calls) == 2
+        assert "progress_detail" in calls[0]
+        assert "progress_detail" not in calls[1]
+        assert calls[1]["current_step"] == "evaluating"
