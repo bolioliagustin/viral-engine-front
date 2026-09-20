@@ -1027,6 +1027,7 @@ class _PreparedClip:
     margin_extended: bool = False
     margin_extension_failed: bool = False
     subs_disabled_timestamps: bool = False
+    line_aligned: bool = False
 
 
 def _prepare_moment_clip(
@@ -1088,6 +1089,7 @@ def _prepare_moment_clip(
             subs_disabled_timestamps = False
             hook_not_found = False
             payoff_not_found = False
+            line_aligned = False
             wide_path = DOWNLOADS_DIR / f"{video_id}_m{moment_index}_wide.mp4"
 
             while True:
@@ -1196,6 +1198,11 @@ def _prepare_moment_clip(
                         hint_start_abs=start_s, hint_end_abs=end_s,
                         segments=wide_segments,
                         hook=moment.hook or "", overlay=overlay_text or "",
+                        # W1-C: Líneas del transcript completo (W4) si el job
+                        # las tiene (TRANSCRIPT_SOURCE=whisper_full|hybrid) —
+                        # mandan sobre las palabras del segmento ancho para
+                        # decidir dónde arranca/termina el clip.
+                        lines=transcript.get("lines"),
                     )
                     ev = bounds["evidence"]
                     print(
@@ -1259,6 +1266,7 @@ def _prepare_moment_clip(
                     seg_path = str(precut_path)
                 hook_not_found = "hook_not_found" in b["flags"]
                 payoff_not_found = "payoff_not_found" in b["flags"]
+                line_aligned = bool(b["evidence"].get("line_aligned"))
                 if anchored["words"]:
                     clip_words = shift_words_timeline(
                         anchored["words"], start_rel, clip_duration=clip_duration
@@ -1518,6 +1526,7 @@ def _prepare_moment_clip(
                 margin_extended=margin_extended,
                 margin_extension_failed=margin_extension_failed,
                 subs_disabled_timestamps=subs_disabled_timestamps,
+                line_aligned=line_aligned,
             )
         except _SyncRetryNeeded as e_sync:
             print(f"   ⚠️ {e_sync}")
@@ -1720,6 +1729,7 @@ def _deliver_moment(
             margin_extended=prepared.margin_extended,
             margin_extension_failed=prepared.margin_extension_failed,
             subs_disabled_timestamps=prepared.subs_disabled_timestamps,
+            line_aligned=prepared.line_aligned,
         )
     elif clip_rendered_ok or verification_info:
         clip_quality_issues = build_clip_quality_issues(
@@ -1736,6 +1746,7 @@ def _deliver_moment(
             margin_extended=prepared.margin_extended,
             margin_extension_failed=prepared.margin_extension_failed,
             subs_disabled_timestamps=prepared.subs_disabled_timestamps,
+            line_aligned=prepared.line_aligned,
         )
     else:
         clip_quality_issues = []
