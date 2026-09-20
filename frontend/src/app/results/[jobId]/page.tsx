@@ -65,6 +65,17 @@ interface Job {
   status: string;
   current_step?: string;
   progress_percentage?: number;
+  // P1 (docs/PROYECTO.md §7/§8): detalle del paso actual, lo escribe el
+  // worker (W9-B, pendiente) — undefined/null en jobs viejos o mientras no
+  // lo escriba.
+  progress_detail?: {
+    current?: number;
+    total?: number;
+    message?: string;
+    clips_ready?: number;
+  } | null;
+  /** true mientras el job sigue 'processing' — los results de abajo pueden crecer. */
+  partial?: boolean;
   errorMessage: string | null;
   results: Result[];
 }
@@ -131,13 +142,18 @@ export default function ResultsPage() {
       );
     }
 
-    // 2. Processing Screen
-    if (job?.status === "processing") {
+    // 2. Processing Screen — solo mientras no hay NINGÚN Momento entregado
+    // todavía (P1). En cuanto W9-B empieza a entregar content_results por
+    // Clip, la vista pasa a la galería (Fase 4, abajo) con un banner de
+    // "seguimos evaluando" en vez de tapar los Clips ya listos con la
+    // pantalla de espera.
+    if (job?.status === "processing" && job.results.length === 0) {
       return (
-        <ProcessingScreen 
+        <ProcessingScreen
           key="processing"
-          currentStep={job.current_step} 
+          currentStep={job.current_step}
           progress={job.progress_percentage}
+          progressDetail={job.progress_detail}
         />
       );
     }
@@ -251,7 +267,20 @@ export default function ResultsPage() {
 
           {/* Content Container */}
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
-            
+
+            {/* P1: banner de "seguimos evaluando" — el job sigue processing
+                pero ya hay Momentos entregados para mostrar en la galería. */}
+            {job.status === "processing" && (job.partial ?? true) && (
+              <div className="flex items-center gap-3 bg-purple-950/30 border border-purple-500/30 rounded-xl px-4 py-3">
+                <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                <p className="text-sm text-purple-200">
+                  {job.progress_detail?.total
+                    ? `Seguimos evaluando: ${job.progress_detail.current ?? 0} de ${job.progress_detail.total}`
+                    : "Seguimos evaluando el resto de los candidatos — esta galería se va a seguir completando."}
+                </p>
+              </div>
+            )}
+
             {/* Analytics Summary Dashboard */}
             <AnalyticsSummary results={job.results} />
 

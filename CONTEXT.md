@@ -10,6 +10,10 @@ Convierte un video de YouTube en momentos virales listos para publicar: clips ve
 El procesamiento de un video pedido por un usuario a partir de una fuente; produce de 1 a 5 momentos. Es exitoso si al menos un momento tiene clip; si ninguno lo tiene, falla y devuelve el crédito.
 _Avoid_: video, proceso, trabajo, request
 
+**Fase del job**:
+Paso del pipeline en el que está un Job mientras se procesa (`jobs.current_step`): transcribir, clasificar, buscar Momentos, evaluar Candidatos, elegir (rankear), entregar y cerrar. Es lo que la pantalla de progreso le muestra al usuario en español, sin los nombres internos del pipeline (nunca "Pasada A" ni el nombre en inglés del paso).
+_Avoid_: step, etapa, paso del pipeline (a secas, para lo que ve el usuario)
+
 **Fuente**:
 Origen del video de un job: un link de YouTube o un archivo de video subido por el usuario. Un archivo puede venir acompañado del link del mismo video en YouTube para obtener el transcript.
 _Avoid_: input, origen, upload

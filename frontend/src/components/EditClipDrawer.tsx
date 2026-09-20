@@ -23,7 +23,15 @@ import { useToast } from "@/hooks/use-toast";
 import { WordSubtitleEditor } from "@/components/WordSubtitleEditor";
 import type { WhisperWord, WordCorrection, WordStyle } from "@/types/subtitles";
 
-type SubtitleStyle = "tiktok_viral" | "clean" | "podcast";
+// P1: tiktok_viral_v2 quedó pendiente de W11 (subtítulos cortos en
+// mayúsculas con palabra clave resaltada — worker/services/clip_generator.py,
+// backend/DB ya lo aceptan desde la migración subtitulos_v2_check). No hay
+// forma de saber con qué estilo se renderizó el Clip ORIGINAL (no se
+// persiste en content_results, solo en clip_edits si hubo una Edición
+// previa) — el selector sigue arrancando en "tiktok_viral" (el que usa
+// main.py hoy) para no cambiarle el estilo a un Clip existente sin que el
+// usuario lo elija a propósito; v2 queda como opción nueva, recomendada.
+type SubtitleStyle = "tiktok_viral" | "tiktok_viral_v2" | "clean" | "podcast";
 type OverlayPosition = "top" | "center" | "bottom";
 type EditStatus = "draft" | "queued" | "processing" | "completed" | "failed";
 
@@ -502,10 +510,17 @@ export function EditClipDrawer({
                   <div className="grid gap-3">
                     {[
                       {
+                        id: "tiktok_viral_v2" as const,
+                        name: "TikTok Viral v2",
+                        desc: "Bloques cortos en MAYÚSCULAS, palabra clave resaltada en color. El estilo nuevo, más parecido a lo que ves en TikTok hoy.",
+                        tag: "🆕 Nuevo",
+                        color: "border-emerald-500/40 bg-emerald-500/5",
+                      },
+                      {
                         id: "tiktok_viral" as const,
                         name: "TikTok Viral",
                         desc: "Blanco bold + borde negro. El clásico viral.",
-                        tag: "🔥 Recomendado",
+                        tag: "Clásico",
                         color: "border-pink-500/40 bg-pink-500/5",
                       },
                       {
