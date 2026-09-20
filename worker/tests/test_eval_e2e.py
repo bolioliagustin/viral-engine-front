@@ -165,10 +165,12 @@ class TestClipRecord:
 
 class TestCapitalizacionPorLinea:
     """
-    INT-4 (docs/PLAN_CALIDAD.md §9): con `line_aligned` en clip_quality_issues
-    y Líneas del transcript completo disponibles, `starts_capitalized` se
-    calcula sobre la Línea cuyo inicio coincide con el del clip (±0,3 s), no
-    sobre la re-transcripción Whisper aislada del clip.
+    INT-4/INT-5 (docs/PLAN_CALIDAD.md §9): con `line_aligned` en
+    clip_quality_issues y Líneas del transcript completo disponibles,
+    `starts_capitalized` se calcula sobre la Línea cuyo inicio coincide con
+    el del clip (±0,6 s — `content_results.start_time` se persiste como
+    `integer`, medio segundo de redondeo antes de cualquier imprecisión
+    real del corte), no sobre la re-transcripción Whisper aislada del clip.
     """
 
     LINES = [
@@ -230,7 +232,7 @@ class TestCapitalizacionPorLinea:
 
         c = build_e2e_clip_record(
             VIDEO,
-            [_row(1, start_time=100.5, clip_quality_issues=["line_aligned"])],  # 0.45s de la Línea id=1, fuera de ±0.3
+            [_row(1, start_time=100.8, clip_quality_issues=["line_aligned"])],  # 0.75s de la Línea id=1, fuera de ±0.6
             lines=self.LINES,
         )
         assert c["starts_capitalized"] == c["starts_capitalized_whisper"]
@@ -238,7 +240,20 @@ class TestCapitalizacionPorLinea:
     def test_match_justo_en_el_borde_de_tolerancia(self):
         from eval_metrics import find_line_at_start
 
-        line = find_line_at_start(self.LINES, 100.35)  # exactamente 0.3s de la Línea id=1 (100.05)
+        line = find_line_at_start(self.LINES, 100.64)  # 0.59s de la Línea id=1 (100.05), dentro de ±0.6
+        assert line is not None and line["id"] == 1
+
+    def test_fuera_del_borde_de_tolerancia_no_matchea(self):
+        from eval_metrics import find_line_at_start
+
+        line = find_line_at_start(self.LINES, 100.7)  # 0.65s, apenas fuera de ±0.6
+        assert line is None
+
+    def test_dentro_de_la_vieja_tolerancia_0_3_sigue_matcheando(self):
+        """La tolerancia subió, no bajó: lo que matcheaba con ±0,3s sigue matcheando."""
+        from eval_metrics import find_line_at_start
+
+        line = find_line_at_start(self.LINES, 100.3)  # 0.25s de la Línea id=1
         assert line is not None and line["id"] == 1
 
     def test_find_line_at_start_sin_lineas_o_sin_start_time(self):

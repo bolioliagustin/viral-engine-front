@@ -224,17 +224,14 @@ def clip_starts_capitalized(first_words: list[str]) -> bool | None:
 # mayúscula de la Línea del TRANSCRIPT COMPLETO (W4, TRANSCRIPT_SOURCE=
 # whisper_full) que decidió el corte, no la re-transcripción aislada.
 #
-# Tolerancia pedida: ±0,3 s. Medido al recalcular 2026-09-20-integracion-
-# fase0.json: `content_results.start_time` es `integer` en el esquema (ver
-# supabase/migrations/20260708000000_remote_schema.sql), así que el float
-# real del corte (ej. Línea en 224.51s) llega redondeado (225) — hasta ~0,5s
-# de error de por sí, antes de cualquier imprecisión del propio corte. Con
-# ±0,3s, 17/27 clips `line_aligned` matchean una Línea (63%); 8 más caen en
-# la ventana (0,3s, 0,6s] — casi seguro el mismo redondeo, no un corte mal
-# alineado — y subirían el match a 25/27 (93%) con ±0,6s. Se deja en 0,3s
-# tal como se pidió; ensancharla es una decisión de quien lea esto, no algo
-# que se decidió acá.
-LINE_START_TOLERANCE_SEC = 0.3
+# Tolerancia (INT-5): `content_results.start_time` se persiste como
+# `integer` (supabase/migrations/20260708000000_remote_schema.sql); medio
+# segundo de redondeo antes de cualquier imprecisión real del corte, así
+# que ±0,3s no puede matchear más de la mitad de los casos por
+# construcción — medido en 2026-09-20-integracion-fase0.json: 17/27 (63%)
+# con ±0,3s, 25/27 (93%) con ±0,6s (8 casos caían justo en la ventana
+# 0,3-0,6s, todos por el mismo redondeo). Subida a 0,6s en INT-5.
+LINE_START_TOLERANCE_SEC = 0.6
 
 
 def find_line_at_start(lines: list[dict] | None, start_time: float | None, tolerance: float = LINE_START_TOLERANCE_SEC) -> dict | None:

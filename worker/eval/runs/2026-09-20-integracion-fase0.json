@@ -12,7 +12,7 @@
   "verification_failed_rate": 0.0,
   "late_hook_rate": 0.2069,
   "whisper_mismatch_last_rate": 0.0,
-  "capitalized_start_rate": 0.7241,
+  "capitalized_start_rate": 0.931,
   "density_out_of_range_rate": 0.0,
   "duration_chosen_avg": 52.552,
   "duration_final_avg": 56.267,
@@ -58,7 +58,7 @@
             "1000",
             "dólares."
           ],
-          "starts_capitalized": false,
+          "starts_capitalized": true,
           "words_per_sec": 3.402,
           "density_out_of_range": false,
           "sub_coverage": 1.0,
@@ -121,7 +121,7 @@
             "hacerlo",
             "bien."
           ],
-          "starts_capitalized": false,
+          "starts_capitalized": true,
           "words_per_sec": 3.712,
           "density_out_of_range": false,
           "sub_coverage": 1.0,
@@ -184,7 +184,7 @@
             "que",
             "necesites."
           ],
-          "starts_capitalized": false,
+          "starts_capitalized": true,
           "words_per_sec": 3.395,
           "density_out_of_range": false,
           "sub_coverage": 1.0,
@@ -1031,7 +1031,7 @@
             "ser",
             "contagioso."
           ],
-          "starts_capitalized": false,
+          "starts_capitalized": true,
           "words_per_sec": 2.651,
           "density_out_of_range": false,
           "sub_coverage": 1.0,
@@ -1376,7 +1376,7 @@
             "permiso.",
             "Para"
           ],
-          "starts_capitalized": false,
+          "starts_capitalized": true,
           "words_per_sec": 3.559,
           "density_out_of_range": false,
           "sub_coverage": 1.0,
@@ -1503,7 +1503,7 @@
             "tienda",
             "online."
           ],
-          "starts_capitalized": false,
+          "starts_capitalized": true,
           "words_per_sec": 3.581,
           "density_out_of_range": false,
           "sub_coverage": 1.0,
