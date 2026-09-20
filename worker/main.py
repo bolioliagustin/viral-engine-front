@@ -1978,6 +1978,53 @@ def _annotate_candidates_all_with_judge(
         print(f"   ⚠️ No se pudo anotar candidates_all con las notas del juez (no fatal): {e}")
 
 
+def _finalize_job_outcome(
+    *,
+    job_id: str,
+    video_url: str,
+    user_id: str | None,
+    supabase,
+    clips_rendered_count: int,
+    total_moments: int,
+) -> None:
+    """
+    W9-B (docs/PLAN_CALIDAD.md §9 W9): decide si el job termina `completed`
+    o `failed`, y descuenta el crédito solo en el primer caso.
+
+    "Job" en CONTEXT.md es exitoso si al menos un momento tiene clip; si
+    ninguno lo tiene, falla y devuelve el crédito. Antes de esto, un job
+    sin clips reales (pero sin excepción) quedaba `completed` sin devolver
+    el crédito reservado — F1 lo dejó como nota pendiente explícita en
+    supabase/migrations/20260919040620_creditos_reservados.sql: el trigger
+    `release_credit_on_job_failed` solo dispara con `status='failed'`.
+    """
+    if clips_rendered_count == 0:
+        print(f"\n❌ Job {job_id} sin clips viables ({total_moments} momentos evaluados, 0 con clip real)")
+        print(
+            "   Descarga falló (403 googlevideo). Revisa en Render: "
+            "WEBSHARE_PROXY_FILE, RAPIDAPI_KEY, o activa YTDLP_CLIP_FALLBACK=true"
+        )
+        # No se descuenta crédito: update_job_error dispara el trigger que
+        # libera la reserva de F1 (release_credit_on_job_failed).
+        update_job_error(job_id, "sin clips viables")
+        return
+
+    update_job_status(job_id, "completed")
+    print(f"\n✅ Job {job_id} completed successfully!")
+    print(f"   {clips_rendered_count}/{total_moments} clips MP4 + content for {total_moments} moments")
+    # Deduct credits (Sprint 3) — no-op si ya se descontó por credit_reserved
+    # (F1, deduct_user_credit redefinido como idempotente en la migración
+    # creditos_reservados).
+    if user_id and supabase:
+        try:
+            print(f"💰 Deducting credit for user {user_id}...")
+            from services.supabase_client import deduct_credit
+            deduct_credit(user_id, job_id, video_url)
+            print(f"✅ Credit deducted successfully")
+        except Exception as e:
+            print(f"⚠️ Failed to deduct credit: {e}")
+
+
 def process_job(job_data: dict) -> None:
     """
     Process a single job: download, analyze, clip, upload, save results.
@@ -2376,29 +2423,16 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             ):
                 clips_rendered_count += 1
 
-        # Update status to completed
-        update_job_progress(job_id, current_step="completed", progress_percentage=100)
-        update_job_status(job_id, "completed")
         total_moments = len(result.viral_moments)
-        if clips_rendered_count == 0:
-            print(f"\n⚠️ Job {job_id} completado SIN clips MP4 ({total_moments} momentos → fallback YouTube)")
-            print(
-                "   Descarga falló (403 googlevideo). Revisa en Render: "
-                "WEBSHARE_PROXY_FILE, RAPIDAPI_KEY, o activa YTDLP_CLIP_FALLBACK=true"
-            )
-        else:
-            print(f"\n✅ Job {job_id} completed successfully!")
-            print(f"   {clips_rendered_count}/{total_moments} clips MP4 + content for {total_moments} moments")
-        # Deduct credits (Sprint 3)
-        user_id = job_data.get("userId")
-        if user_id and supabase:
-            try:
-                print(f"💰 Deducting credit for user {user_id}...")
-                from services.supabase_client import deduct_credit
-                deduct_credit(user_id, job_id, video_url)
-                print(f"✅ Credit deducted successfully")
-            except Exception as e:
-                print(f"⚠️ Failed to deduct credit: {e}")
+        update_job_progress(job_id, current_step="completed", progress_percentage=100)
+        _finalize_job_outcome(
+            job_id=job_id,
+            video_url=video_url,
+            user_id=job_data.get("userId"),
+            supabase=supabase,
+            clips_rendered_count=clips_rendered_count,
+            total_moments=total_moments,
+        )
         
     except Exception as e:
         print(f"\n❌ Job {job_id} failed: {str(e)}")
