@@ -1,0 +1,1050 @@
+{
+  "videos_evaluated": 4,
+  "videos_ok": 3,
+  "clips_total": 15,
+  "clips_judged": 15,
+  "clips_rendered_rate": 1.0,
+  "judge_hook_avg": 6.0,
+  "judge_retention_avg": 5.8,
+  "judge_shareability_avg": 5.733,
+  "judge_avg": 5.844,
+  "judge_all_ge7_rate": 0.0,
+  "verification_failed_rate": 0.0667,
+  "late_hook_rate": 0.0,
+  "whisper_mismatch_last_rate": 0.0,
+  "capitalized_start_rate": 0.5333,
+  "density_out_of_range_rate": 0.0,
+  "duration_chosen_avg": 56.4,
+  "duration_final_avg": 58.248,
+  "total_cost_usd": 0.3191,
+  "total_seconds": 1222.5,
+  "results": [
+    {
+      "id": "business_spanish_01",
+      "youtube_id": "Lqq78q17jDY",
+      "job_id": "9ba89484-bae7-420d-9ba7-db47f8e1512e",
+      "ok": true,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 1,
+          "start_time": 56,
+          "end_time": 119,
+          "duration_chosen_sec": 63.0,
+          "duration_final_sec": 58.01,
+          "snap_trim_start": 5.55,
+          "first_words": [
+            "artificial",
+            "está",
+            "fragmentando",
+            "en",
+            "dos",
+            "a",
+            "la",
+            "sociedad.",
+            "Por",
+            "un"
+          ],
+          "last_words": [
+            "mi",
+            "punto",
+            "de",
+            "vista,",
+            "quien",
+            "entiende",
+            "esto,",
+            "gana."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 2.999,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "hook_not_found",
+            "whisper_mismatch_first"
+          ],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 7,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El arranque engancha con una tesis contraintuitiva y polarizante, y el overlay refuerza el conflicto (“te mienten con la…”), aunque llega un poco de contexto antes de que quede totalmente claro el punto. Mantiene el interés con una estructura de dos grupos y un cierre tipo “quien entiende esto, gana”, pero hay varias repeticiones/longitudes y el remate final no es tan nítido como para sostener máxima tensión; es compartible por su postura y utilidad/posicionamiento, aunque suena a opinión genera"
+          },
+          "judge_all_ge7": false,
+          "hook": "La inteligencia artificial está fragmentando en dos a la sociedad. ¿Te estás tragando el discurso del miedo o estás en el grupo que va a ganar?",
+          "viral_overlay": "TE MIENTEN CON LA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://9ba89484-bae7-420d-9ba7-db47f8e1512e/1.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 2,
+          "start_time": 170,
+          "end_time": 224,
+          "duration_chosen_sec": 54.0,
+          "duration_final_sec": 54.24,
+          "snap_trim_start": 0.4,
+          "first_words": [
+            "Dicho",
+            "esto,",
+            "las",
+            "10",
+            "skills",
+            "que",
+            "recibirás",
+            "hoy",
+            "son,",
+            "primero"
+          ],
+          "last_words": [
+            "lo",
+            "contaré",
+            "un",
+            "par",
+            "de",
+            "minutos",
+            "más",
+            "adelante."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 3.816,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 5,
+            "shareability": 6,
+            "reasoning": "El hook promete un resultado atractivo (web tipo Apple, precios >900€) pero llega tarde en forma de afirmación y no plantea una tensión clara con prueba inmediata. Mantiene atención con una lista de “skills” y precios, aunque hay relleno (explicaciones generales, “dicho esto…”, “lo contaré más adelante”) y el remate queda difuso al final del fragmento."
+          },
+          "judge_all_ge7": false,
+          "hook": "La habilidad para crear webs interactivas estilo Apple que se venden por más de 900 euros de forma 100% automática.",
+          "viral_overlay": "WEBS DE 2000 EUROS",
+          "clip_rendered": true,
+          "clip_url": "dryrun://9ba89484-bae7-420d-9ba7-db47f8e1512e/2.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 3,
+          "start_time": 225,
+          "end_time": 257,
+          "duration_chosen_sec": 32.0,
+          "duration_final_sec": 32.04,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "tenemos",
+            "otra",
+            "skill",
+            "que",
+            "es",
+            "para",
+            "crear",
+            "también",
+            "páginas",
+            "webs,"
+          ],
+          "last_words": [
+            "vender",
+            "con",
+            "facilidad",
+            "entre",
+            "200",
+            "a",
+            "1000",
+            "dólares."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.402,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 9,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 5,
+            "shareability": 6,
+            "reasoning": "Hook claro y específico desde el inicio (cómo crear webs usando solo Instagram), pero no es contraintuitivo y llega directo sin gran tensión. Mantiene la idea hasta el final con datos (200-1000 USD), aunque hay repetición/relleno (“otra skill… también…”) y el ritmo cae en medio; es compartible por ser una propuesta de negocio concreta y vendible."
+          },
+          "judge_all_ge7": false,
+          "hook": "Cómo crear una página web completa de marca personal utilizando únicamente el perfil de Instagram de cualquier creador de contenido.",
+          "viral_overlay": "WEB SOLO CON INSTAGRAM",
+          "clip_rendered": true,
+          "clip_url": "dryrun://9ba89484-bae7-420d-9ba7-db47f8e1512e/3.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 4,
+          "start_time": 395,
+          "end_time": 467,
+          "duration_chosen_sec": 72.0,
+          "duration_final_sec": 72.04,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "tenemos",
+            "una",
+            "de",
+            "las",
+            "skills",
+            "de",
+            "mis",
+            "skills",
+            "favoritas,",
+            "que"
+          ],
+          "last_words": [
+            "hace",
+            "esta",
+            "skill",
+            "que",
+            "también",
+            "vas",
+            "a",
+            "obtener."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.345,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 5,
+            "shareability": 6,
+            "reasoning": "El hook promete una afirmación fuerte sobre que “la IA crea automatizaciones por ellos”, pero el clip tarda en llegar a esa idea y arranca con contexto/defensa (N8N vs Claude Code). Mantiene una explicación clara y con cierre comercial, aunque hay pausas y reiteraciones (“ya no se escucha tanto”, “ya no es tendencia”) que bajan la tensión; la compartibilidad es buena por el ángulo práctico/realista (cómo se usa hoy), pero no es un dato altamente sorprendente ni universal."
+          },
+          "judge_all_ge7": false,
+          "hook": "La verdad oculta sobre N8N: los equipos técnicos ya no crean las automatizaciones desde cero, ahora lo hace la IA por ellos.",
+          "viral_overlay": "EL SECRETO DE N8N",
+          "clip_rendered": true,
+          "clip_url": "dryrun://9ba89484-bae7-420d-9ba7-db47f8e1512e/4.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 5,
+          "start_time": 581,
+          "end_time": 627,
+          "duration_chosen_sec": 46.0,
+          "duration_final_sec": 45.78,
+          "snap_trim_start": 0.62,
+          "first_words": [
+            "tenemos",
+            "una",
+            "skill",
+            "que",
+            "literalmente",
+            "se",
+            "utiliza",
+            "para",
+            "prospectar",
+            "y"
+          ],
+          "last_words": [
+            "vender",
+            "de",
+            "400",
+            "a",
+            "900",
+            "euros",
+            "como",
+            "mínimo."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.32,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 4,
+            "retention": 5,
+            "shareability": 3,
+            "reasoning": "El hook es llamativo pero suena a promesa riesgosa/“demasiado buena” y tarda en aterrizar en qué es exactamente la skill; además hay afirmaciones sobre “legal” sin explicar el porqué. Mantiene la atención con ejemplos y precio, pero tiene momentos de relleno y repite ideas, y no hay un remate claro; además la propuesta de scraping/leads masivos es genérica y genera poca razón social para compartir."
+          },
+          "judge_all_ge7": false,
+          "hook": "La habilidad que te permite descargar bases de datos completas de clientes potenciales en Madrid de forma automática, legal y venderlas por hasta 900 euros.",
+          "viral_overlay": "LEADS MASIVOS EN SEGUNDOS",
+          "clip_rendered": true,
+          "clip_url": "dryrun://9ba89484-bae7-420d-9ba7-db47f8e1512e/5.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        }
+      ],
+      "clips_count": 5,
+      "clips_rendered": 5,
+      "cost_usd": 0.131513,
+      "cost_by_task": {
+        "transcript_full": 0.006722,
+        "classifier": 0.0,
+        "analysis": 0.077201,
+        "download": 0.0,
+        "whisper": 0.007702,
+        "judge": 0.00372,
+        "copy": 0.036168
+      },
+      "elapsed_sec": 326.9,
+      "errors": [],
+      "video_title": "La Forma Más Fácil De Ganar Dinero Con Claude",
+      "whisper_seconds": 1298.217,
+      "whisper_provider": "groq"
+    },
+    {
+      "id": "podcast_general_01",
+      "youtube_id": "XxoVRjTySsM",
+      "job_id": "98aa083c-58de-45fc-ba08-f0d30c97ff83",
+      "ok": true,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 1,
+          "start_time": 537,
+          "end_time": 608,
+          "duration_chosen_sec": 71.0,
+          "duration_final_sec": 80.62,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Y",
+            "dentro",
+            "de",
+            "estos",
+            "americanos,",
+            "la",
+            "estrella,",
+            "la",
+            "estrella",
+            "es"
+          ],
+          "last_words": [
+            "persona.",
+            "Y",
+            "es",
+            "el",
+            "que",
+            "nos",
+            "ha",
+            "tocado."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.803,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 7,
+            "shareability": 6,
+            "reasoning": "El inicio tiene una afirmación fuerte sobre transmisión persona a persona (funciona como gancho), aunque el transcript arranca con contexto (“americanos… en este barco”) y tarda en llegar a la idea clave. La explicación se mantiene clara hasta el final y no hay cortes a mitad de frase, pero queda algo repetitivo (“virus Andes”) y sin un remate social inmediato; aun así es un dato sanitario curioso y compartible."
+          },
+          "judge_all_ge7": false,
+          "hook": "La mayoría de los hantavirus mueren en el primer humano que contagian, pero la cepa Andes es la única que puede transmitirse de persona a persona.",
+          "viral_overlay": "EL VIRUS SIN LÍMITES",
+          "clip_rendered": true,
+          "clip_url": "dryrun://98aa083c-58de-45fc-ba08-f0d30c97ff83/1.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 2,
+          "start_time": 981,
+          "end_time": 1030,
+          "duration_chosen_sec": 49.0,
+          "duration_final_sec": 49.56,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "La",
+            "potencialidad",
+            "de",
+            "y",
+            "ahí",
+            "vamos",
+            "a",
+            "la",
+            "potencialidad",
+            "de"
+          ],
+          "last_words": [
+            "¿A",
+            "cuántas",
+            "personas",
+            "de",
+            "mi",
+            "entorno",
+            "puedo",
+            "contagiar?"
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.441,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 5,
+            "shareability": 5,
+            "reasoning": "El hook es fuerte y específico por el overlay, y la afirmación inicial llama la atención, pero la promesa de “un solo dato matemático” tarda en aterrizar. Mantiene una explicación clara con R0, aunque hay redundancias (“potencialidad de y ahí…”, pausas mentales) y el remate no cierra con una conclusión contundente para el final."
+          },
+          "judge_all_ge7": false,
+          "hook": "La probabilidad real de una pandemia por este virus es exactamente cero, y la ciencia lo demuestra con un solo dato matemático.",
+          "viral_overlay": "PROBABILIDAD PANDEMIA CERO",
+          "clip_rendered": true,
+          "clip_url": "dryrun://98aa083c-58de-45fc-ba08-f0d30c97ff83/2.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 3,
+          "start_time": 1192,
+          "end_time": 1264,
+          "duration_chosen_sec": 72.0,
+          "duration_final_sec": 72.04,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "11.",
+            "Aquí",
+            "se",
+            "produjo",
+            "un",
+            "efecto",
+            "que",
+            "llaman",
+            "ellos",
+            "de"
+          ],
+          "last_words": [
+            "personas,",
+            "fallecieron",
+            "11.",
+            "Estamos",
+            "hablando",
+            "de",
+            "un",
+            "33%."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.957,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 7,
+            "retention": 7,
+            "shareability": 7
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 7,
+            "shareability": 6,
+            "reasoning": "El inicio ya es atractivo (súper contagiador + letalidad 33%), pero la primera frase del transcript tarda en concretarse y arranca con rodeos (“variable… tinglao”). Mantiene una explicación clara hasta el final con un remate numérico fuerte (33% y 11 fallecidos), aunque hay algunos momentos de relleno y cadencia oral. Es compartible por el dato/idea útil y preocupante, pero no tiene un gancho “estatus” o utilidad inmediata más allá del aprendizaje."
+          },
+          "judge_all_ge7": false,
+          "hook": "El peligro de las medias estadísticas: cómo un único súper contagiador en una fiesta desató un brote con un 33% de letalidad.",
+          "viral_overlay": "EL EFECTO SÚPER CONTAGIO",
+          "clip_rendered": true,
+          "clip_url": "dryrun://98aa083c-58de-45fc-ba08-f0d30c97ff83/3.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 4,
+          "start_time": 2425,
+          "end_time": 2476,
+          "duration_chosen_sec": 51.0,
+          "duration_final_sec": 66.2,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "En",
+            "cualquier",
+            "infección",
+            "siempre",
+            "es",
+            "el",
+            "miedo",
+            "que",
+            "haya",
+            "una"
+          ],
+          "last_words": [
+            "de",
+            "lo",
+            "mismo,",
+            "entre",
+            "el",
+            "30",
+            "y",
+            "el"
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.825,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 5,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El hook del overlay es atractivo pero el transcript arranca con contexto y cautela (“En cualquier infección…”) que tarda en llegar al punto; aun así la idea de trade-off letalidad/infecciosidad engancha. La retención es sólida por explicación lógica y ejemplo, aunque el final queda truncado/corte (“entre el 30 y el”). Es compartible por ser una explicación “verdad incómoda” pero no llega a remate o dato redondo que dispare el “estatus” de compartir."
+          },
+          "judge_all_ge7": false,
+          "hook": "La ley de la naturaleza que impide que exista un virus ultra letal y súper contagioso al mismo tiempo.",
+          "viral_overlay": "LA LEY INVISIBLE",
+          "clip_rendered": true,
+          "clip_url": "dryrun://98aa083c-58de-45fc-ba08-f0d30c97ff83/4.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 5,
+          "start_time": 3552,
+          "end_time": 3645,
+          "duration_chosen_sec": 93.0,
+          "duration_final_sec": 93.28,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "estamos",
+            "viendo",
+            "uno",
+            "que",
+            "viene",
+            "de",
+            "unas",
+            "ratitas,",
+            "pero",
+            "la"
+          ],
+          "last_words": [
+            "vacunas",
+            "por",
+            "si",
+            "se",
+            "llegara",
+            "eventualmente",
+            "esa",
+            "situación."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 2.787,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 7
+          },
+          "score_judge": {
+            "hook": 5,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El inicio es informativo y menciona gripe aviar y mutación con vacunación, pero tarda en llegar la “amenaza” concreta y arranca con introducción (“venía de unas ratitas”). Mantiene una explicación coherente hasta el final, aunque hay desvíos y algunas frases largas; es bastante compartible por el tema alarmante, pero no aporta un dato/sorpresa accionable tipo “estatus” para viralizar."
+          },
+          "judge_all_ge7": false,
+          "hook": "La gripe aviar ya está saltando a mamíferos y los científicos preparan vacunas de emergencia ante una mutación súper mortal de transmisión entre humanos.",
+          "viral_overlay": "LA AMENAZA SÚPER MORTAL",
+          "clip_rendered": true,
+          "clip_url": "dryrun://98aa083c-58de-45fc-ba08-f0d30c97ff83/5.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        }
+      ],
+      "clips_count": 5,
+      "clips_rendered": 5,
+      "cost_usd": 0.049862,
+      "cost_by_task": {
+        "transcript_full": 0.0,
+        "analysis": 0.0,
+        "download": 0.0,
+        "whisper": 0.009013,
+        "judge": 0.00382,
+        "copy": 0.037029
+      },
+      "elapsed_sec": 264.7,
+      "errors": [],
+      "video_title": "The Wild Project #373 - Alfredo Corell | TODA la VERDAD sobre el HANTAVIRUS, ¿Próxima pandemia?",
+      "whisper_seconds": 811.272,
+      "whisper_provider": "groq"
+    },
+    {
+      "id": "claude_hacks_regression_01",
+      "youtube_id": "KXKzgeHOr7A",
+      "job_id": "fdeda3fa-56c7-49c1-a020-5022dbb35e4d",
+      "ok": true,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 1,
+          "start_time": 249,
+          "end_time": 295,
+          "duration_chosen_sec": 46.0,
+          "duration_final_sec": 46.92,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Dicho",
+            "esto,",
+            "vamos",
+            "a",
+            "por",
+            "el",
+            "hack",
+            "número",
+            "uno,",
+            "que"
+          ],
+          "last_words": [
+            "página",
+            "web",
+            "o",
+            "otra",
+            "cosa,",
+            "con",
+            "esa",
+            "referencia."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 3.581,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El hook promete un “hack definitivo” y contextualiza rápido con la idea de pedirle a la IA una web desde una imagen, pero tarda en aterrizar en el “cómo” concreto. La explicación es completa hasta el final, aunque tiene varias pausas/ejemplos y relleno (“no sabemos explicar qué es…”, lista de dudas) y el overlay es genérico (“DISEÑA CON UNA CAPTURA”), reduciendo impacto; es compartible por utilidad práctica pero no alcanza estatus/virabilidad extrema."
+          },
+          "judge_all_ge7": false,
+          "hook": "El hack definitivo para crear páginas web enviándole una sola imagen de referencia a la IA y dejando que construya por ti.",
+          "viral_overlay": "DISEÑA CON UNA CAPTURA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://fdeda3fa-56c7-49c1-a020-5022dbb35e4d/1.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 2,
+          "start_time": 478,
+          "end_time": 522,
+          "duration_chosen_sec": 44.0,
+          "duration_final_sec": 49.8,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "probar",
+            "esta",
+            "funcionalidad",
+            "lo",
+            "que",
+            "hice",
+            "es",
+            "que",
+            "le",
+            "pedí"
+          ],
+          "last_words": [
+            "preguntando",
+            "cada",
+            "vez",
+            "cuando",
+            "necesita",
+            "hacer",
+            "algo.",
+            "para"
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.574,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 7,
+            "retention": 7,
+            "shareability": 6,
+            "reasoning": "El inicio con “me levanté… por 30 minutos” engancha por la promesa de automatización, aunque tarda en explicar qué hizo y cómo. El clip mantiene una idea clara hasta el final (resultado + ejemplo), pero hay partes de relleno (“para que se entienda”, “pero bueno”) y el overlay/“TRABAJA SIN TI” aporta más eslogan que datos concretos para compartirlo masivamente."
+          },
+          "judge_all_ge7": false,
+          "hook": "Le pedí a la IA que arreglara la web, añadiera páginas y creara la versión móvil... y me levanté de la silla por 30 minutos para ver si podía terminar el trabajo sola.",
+          "viral_overlay": "TRABAJA SIN TI",
+          "clip_rendered": true,
+          "clip_url": "dryrun://fdeda3fa-56c7-49c1-a020-5022dbb35e4d/2.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 3,
+          "start_time": 656,
+          "end_time": 706,
+          "duration_chosen_sec": 50.0,
+          "duration_final_sec": 50.06,
+          "snap_trim_start": 0.02,
+          "first_words": [
+            "Nosotros",
+            "podemos",
+            "conectar",
+            "Claude",
+            "Code",
+            "con",
+            "Shopify",
+            "para",
+            "que",
+            "nos"
+          ],
+          "last_words": [
+            "y",
+            "exclusivamente",
+            "con",
+            "Claude",
+            "Code",
+            "conectado",
+            "con",
+            "Shopify."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 3.336,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 7,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El hook promete “lista para vender sin hacer absolutamente nada” y suena directo/beneficioso, pero el clip tarda en justificar el proceso y hay repetición (“web. web.” y muletillas). Se entiende el ejemplo y el cierre (todo creado con Claude Code + Shopify), aunque el desarrollo es bastante demostrativo y con momentos flojos, y no deja un dato realmente “compartible” más allá de la utilidad general."
+          },
+          "judge_all_ge7": false,
+          "hook": "Cómo conectamos Claude Code con Shopify para crear una tienda online profesional y lista para vender sin hacer absolutamente nada.",
+          "viral_overlay": "TIENDA IA EN AUTOMÁTICO",
+          "clip_rendered": true,
+          "clip_url": "dryrun://fdeda3fa-56c7-49c1-a020-5022dbb35e4d/3.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 4,
+          "start_time": 708,
+          "end_time": 762,
+          "duration_chosen_sec": 54.0,
+          "duration_final_sec": 53.56,
+          "snap_trim_start": 0.64,
+          "first_words": [
+            "crear",
+            "esta",
+            "tienda,",
+            "lo",
+            "primero",
+            "que",
+            "hicimos",
+            "fue",
+            "crearnos",
+            "una"
+          ],
+          "last_words": [
+            "todo",
+            "y",
+            "que",
+            "me",
+            "molestase",
+            "lo",
+            "mínimo",
+            "posible."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.529,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 7
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El hook promete un “truco” claro y automático, pero el transcript arranca ya en el proceso básico (crear cuenta en Shopify) y tarda en llegar a la idea central de la skill. La explicación es bastante completa y mantiene el hilo hasta el final (skill, indicaciones, tema oscuro, imágenes y textos), aunque hay un tropiezo (“cutre”/tienda básica) y faltan resultados o prueba del resultado para elevar el remate."
+          },
+          "judge_all_ge7": false,
+          "hook": "El truco de las 'Skills' para que Claude cree tu tienda de Shopify con fondo oscuro, imágenes de OpenAI y textos automatizados sin que muevas un dedo.",
+          "viral_overlay": "TIENDA CON CLAUDE",
+          "clip_rendered": true,
+          "clip_url": "dryrun://fdeda3fa-56c7-49c1-a020-5022dbb35e4d/4.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 5,
+          "start_time": 819,
+          "end_time": 868,
+          "duration_chosen_sec": 49.0,
+          "duration_final_sec": 49.57,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Vamos",
+            "ahora",
+            "por",
+            "el",
+            "hack",
+            "número",
+            "4,",
+            "que",
+            "consiste",
+            "en"
+          ],
+          "last_words": [
+            "le",
+            "estaremos",
+            "pidiendo",
+            "proyectos",
+            "que",
+            "sean",
+            "relativamente",
+            "simples."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 3.349,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 7,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 7,
+            "retention": 5,
+            "shareability": 6,
+            "reasoning": "El hook promete un beneficio claro (no repetir instrucciones) y engancha rápido, aunque llega tarde a través de la explicación del “hack 4”. Retiene con una explicación concreta de cloud.md, pero hay partes divagantes (por qué ocurre y “inteligentes artificial”) y el final se queda sin remate; el clip es útil para gente que usa Claude pero no tiene el nivel de sorpresa/urgencia para compartirlo masivamente."
+          },
+          "judge_all_ge7": false,
+          "hook": "El hack definitivo para darle contexto a tu IA una única vez y que no tengas que repetirle tus instrucciones nunca más.",
+          "viral_overlay": "MEMORIA INFINITA DE IA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://fdeda3fa-56c7-49c1-a020-5022dbb35e4d/5.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        }
+      ],
+      "clips_count": 5,
+      "clips_rendered": 5,
+      "cost_usd": 0.137686,
+      "cost_by_task": {
+        "transcript_full": 0.006722,
+        "classifier": 0.0,
+        "analysis": 0.083973,
+        "download": 0.0,
+        "whisper": 0.007858,
+        "judge": 0.003729,
+        "copy": 0.035404
+      },
+      "elapsed_sec": 279.8,
+      "errors": [],
+      "video_title": "Estos Hacks De Claude Te Harán Tan Productivo Que Parece Ilegal",
+      "whisper_seconds": 1312.22,
+      "whisper_provider": "groq"
+    },
+    {
+      "id": "user_recommended_01",
+      "youtube_id": "MaXgAEI4Vm8",
+      "job_id": "864ad3b4-25eb-4a01-ad65-36b85183e59d",
+      "ok": false,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [],
+      "clips_count": 0,
+      "clips_rendered": 0,
+      "cost_usd": 0.131875,
+      "cost_by_task": {
+        "transcript_full": 0.006722,
+        "classifier": 0.0,
+        "analysis": 0.1122,
+        "download": 0.0,
+        "whisper": 0.009137,
+        "judge": 0.003816
+      },
+      "elapsed_sec": 351.1,
+      "errors": [],
+      "video_title": "CANCIONES DE MUNDIALES Y LOS VIEJOS JUEGAN AL POOL | #ParenLaMano Completo - 07/05 | VORTERIX",
+      "whisper_seconds": 1427.243,
+      "whisper_provider": "groq"
+    }
+  ],
+  "tier": "e2e",
+  "models": {
+    "analysis": "google/gemini-3.5-flash",
+    "copy": "google/gemini-3.5-flash",
+    "judge": "openai/gpt-5.4-nano",
+    "classifier": "google/gemini-2.5-flash-lite"
+  },
+  "prompt_version": "v6",
+  "run_at": "2026-09-18T23:40:33+00:00",
+  "git_commit": "97145f8",
+  "wall_seconds": 1223.4,
+  "failures": [
+    "1 video(s) fallaron la evaluación",
+    "judge_avg=5.84 < 7.0 (judge_avg_min)",
+    "judge_all_ge7_rate=0.00 < 0.6 (judge_all_ge7_rate_min)",
+    "capitalized_start_rate=0.53 < 0.9 (capitalized_start_rate_min)"
+  ],
+  "passed": false,
+  "thresholds_blocking": false
+}

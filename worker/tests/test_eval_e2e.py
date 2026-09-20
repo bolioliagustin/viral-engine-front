@@ -154,6 +154,198 @@ class TestClipRecord:
         assert c["starts_capitalized"] is False  # primer alfa: "y"
         assert c["density_out_of_range"] is True
 
+    def test_starts_capitalized_whisper_siempre_presente(self):
+        """El campo viejo se conserva siempre, con o sin Líneas."""
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(VIDEO, [_row(4)])
+        assert c["starts_capitalized_whisper"] is True
+        assert c["starts_capitalized"] == c["starts_capitalized_whisper"]  # sin line_aligned, iguales
+
+
+class TestCapitalizacionPorLinea:
+    """
+    INT-4/INT-5 (docs/PLAN_CALIDAD.md §9): con `line_aligned` en
+    clip_quality_issues y Líneas del transcript completo disponibles,
+    `starts_capitalized` se calcula sobre la Línea cuyo inicio coincide con
+    el del clip (±0,6 s — `content_results.start_time` se persiste como
+    `integer`, medio segundo de redondeo antes de cualquier imprecisión
+    real del corte), no sobre la re-transcripción Whisper aislada del clip.
+    """
+
+    LINES = [
+        {"id": 0, "start": 0.0, "end": 5.0, "text": "minúscula a propósito para el test."},
+        {"id": 1, "start": 100.05, "end": 134.2, "text": "Mayúscula real de la Línea completa."},
+        {"id": 2, "start": 200.0, "end": 210.0, "text": "otra línea en minúscula."},
+    ]
+
+    def test_usa_la_linea_cuando_hay_line_aligned_y_match(self):
+        from eval_metrics import build_e2e_clip_record
+
+        # whisper_words (re-transcripción aislada) dice minúscula, pero la
+        # Línea real (con el contexto de la oración anterior) arranca en
+        # mayúscula: el valor nuevo tiene que divergir del viejo.
+        c = build_e2e_clip_record(
+            VIDEO,
+            [_row(
+                1, start_time=100, clip_quality_issues=["line_aligned"],
+                whisper_words={"words": [{"word": "luego"}, {"word": "tenemos"}], "duration_sec": 34.0},
+            )],
+            lines=self.LINES,
+        )
+        assert c["starts_capitalized_whisper"] is False  # "luego" en minúscula
+        assert c["starts_capitalized"] is True  # la Línea (id=1) arranca en mayúscula
+
+    def test_linea_en_minuscula_pisa_un_whisper_en_mayuscula(self):
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(
+            VIDEO,
+            [_row(3, start_time=200, clip_quality_issues=["line_aligned"])],  # whisper dice "Hola..." (mayúscula)
+            lines=self.LINES,
+        )
+        assert c["starts_capitalized_whisper"] is True
+        assert c["starts_capitalized"] is False  # la Línea real (id=2) está en minúscula
+
+    def test_sin_line_aligned_no_usa_la_linea_aunque_haya_match(self):
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(
+            VIDEO,
+            [_row(3, start_time=200, clip_quality_issues=[])],  # sin el flag
+            lines=self.LINES,
+        )
+        assert c["starts_capitalized"] == c["starts_capitalized_whisper"]
+
+    def test_sin_lineas_degrada_a_la_metrica_vieja(self):
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(
+            VIDEO,
+            [_row(1, start_time=100, clip_quality_issues=["line_aligned"])],
+            lines=None,
+        )
+        assert c["starts_capitalized"] == c["starts_capitalized_whisper"]
+
+    def test_sin_match_dentro_de_tolerancia_degrada(self):
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(
+            VIDEO,
+            [_row(1, start_time=100.8, clip_quality_issues=["line_aligned"])],  # 0.75s de la Línea id=1, fuera de ±0.6
+            lines=self.LINES,
+        )
+        assert c["starts_capitalized"] == c["starts_capitalized_whisper"]
+
+    def test_match_justo_en_el_borde_de_tolerancia(self):
+        from eval_metrics import find_line_at_start
+
+        line = find_line_at_start(self.LINES, 100.64)  # 0.59s de la Línea id=1 (100.05), dentro de ±0.6
+        assert line is not None and line["id"] == 1
+
+    def test_fuera_del_borde_de_tolerancia_no_matchea(self):
+        from eval_metrics import find_line_at_start
+
+        line = find_line_at_start(self.LINES, 100.7)  # 0.65s, apenas fuera de ±0.6
+        assert line is None
+
+    def test_dentro_de_la_vieja_tolerancia_0_3_sigue_matcheando(self):
+        """La tolerancia subió, no bajó: lo que matcheaba con ±0,3s sigue matcheando."""
+        from eval_metrics import find_line_at_start
+
+        line = find_line_at_start(self.LINES, 100.3)  # 0.25s de la Línea id=1
+        assert line is not None and line["id"] == 1
+
+    def test_find_line_at_start_sin_lineas_o_sin_start_time(self):
+        from eval_metrics import find_line_at_start
+
+        assert find_line_at_start(None, 100) is None
+        assert find_line_at_start(self.LINES, None) is None
+        assert find_line_at_start([], 100) is None
+
+    def test_line_starts_capitalized_ignora_puntuacion_inicial(self):
+        from eval_metrics import line_starts_capitalized
+
+        assert line_starts_capitalized({"text": "¿Empieza con signo de apertura?"}) is True
+        assert line_starts_capitalized({"text": "123 empieza con número"}) is False
+        assert line_starts_capitalized({"text": ""}) is None
+        assert line_starts_capitalized(None) is None
+
+
+class TestAgregadosNuevos:
+    """INT-4: judge_avg_top5, clips_per_hour, delivered_per_video."""
+
+    @staticmethod
+    def _clip(mi, judge_sum, video_duration_sec=None, **over):
+        per = judge_sum / 3
+        c = {
+            "score_judge": {"hook": per, "retention": per, "shareability": per},
+            "moment_index": mi,
+            "clip_rendered": True,
+            "starts_capitalized": True,
+            "density_out_of_range": False,
+        }
+        c.update(over)
+        return c
+
+    def test_judge_avg_top5_toma_los_5_mejores_por_video(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips_a = [self._clip(i, s) for i, s in enumerate([27, 24, 21, 18, 15, 9, 6], start=1)]
+        clips_b = [self._clip(i, s) for i, s in enumerate([30, 12], start=1)]
+        results = [
+            {"id": "va", "ok": True, "clips": clips_a, "cost_usd": 0.1, "elapsed_sec": 10},
+            {"id": "vb", "ok": True, "clips": clips_b, "cost_usd": 0.1, "elapsed_sec": 10},
+        ]
+        agg = aggregate_e2e_results(results)
+        # top5 de A: 27,24,21,18,15 (sum=105) + los 2 de B: 30,12 (sum=42) -> 7 clips, sum=147
+        # promedio de juez (0-10) = (147/3)/7 = 7.0
+        assert agg["judge_avg_top5"] == 7.0
+
+    def test_clips_per_hour_solo_cuenta_videos_con_duracion_conocida(self):
+        from eval_metrics import aggregate_e2e_results
+
+        results = [
+            {"id": "va", "ok": True, "clips": [self._clip(1, 21)] * 6, "video_duration_sec": 3600, "cost_usd": 0, "elapsed_sec": 0},
+            {"id": "vb", "ok": True, "clips": [self._clip(1, 21)] * 3, "cost_usd": 0, "elapsed_sec": 0},  # sin duración
+        ]
+        agg = aggregate_e2e_results(results)
+        assert agg["clips_per_hour"] == 6.0  # solo va: 6 clips / 1 hora
+
+    def test_clips_per_hour_none_sin_ningun_video_con_duracion(self):
+        from eval_metrics import aggregate_e2e_results
+
+        results = [{"id": "va", "ok": True, "clips": [self._clip(1, 21)], "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["clips_per_hour"] is None
+
+    def test_delivered_per_video_lista_todos_incluidos_los_no_ok(self):
+        from eval_metrics import aggregate_e2e_results
+
+        results = [
+            {"id": "va", "ok": True, "clips": [self._clip(1, 21), self._clip(2, 18)], "cost_usd": 0, "elapsed_sec": 0},
+            {"id": "vb", "ok": False, "clips": [], "cost_usd": 0, "elapsed_sec": 0},
+        ]
+        agg = aggregate_e2e_results(results)
+        assert agg["delivered_per_video"] == [
+            {"video_id": "va", "clips_count": 2},
+            {"video_id": "vb", "clips_count": 0},
+        ]
+
+    def test_capitalized_start_whisper_rate_presente(self):
+        from eval_metrics import aggregate_e2e_results
+
+        results = [{
+            "id": "va", "ok": True, "cost_usd": 0, "elapsed_sec": 0,
+            "clips": [
+                self._clip(1, 21, starts_capitalized=True, starts_capitalized_whisper=False),
+                self._clip(2, 18, starts_capitalized=False, starts_capitalized_whisper=True),
+            ],
+        }]
+        agg = aggregate_e2e_results(results)
+        assert agg["capitalized_start_rate"] == 0.5
+        assert agg["capitalized_start_whisper_rate"] == 0.5
+
 
 def _video_result(vid: str, clips: list[dict], cost=0.05, elapsed=120.0, ok=True) -> dict:
     return {"id": vid, "ok": ok, "clips": clips, "cost_usd": cost, "elapsed_sec": elapsed}
