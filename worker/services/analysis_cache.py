@@ -31,7 +31,15 @@ from services.supabase_client import get_supabase
 #     Pasada A (start_time/end_time SIEMPRE en segundos absolutos, conversión
 #     de marcas [mm:ss]) sin bumpear la versión, por acuerdo: se sube una sola
 #     vez acá, al cerrar la integración de las siete ramas.
-PROMPT_VERSION = "v7"
+# v8: W8-E1 (docs/PLAN_CALIDAD.md §4 W8) — moment_selector.get_selection_prompt:
+#     first_phrase_in_audio tiene que citar desde la PRIMERA palabra de la
+#     oración (conector incluido, el motivo por el que W1-C existe del lado
+#     del pipeline); last_phrase_in_audio explícitamente "el cierre real del
+#     remate"; instrucción de diversidad de temas entre los N candidatos (no
+#     proponer variantes del mismo minuto); "PREFERÍ 40-90s" en vez de "lo
+#     normal es" para podcasts. Formato JSON sin cambios — no hace falta tocar
+#     el parseo, solo invalidar el cache viejo.
+PROMPT_VERSION = "v8"
 
 
 def effective_prompt_version(transcript_source: str | None = None) -> str:

@@ -278,13 +278,13 @@ Identifica los {num_candidates} MEJORES momentos candidatos del video. Sé exige
 REGLAS DE TIMING (CRÍTICAS):
 - Usa EXACTAMENTE los timestamps de la transcripción (no los inventes).
 - start_time y end_time se devuelven SIEMPRE en segundos absolutos desde el inicio del video (un número, sin formato): las marcas del transcript son referencia de lectura, y si alguna viene como [mm:ss] hay que convertirla (mm × 60 + ss).
-- Un momento es una idea completa: planteo, desarrollo y remate. Entre 20 y {CLIP_MAX_DURATION_SEC:.0f} segundos. En podcasts y entrevistas lo normal es 40-90 s; en videos cortos de un solo hablante, 20-60 s. Cortá siempre donde termina una oración.
+- Un momento es una idea completa: planteo, desarrollo y remate — no una frase suelta ni una idea a medias. Entre 20 y {CLIP_MAX_DURATION_SEC:.0f} segundos. En podcasts y entrevistas PREFERÍ 40-90 s (una idea completa casi nunca entra en menos de 40s); en videos cortos de un solo hablante, 20-60 s. Cortá siempre donde termina una oración.
 - El momento debe empezar donde empieza la IDEA (setup) y terminar donde termina (remate). No cortes a mitad de frase.
-- Momentos NO solapados (máximo 20% de overlap entre candidatos).
+- Momentos NO solapados (máximo 20% de overlap entre candidatos) Y de temas distintos entre sí: si dos ideas fuertes están una al lado de la otra hablando de lo mismo, elegí la mejor de las dos y usá el resto de los {num_candidates} candidatos para cubrir OTRAS partes del video. No propongas 5 variantes del mismo minuto.
 
 VERIFICACIÓN ANTI-ALUCINACIÓN (OBLIGATORIA por momento):
-- first_phrase_in_audio: las primeras 5-8 palabras EXACTAS que se dicen en el clip (copiadas de la transcripción).
-- last_phrase_in_audio: las últimas 5-8 palabras EXACTAS del clip. DEBE terminar en . ? o ! (oración completa).
+- first_phrase_in_audio: las primeras 5-8 palabras EXACTAS que se dicen en el clip, empezando por la PRIMERA palabra de la oración — si la oración arranca con un conector ("Entonces", "Bueno", "Y", "Pero", "Ahora", "Mirá"...), el conector va INCLUIDO. No arranques la cita una o dos palabras después del inicio real de la oración.
+- last_phrase_in_audio: las últimas 5-8 palabras EXACTAS del clip. Tiene que ser el CIERRE real del remate (la frase que redondea la idea), no un corte arbitrario — y DEBE terminar en . ? o ! (oración completa).
 - El end_time debe caer al final de un segmento de transcripción con oración completa, NO a mitad de frase.
 - Si no puedes citar las frases exactas con cierre de oración, NO incluyas ese momento.
 
