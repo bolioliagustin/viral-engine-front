@@ -2210,6 +2210,12 @@ def generate_clip(
     overlay_position: str = "top",
     target_width: int = 1080,
     target_height: int = 1920,
+    # W9-B (docs/PLAN_CALIDAD.md §9 W9): el preview liviano de la galería usa
+    # crf 28 (más compresión, menos tiempo/tamaño) en vez del 23 de siempre;
+    # el HD a pedido (clip_edit_processor.py) sigue en 23. `-preset veryfast`
+    # ya era el de siempre en las dos pasadas de FFmpeg de más abajo, no es
+    # nuevo de W9-B.
+    crf: int = 23,
     # W5 (docs/PLAN_CALIDAD.md §9 Fase 1): encuadre Split/Fill/Fit en vez del
     # fondo desenfocado de siempre. None (default): si REFRAME_MODE=auto (env
     # var, default "off") Y hay video_path local, se analiza automáticamente
@@ -2257,6 +2263,7 @@ def generate_clip(
         layout: LayoutPlan explícito (services.reframe). None = auto-detección
             si REFRAME_MODE=auto (env var) y hay video_path local; si no, "fit"
         target_width, target_height: dimensiones finales (default 1080x1920)
+        crf: calidad/tamaño del encoder (default 23; el preview de W9-B usa 28)
         keep_intermediate: si True, no borra los archivos temporales
         workdir: directorio para archivos intermedios
         video_stream_url: URL de stream de video (modo descarga selectiva)
@@ -2471,7 +2478,7 @@ def generate_clip(
                 '-filter_complex', filter_parts,  # opera sobre [0:v]
                 '-map', '[vout]',
                 '-map', '1:a',            # audio de input 1
-                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', '23',
+                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', str(crf),
                 '-c:a', 'aac', '-b:a', '128k',
                 '-avoid_negative_ts', 'make_zero',
                 '-movflags', '+faststart',
@@ -2486,7 +2493,7 @@ def generate_clip(
                 '-filter_complex', filter_parts,
                 '-map', '[vout]',
                 '-map', '0:a',
-                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', '23',
+                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', str(crf),
                 '-c:a', 'aac', '-b:a', '128k',
                 '-avoid_negative_ts', 'make_zero',
                 '-movflags', '+faststart',

@@ -18,13 +18,18 @@ import sentry_sdk
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-# C4: Initialize Sentry error tracking
-sentry_sdk.init(
-    dsn=os.getenv("SENTRY_DSN_WORKER", "https://fa1819fcd1c305c1966bc49de239c99b@o4510909878632448.ingest.us.sentry.io/4510909933092864"),
-    send_default_pii=True,
-    environment=os.getenv("ENVIRONMENT", "development"),
-    traces_sample_rate=0.2,
-)
+# C4 + F1 (docs/PLAN_CALIDAD.md §9 W9-B): sin DSN, Sentry NO se inicializa —
+# antes había un DSN hardcodeado como fallback que mandaba errores de
+# cualquier fork/dev al proyecto de Sentry de producción aunque
+# SENTRY_DSN_WORKER no estuviera seteada (mismo fix que F1 ya hizo en el
+# backend, backend/src/app.js).
+if os.getenv("SENTRY_DSN_WORKER"):
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN_WORKER"),
+        send_default_pii=True,
+        environment=os.getenv("ENVIRONMENT", "development"),
+        traces_sample_rate=0.2,
+    )
 
 # Validate environment variables before proceeding
 sys.path.insert(0, str(Path(__file__).parent))
@@ -97,6 +102,68 @@ POLL_INTERVAL = 3  # seconds between Supabase polls
 # — el estilo nuevo nunca se usaba en producción pese a estar mergeado.
 # Configurable por env por si hace falta volver atrás sin deploy de código.
 SUBTITLE_STYLE_DEFAULT = os.getenv("SUBTITLE_STYLE_DEFAULT", "tiktok_viral_v2")
+
+# W9-B (docs/PLAN_CALIDAD.md §9 W9, docs/adr/0008): el clip que se entrega
+# de entrada es un PREVIEW liviano, no el HD de siempre — con más clips
+# entregados por job (select_finalists ya no limita a 1/3/5), renderizar
+# los 720x1280 de todos de una sería demasiado tiempo/CPU. `content_results
+# .clip_url` = este preview (compatibilidad: cualquier código que solo lea
+# `clip_url` sigue funcionando, aunque en resolución baja) y también se
+# guarda en `preview_url` para que la galería (W9-A) lo distinga del HD.
+# El HD real se genera a pedido (`clip_edit_processor.py`, edit_type=
+# 'hd_upgrade') a partir del raw clip cacheado en R2 (`raw_clip_url`, ya
+# se sube siempre, ver más abajo en `_deliver_moment`).
+PREVIEW_WIDTH = int(os.getenv("PREVIEW_WIDTH", "480"))
+PREVIEW_HEIGHT = int(os.getenv("PREVIEW_HEIGHT", "854"))
+PREVIEW_CRF = int(os.getenv("PREVIEW_CRF", "28"))
+
+# W9-B (docs/PLAN_CALIDAD.md §9 W9): contrato de progreso acordado con P1
+# (pantalla de progreso nueva, también sobre integracion/fase-0). Enum de
+# `jobs.current_step` — el worker es el único que lo escribe:
+JOB_STEPS = ("transcribing", "classifying", "analyzing", "evaluating", "ranking", "delivering", "finalizing")
+
+
+def compute_progress_percentage(
+    phase: str,
+    *,
+    candidate_index: int = 0,
+    candidates_total: int = 0,
+    delivered_index: int = 0,
+    delivered_total: int = 0,
+) -> int:
+    """
+    Progreso 0-100 del job, función pura (sin I/O, testeada en
+    tests/test_w9b.py). Cada valor es el PISO (inicio) de la fase que se
+    está por entrar — así que reportar `compute_progress_percentage(fase)`
+    justo al pasar a esa fase ya marca el techo de la anterior sin
+    necesidad de una llamada separada: transcript 0-15, análisis
+    (classifying+analyzing) 15-25, evaluación 25-70 lineal por candidato
+    evaluado, entrega 70-98 lineal por clip entregado, 100 al finalizar.
+    `ranking` (entre evaluar y entregar, sin trabajo por-ítem) es 70, el
+    mismo piso con el que arranca `delivering`.
+
+    `candidate_index`/`delivered_index` son cuántos YA se completaron
+    (0 antes del primero); con total 0 devuelve el piso de la fase.
+    """
+    if phase == "transcribing":
+        return 0
+    if phase in ("classifying", "analyzing"):
+        return 15
+    if phase == "evaluating":
+        if candidates_total <= 0:
+            return 25
+        frac = min(1.0, max(0.0, candidate_index / candidates_total))
+        return round(25 + frac * (70 - 25))
+    if phase == "ranking":
+        return 70
+    if phase == "delivering":
+        if delivered_total <= 0:
+            return 70
+        frac = min(1.0, max(0.0, delivered_index / delivered_total))
+        return round(70 + frac * (98 - 70))
+    if phase == "finalizing":
+        return 100
+    raise ValueError(f"fase de progreso desconocida: {phase!r} (ver JOB_STEPS)")
 
 
 def cleanup_old_files(max_age_hours: int = 24) -> None:
@@ -1568,6 +1635,7 @@ def _deliver_moment(
         True si el clip se renderizó y subió con éxito.
     """
     clip_url = None
+    preview_url = None
     raw_clip_url_cache = None
     whisper_words_cache = None
     clip_rendered_ok = False
@@ -1660,6 +1728,10 @@ def _deliver_moment(
                 except Exception as e_cache:
                     print(f"   ⚠️ Cache raw clip falló (no fatal): {e_cache}")
 
+            # W9-B: se entrega un PREVIEW liviano (480x854, crf 28), no el
+            # HD de siempre — el HD real se genera a pedido desde
+            # raw_clip_url_cache (clip_edit_processor.py, edit_type=
+            # 'hd_upgrade'). clip_url y preview_url apuntan al mismo archivo.
             gen_result = generate_clip(
                 video_path=str(precut_path),
                 start_sec=0.0,
@@ -1672,14 +1744,16 @@ def _deliver_moment(
                 keywords=getattr(moment, "keywords", None),
                 overlay_text=overlay_text,
                 overlay_style="tiktok_viral",
-                target_width=720,
-                target_height=1280,
+                target_width=PREVIEW_WIDTH,
+                target_height=PREVIEW_HEIGHT,
+                crf=PREVIEW_CRF,
             )
-            print(f"✅ Clip generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
-            print(f"📤 Subiendo clip {delivery_index} a R2...")
+            print(f"✅ Preview generado en {gen_result.total_time_sec}s, {gen_result.final.size_mb:.1f}MB")
+            print(f"📤 Subiendo preview {delivery_index} a R2...")
             clip_url = upload_clip_to_storage(str(clip_output), job_id, delivery_index)
             if clip_url:
-                print(f"✅ Clip subido: {clip_url[:70]}...")
+                print(f"✅ Preview subido: {clip_url[:70]}...")
+                preview_url = clip_url
                 clip_rendered_ok = True
                 if prepared.clip_words or prepared.clip_segments_whisper:
                     whisper_words_cache = {
@@ -1879,6 +1953,10 @@ def _deliver_moment(
         title=getattr(moment, "title", None),
         description=getattr(moment, "description", None),
         hashtags=getattr(moment, "hashtags", None),
+        # W9-B (docs/PLAN_CALIDAD.md §9 W9): mismo archivo que clip_url —
+        # la columna existe desde W9-A (migración galeria_hd) pero hasta
+        # ahora ningún job la llenaba.
+        preview_url=preview_url,
     )
 
     if moment.content_pieces.twitter_thread:
@@ -1959,6 +2037,53 @@ def _annotate_candidates_all_with_judge(
         print(f"   ⚠️ No se pudo anotar candidates_all con las notas del juez (no fatal): {e}")
 
 
+def _finalize_job_outcome(
+    *,
+    job_id: str,
+    video_url: str,
+    user_id: str | None,
+    supabase,
+    clips_rendered_count: int,
+    total_moments: int,
+) -> None:
+    """
+    W9-B (docs/PLAN_CALIDAD.md §9 W9): decide si el job termina `completed`
+    o `failed`, y descuenta el crédito solo en el primer caso.
+
+    "Job" en CONTEXT.md es exitoso si al menos un momento tiene clip; si
+    ninguno lo tiene, falla y devuelve el crédito. Antes de esto, un job
+    sin clips reales (pero sin excepción) quedaba `completed` sin devolver
+    el crédito reservado — F1 lo dejó como nota pendiente explícita en
+    supabase/migrations/20260919040620_creditos_reservados.sql: el trigger
+    `release_credit_on_job_failed` solo dispara con `status='failed'`.
+    """
+    if clips_rendered_count == 0:
+        print(f"\n❌ Job {job_id} sin clips viables ({total_moments} momentos evaluados, 0 con clip real)")
+        print(
+            "   Descarga falló (403 googlevideo). Revisa en Render: "
+            "WEBSHARE_PROXY_FILE, RAPIDAPI_KEY, o activa YTDLP_CLIP_FALLBACK=true"
+        )
+        # No se descuenta crédito: update_job_error dispara el trigger que
+        # libera la reserva de F1 (release_credit_on_job_failed).
+        update_job_error(job_id, "sin clips viables")
+        return
+
+    update_job_status(job_id, "completed")
+    print(f"\n✅ Job {job_id} completed successfully!")
+    print(f"   {clips_rendered_count}/{total_moments} clips MP4 + content for {total_moments} moments")
+    # Deduct credits (Sprint 3) — no-op si ya se descontó por credit_reserved
+    # (F1, deduct_user_credit redefinido como idempotente en la migración
+    # creditos_reservados).
+    if user_id and supabase:
+        try:
+            print(f"💰 Deducting credit for user {user_id}...")
+            from services.supabase_client import deduct_credit
+            deduct_credit(user_id, job_id, video_url)
+            print(f"✅ Credit deducted successfully")
+        except Exception as e:
+            print(f"⚠️ Failed to deduct credit: {e}")
+
+
 def process_job(job_data: dict) -> None:
     """
     Process a single job: download, analyze, clip, upload, save results.
@@ -2005,14 +2130,14 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         set_phase("transcript")
         print("\n📝 Steps 1+2: Fetching transcript from YouTube...")
         from services.supabase_client import update_job_progress
-        update_job_progress(job_id, current_step="downloading", progress_percentage=10)
+        update_job_progress(job_id, current_step="transcribing", progress_percentage=0)
 
         from services.yt_transcript import get_youtube_transcript
         transcript, video_info = get_youtube_transcript(video_url)
         video_id = video_info["id"]
 
         update_job_status(job_id, "processing", video_info["title"])
-        update_job_progress(job_id, progress_percentage=40)
+        update_job_progress(job_id, current_step="classifying", progress_percentage=compute_progress_percentage("classifying"))
         print(f"✅ Transcript ready: {len(transcript.get('segments', []))} segments")
         check_timeout()  # C5
 
@@ -2029,7 +2154,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         # Step 3: Analyze transcript with AI (via OpenRouter)
         set_phase("analyze")
         print("\n🤖 Step 3: Analyzing transcript for viral moments...")
-        update_job_progress(job_id, current_step="analyzing", progress_percentage=50)
+        update_job_progress(job_id, current_step="analyzing")
 
         # Fase 5: personalización — tone del job + perfil real del usuario
         job_tone = (job_data.get("tone") or "").strip().lower() or "profesional"
@@ -2056,7 +2181,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             transcript, video_info,
             tone=job_tone, user_name=user_name, user_title=user_title,
         )
-        update_job_progress(job_id, progress_percentage=65)
+        update_job_progress(job_id, current_step="evaluating", progress_percentage=compute_progress_percentage("evaluating"))
         check_timeout()  # C5
         
         # Step 3.5: Quality Filter - Validate durations
@@ -2107,7 +2232,12 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
 
         download_strategy = _select_download_strategy(video_duration, result.viral_moments)
         _log_download_strategy(download_strategy, video_duration, result.viral_moments)
-        update_job_progress(job_id, current_step="downloading", progress_percentage=70)
+        # W9-B: la descarga del video fuente es preparación de la fase
+        # `evaluating` (hace falta el video para evaluar/renderizar
+        # candidatos) — no tiene su propio current_step en el contrato de
+        # progreso de P1, así que el % se queda en el piso de `evaluating`
+        # hasta que arranca el loop por candidato más abajo (Step 5a).
+        update_job_progress(job_id, current_step="evaluating", progress_percentage=compute_progress_percentage("evaluating"))
 
         stream_urls = None
         muxed_video_path = None
@@ -2172,12 +2302,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             )
 
             def _on_parallel_clip_done(done: int, total: int) -> None:
-                pct = 70 + int((done / max(total, 1)) * 10)
-                update_job_progress(
-                    job_id,
-                    current_step="downloading",
-                    progress_percentage=min(80, pct),
-                )
+                # W9-B: sigue en la fase `evaluating` (preparación), el %
+                # no avanza acá — el loop por candidato de Step 5a es el
+                # que reporta progreso fino dentro de esta fase.
                 print(f"   📥 Descargando clip {done}/{total}...")
 
             clip_paths_cache = download_clips_parallel(
@@ -2209,8 +2336,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         )
         check_timeout()
         print("\n💾 Step 5: Saving results...")
-        update_job_progress(job_id, current_step="generating", progress_percentage=85)
-        
+        # W9-B: seguimos en `evaluating` (ya seteado más arriba, Step 4) —
+        # el % avanza recién con el primer candidato evaluado, abajo.
+
         # Summary is now stored in jobs table, not content_results
         # save_content_result() is only for actual content pieces (twitter, tiktok, etc.)
 
@@ -2298,8 +2426,24 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 min_duration_reverted=prepared.min_duration_reverted,
             ))
 
+            # W9-B: progreso fino por candidato evaluado (contrato con P1).
+            update_job_progress(
+                job_id,
+                current_step="evaluating",
+                progress_percentage=compute_progress_percentage(
+                    "evaluating", candidate_index=cand_index, candidates_total=len(result.viral_moments),
+                ),
+                progress_detail={
+                    "current": cand_index,
+                    "total": len(result.viral_moments),
+                    "message": f"Evaluando candidato {cand_index} de {len(result.viral_moments)}",
+                    "clips_ready": 0,
+                },
+            )
+
         # Fase 5b: rankear por el juez (no por el auto-score, causa C4) y
-        # elegir los `target` finalistas, con diversidad.
+        # entregar por umbral, con diversidad (W9-B).
+        update_job_progress(job_id, current_step="ranking", progress_percentage=compute_progress_percentage("ranking"))
         selected, discarded = select_finalists(candidates, target)
         selected_idx = {c.index for c in selected}
         print(
@@ -2357,29 +2501,33 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             ):
                 clips_rendered_count += 1
 
-        # Update status to completed
-        update_job_progress(job_id, current_step="completed", progress_percentage=100)
-        update_job_status(job_id, "completed")
-        total_moments = len(result.viral_moments)
-        if clips_rendered_count == 0:
-            print(f"\n⚠️ Job {job_id} completado SIN clips MP4 ({total_moments} momentos → fallback YouTube)")
-            print(
-                "   Descarga falló (403 googlevideo). Revisa en Render: "
-                "WEBSHARE_PROXY_FILE, RAPIDAPI_KEY, o activa YTDLP_CLIP_FALLBACK=true"
+            # W9-B: progreso fino por clip entregado (contrato con P1);
+            # content_results ya se escribió DENTRO de _deliver_moment, así
+            # que clips_ready refleja lo que la galería ya puede mostrar.
+            update_job_progress(
+                job_id,
+                current_step="delivering",
+                progress_percentage=compute_progress_percentage(
+                    "delivering", delivered_index=delivery_index, delivered_total=len(selected),
+                ),
+                progress_detail={
+                    "current": delivery_index,
+                    "total": len(selected),
+                    "message": f"Entregando clip {delivery_index} de {len(selected)}",
+                    "clips_ready": clips_rendered_count,
+                },
             )
-        else:
-            print(f"\n✅ Job {job_id} completed successfully!")
-            print(f"   {clips_rendered_count}/{total_moments} clips MP4 + content for {total_moments} moments")
-        # Deduct credits (Sprint 3)
-        user_id = job_data.get("userId")
-        if user_id and supabase:
-            try:
-                print(f"💰 Deducting credit for user {user_id}...")
-                from services.supabase_client import deduct_credit
-                deduct_credit(user_id, job_id, video_url)
-                print(f"✅ Credit deducted successfully")
-            except Exception as e:
-                print(f"⚠️ Failed to deduct credit: {e}")
+
+        total_moments = len(result.viral_moments)
+        update_job_progress(job_id, current_step="finalizing", progress_percentage=compute_progress_percentage("finalizing"))
+        _finalize_job_outcome(
+            job_id=job_id,
+            video_url=video_url,
+            user_id=job_data.get("userId"),
+            supabase=supabase,
+            clips_rendered_count=clips_rendered_count,
+            total_moments=total_moments,
+        )
         
     except Exception as e:
         print(f"\n❌ Job {job_id} failed: {str(e)}")

@@ -760,32 +760,32 @@ class TestMomentSelector:
         assert target_moment_count(3600) == 5
 
     def test_candidate_count_overgenerates(self):
-        from services.moment_selector import candidate_count, target_moment_count
-        # video de 30 min → 12 candidatos (cap)
-        assert candidate_count(1800, target_moment_count(1800)) == 12
-        # video de 8 min → 8 candidatos
-        assert candidate_count(480, target_moment_count(480)) == 8
-        # nunca menos que target
-        assert candidate_count(120, target_moment_count(120)) >= 3
+        # W9-B: min(30, max(6, minutos // 2)) — ya no depende de `target`.
+        from services.moment_selector import candidate_count
+        # video de 60 min → 30 candidatos (cap)
+        assert candidate_count(3600) == 30
+        # video de 30 min → 15
+        assert candidate_count(1800) == 15
+        # video de 8 min → 6 (piso, no 4)
+        assert candidate_count(480) == 6
+        # video corto → nunca menos de 6 (piso)
+        assert candidate_count(120) == 6
 
-    def test_rank_and_prune_keeps_best_in_chrono_order(self):
-        # W2: ya no poda a `target`, conserva target+EVAL_POOL_EXTRA (pool de
-        # evaluación) — el juez decide el target final en main.py.
-        from services.moment_selector import rank_and_prune_candidates, EVAL_POOL_EXTRA
-        target = 2
-        pool_size = target + EVAL_POOL_EXTRA
+    def test_rank_and_prune_ya_no_trunca(self):
+        # W9-B: TODOS los candidatos se evalúan de verdad (main.py) — esta
+        # función solo anota `candidates_all`, no descarta nada.
+        from services.moment_selector import rank_and_prune_candidates
         result = {
             "viral_moments": [
                 {"start_time": 10 * i, "scores": {"hook": s, "retention": s, "shareability": s}}
                 for i, s in enumerate([5, 9, 8, 2, 7, 6, 1], start=1)
             ]
         }
-        pruned = rank_and_prune_candidates(result, target=target)
+        pruned = rank_and_prune_candidates(result, target=2)
         moments = pruned["viral_moments"]
-        assert len(moments) == pool_size
-        # se descartan los 2 peores por auto-score (start_time 40 → score 2, y
-        # start_time 70 → score 1); el resto queda en orden cronológico
-        assert [m["start_time"] for m in moments] == [10, 20, 30, 50, 60]
+        assert len(moments) == 7
+        assert [m["start_time"] for m in moments] == [10, 20, 30, 40, 50, 60, 70]
+        assert len(pruned["candidates_all"]) == 7
 
     def test_rank_and_prune_keeps_all_if_pool_not_exceeded(self):
         from services.moment_selector import rank_and_prune_candidates

@@ -31,7 +31,13 @@ from services.supabase_client import get_supabase
 #     Pasada A (start_time/end_time SIEMPRE en segundos absolutos, conversión
 #     de marcas [mm:ss]) sin bumpear la versión, por acuerdo: se sube una sola
 #     vez acá, al cerrar la integración de las siete ramas.
-PROMPT_VERSION = "v7"
+# v8: W9-B (docs/PLAN_CALIDAD.md §9 W9) — `candidate_count()` pasa de pedir
+#     hasta 12 candidatos a hasta 30 (`min(30, max(6, minutos // 2))`). El
+#     texto del prompt de la Pasada A no cambió, pero el shape de lo
+#     cacheado sí (hasta 30 `viral_moments` en vez de hasta 12), igual que
+#     el bump v4→v5 de W2: sin esto, un cache hit devolvería el pool viejo
+#     y chico, y W9-B (evaluar TODOS los candidatos) nunca se ejercitaría.
+PROMPT_VERSION = "v8"
 
 
 def effective_prompt_version(transcript_source: str | None = None) -> str:

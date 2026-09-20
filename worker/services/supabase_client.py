@@ -157,16 +157,26 @@ def update_job_error(job_id: str, error_message: str) -> None:
 
 
 def update_job_progress(
-    job_id: str, 
-    current_step: str = None, 
-    progress_percentage: int = None
+    job_id: str,
+    current_step: str = None,
+    progress_percentage: int = None,
+    progress_detail: dict = None,
 ) -> None:
     """Update job processing step and progress for real-time UI updates
-    
+
     Args:
         job_id: The job ID to update
-        current_step: Current processing step (e.g., 'downloading', 'transcribing', 'analyzing', 'clipping', 'generating')
-        progress_percentage: Progress from 0-100
+        current_step: Fase del pipeline. Enum acordado con P1 (pantalla de
+            progreso, docs/PLAN_CALIDAD.md §9 W9-B): 'transcribing' |
+            'classifying' | 'analyzing' | 'evaluating' | 'ranking' |
+            'delivering' | 'finalizing'.
+        progress_percentage: Progreso 0-100 (ver main.py::compute_progress_percentage,
+            función pura y testeada que calcula este número).
+        progress_detail: W9-B — jsonb con detalle fino para la pantalla de
+            progreso: {"current": N, "total": M, "message": "...",
+            "clips_ready": K}. La columna la agrega P1 en su migración;
+            si todavía no existe, degrada con gracia (mismo patrón que
+            save_content_result con las columnas de calidad).
     """
     if is_dry_run():
         job = _dry_run_job(job_id)
@@ -174,15 +184,29 @@ def update_job_progress(
             job["current_step"] = current_step
         if progress_percentage is not None:
             job["progress_percentage"] = progress_percentage
+        if progress_detail is not None:
+            job["progress_detail"] = progress_detail
         return
+    import json
     supabase = _require_supabase()
     update_data = {}
     if current_step is not None:
         update_data["current_step"] = current_step
     if progress_percentage is not None:
         update_data["progress_percentage"] = progress_percentage
-    if update_data:
+    if progress_detail is not None:
+        update_data["progress_detail"] = json.dumps(progress_detail)
+    if not update_data:
+        return
+    try:
         supabase.table("jobs").update(update_data).eq("id", job_id).execute()
+    except Exception as e:
+        if progress_detail is not None and ("column" in str(e).lower() or "pgrst204" in str(e).lower()):
+            update_data.pop("progress_detail", None)
+            if update_data:
+                supabase.table("jobs").update(update_data).eq("id", job_id).execute()
+        else:
+            raise
 
 
 def _is_connection_error(e: Exception) -> bool:
@@ -220,6 +244,7 @@ def save_content_result(
     title: str = None,  # W10: título ≤60 chars para publicar
     description: str = None,  # W10: 2 oraciones (qué se ve + invitación)
     hashtags: list = None,  # W10: 10 hashtags, español, CamelCase, con '#'
+    preview_url: str = None,  # W9-B: mismo archivo que clip_url (preview 480x854)
 ) -> str:
     """Save content result to Supabase"""
     import uuid
@@ -260,6 +285,7 @@ def save_content_result(
             "title": title,
             "description": description,
             "hashtags": hashtags,
+            "preview_url": preview_url,
         })
         return result_id
 
@@ -334,6 +360,10 @@ def save_content_result(
     if hashtags:
         data["hashtags"] = hashtags
         _quality_keys.append("hashtags")
+    # W9-B (docs/PLAN_CALIDAD.md §9 W9, requiere migración galeria_hd)
+    if preview_url:
+        data["preview_url"] = preview_url
+        _quality_keys.append("preview_url")
 
     def _insert(payload):
         supabase.table("content_results").insert(payload).execute()
