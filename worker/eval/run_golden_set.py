@@ -299,6 +299,32 @@ def _prepare_e2e_runtime(*, json_mode: bool):
     return main
 
 
+def _lookup_full_transcript_lines(youtube_id: str | None) -> tuple[list[dict] | None, float | None]:
+    """
+    (lines, duration_sec) del transcript completo cacheado para este video
+    (INT-4) — solo si el job corrió con TRANSCRIPT_SOURCE=whisper_full|hybrid
+    y el transcript quedó en cache (Supabase o `downloads/` local). Nunca
+    dispara una transcripción nueva: si no hay cache, (None, None) — el
+    caller degrada a la métrica vieja de mayúscula y omite ese video de
+    `clips_per_hour`.
+    """
+    if not youtube_id:
+        return None, None
+    from services.yt_transcript import transcript_source
+    source = transcript_source()
+    if source not in ("whisper_full", "hybrid"):
+        return None, None
+    try:
+        from services.transcript_cache import get_cached_transcript
+        from services.transcriber import full_transcript_model
+        cached = get_cached_transcript(youtube_id, source="whisper_full", model=full_transcript_model())
+    except Exception:
+        return None, None
+    if not cached:
+        return None, None
+    return cached.get("lines"), cached.get("duration")
+
+
 def evaluate_video_e2e(
     video: dict,
     *,
@@ -373,12 +399,23 @@ def evaluate_video_e2e(
     if job_state.get("error_message"):
         result["errors"].append(f"job_failed: {str(job_state['error_message'])[:200]}")
 
+    # INT-4 (docs/PLAN_CALIDAD.md §9): Líneas del transcript completo (W4)
+    # para `starts_capitalized` por Línea en vez de por la re-transcripción
+    # aislada del clip — solo existen si el job corrió con
+    # TRANSCRIPT_SOURCE=whisper_full|hybrid Y el transcript quedó cacheado
+    # (Supabase o `downloads/`). Sin ellas, build_e2e_clip_record degrada
+    # a la métrica vieja. También da la duración del video para
+    # `clips_per_hour`, gratis en la misma consulta.
+    lines, video_duration_sec = _lookup_full_transcript_lines(video.get("youtube_id"))
+    if video_duration_sec:
+        result["video_duration_sec"] = video_duration_sec
+
     rows = [r for r in sbc.DRY_RUN_RESULTS if r.get("job_id") == job_id]
     by_moment: dict[int, list[dict]] = {}
     for r in rows:
         by_moment.setdefault(int(r.get("moment_index") or 0), []).append(r)
     clips = [
-        build_e2e_clip_record(video, by_moment[mi])
+        build_e2e_clip_record(video, by_moment[mi], lines=lines)
         for mi in sorted(by_moment)
     ]
     result["clips"] = clips

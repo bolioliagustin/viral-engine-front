@@ -213,6 +213,85 @@ def clip_starts_capitalized(first_words: list[str]) -> bool | None:
     return None
 
 
+# ─── Mayúscula inicial por Línea (INT-4, docs/PLAN_CALIDAD.md §9 W1-C) ──────
+# Hallazgo de INT-3: `clip_starts_capitalized` mide la primera palabra de la
+# RE-TRANSCRIPCIÓN Whisper aislada del clip final (`whisper_words`) — un
+# Whisper nuevo sobre solo esos 30-60s, sin el contexto de la oración
+# anterior. Un corte bien alineado al inicio de una Línea (W1-C,
+# `line_aligned` en `clip_quality_issues`) puede seguir dando ahí una palabra
+# en minúscula porque Whisper, sin ese contexto, no siempre la capitaliza.
+# La métrica que hay que comparar contra el objetivo de W1-C (≥90%) es la
+# mayúscula de la Línea del TRANSCRIPT COMPLETO (W4, TRANSCRIPT_SOURCE=
+# whisper_full) que decidió el corte, no la re-transcripción aislada.
+#
+# Tolerancia pedida: ±0,3 s. Medido al recalcular 2026-09-20-integracion-
+# fase0.json: `content_results.start_time` es `integer` en el esquema (ver
+# supabase/migrations/20260708000000_remote_schema.sql), así que el float
+# real del corte (ej. Línea en 224.51s) llega redondeado (225) — hasta ~0,5s
+# de error de por sí, antes de cualquier imprecisión del propio corte. Con
+# ±0,3s, 17/27 clips `line_aligned` matchean una Línea (63%); 8 más caen en
+# la ventana (0,3s, 0,6s] — casi seguro el mismo redondeo, no un corte mal
+# alineado — y subirían el match a 25/27 (93%) con ±0,6s. Se deja en 0,3s
+# tal como se pidió; ensancharla es una decisión de quien lea esto, no algo
+# que se decidió acá.
+LINE_START_TOLERANCE_SEC = 0.3
+
+
+def find_line_at_start(lines: list[dict] | None, start_time: float | None, tolerance: float = LINE_START_TOLERANCE_SEC) -> dict | None:
+    """
+    Línea del transcript completo (W4, `services.transcript_lines`) cuyo
+    `start` cae a ≤`tolerance` s de `start_time` (mismo eje absoluto que
+    `content_results.start_time`). Devuelve la más cercana, o None si
+    ninguna Línea cae dentro de la tolerancia (o no hay Líneas).
+    """
+    if not lines or start_time is None:
+        return None
+    best, best_dist = None, None
+    for ln in lines:
+        ls = ln.get("start")
+        if ls is None:
+            continue
+        dist = abs(float(ls) - float(start_time))
+        if dist <= tolerance and (best_dist is None or dist < best_dist):
+            best, best_dist = ln, dist
+    return best
+
+
+def line_starts_capitalized(line: dict | None) -> bool | None:
+    """True si la primera letra del texto de la Línea es mayúscula."""
+    if not line:
+        return None
+    txt = (line.get("text") or "").strip()
+    for ch in txt:
+        if ch.isalpha():
+            return ch.isupper()
+    return None
+
+
+def resolve_capitalization(
+    *,
+    first_words: list[str],
+    clip_quality_issues: list[str] | None,
+    start_time: float | None,
+    lines: list[dict] | None,
+) -> tuple[bool | None, bool | None]:
+    """
+    (starts_capitalized, starts_capitalized_whisper). El segundo es SIEMPRE
+    la métrica vieja (re-transcripción aislada, para seguir comparando con
+    corridas anteriores). El primero usa la Línea del transcript completo
+    cuando el clip está `line_aligned` (W1-C) y hay Líneas disponibles para
+    ese job (`TRANSCRIPT_SOURCE=whisper_full|hybrid`); si no hay match o no
+    hay Líneas, cae a la métrica vieja (degradación grácil).
+    """
+    whisper_val = clip_starts_capitalized(first_words)
+    if "line_aligned" in (clip_quality_issues or []):
+        line = find_line_at_start(lines, start_time)
+        line_val = line_starts_capitalized(line)
+        if line_val is not None:
+            return line_val, whisper_val
+    return whisper_val, whisper_val
+
+
 def density_out_of_range(words_per_sec: float | None) -> bool | None:
     if words_per_sec is None:
         return None
@@ -268,11 +347,43 @@ def aggregate_e2e_results(results: list[dict]) -> dict[str, Any]:
     )
 
     cap = [c.get("starts_capitalized") for c in clips if c.get("starts_capitalized") is not None]
+    cap_whisper = [
+        c.get("starts_capitalized_whisper") for c in clips
+        if c.get("starts_capitalized_whisper") is not None
+    ]
     dens = [c.get("density_out_of_range") for c in clips if c.get("density_out_of_range") is not None]
     rendered = sum(1 for c in clips if c.get("clip_rendered"))
 
     total_cost = round(sum(float(r.get("cost_usd") or 0) for r in ok_results), 4)
     total_seconds = round(sum(float(r.get("elapsed_sec") or 0) for r in results), 1)
+
+    # INT-4 (docs/PLAN_CALIDAD.md §9 W9-B/W1-C): agregados que antes había
+    # que recalcular a mano en cada lectura.
+    def _jsum(c: dict) -> float:
+        j = c.get("score_judge") or {}
+        try:
+            return (
+                float(j.get("hook") or 0) + float(j.get("retention") or 0)
+                + float(j.get("shareability") or 0)
+            )
+        except (TypeError, ValueError):
+            return 0.0
+
+    top5_clips: list[dict] = []
+    for r in ok_results:
+        judged_v = [c for c in (r.get("clips") or []) if c.get("score_judge")]
+        top5_clips.extend(sorted(judged_v, key=_jsum, reverse=True)[:5])
+    judge_avg_top5 = _mean([_jsum(c) / 3 for c in top5_clips])
+
+    delivered_per_video = [
+        {"video_id": r.get("id"), "clips_count": len(r.get("clips") or [])}
+        for r in results
+    ]
+
+    videos_with_duration = [r for r in ok_results if r.get("video_duration_sec")]
+    total_hours = sum(float(r["video_duration_sec"]) for r in videos_with_duration) / 3600
+    clips_with_duration = sum(len(r.get("clips") or []) for r in videos_with_duration)
+    clips_per_hour = round(clips_with_duration / total_hours, 3) if total_hours > 0 else None
 
     return {
         "videos_evaluated": len(results),
@@ -285,11 +396,15 @@ def aggregate_e2e_results(results: list[dict]) -> dict[str, Any]:
         "judge_shareability_avg": judge_share,
         "judge_avg": judge_avg,
         "judge_all_ge7_rate": _rate(sum(1 for v in all_ge7 if v), len(all_ge7)),
+        "judge_avg_top5": judge_avg_top5,
         "verification_failed_rate": _rate(verification_failed, len(with_flags)),
         "late_hook_rate": _rate(late_hook, len(clips)),
         "whisper_mismatch_last_rate": _rate(mismatch_last, len(clips)),
         "capitalized_start_rate": _rate(sum(1 for v in cap if v), len(cap)),
+        "capitalized_start_whisper_rate": _rate(sum(1 for v in cap_whisper if v), len(cap_whisper)),
         "density_out_of_range_rate": _rate(sum(1 for v in dens if v), len(dens)),
+        "clips_per_hour": clips_per_hour,
+        "delivered_per_video": delivered_per_video,
         "duration_chosen_avg": _mean([c.get("duration_chosen_sec") for c in clips]),
         "duration_final_avg": _mean([c.get("duration_final_sec") for c in clips]),
         "total_cost_usd": total_cost,
@@ -307,8 +422,10 @@ E2E_METRIC_DIRECTIONS: dict[str, str] = {
     "judge_shareability_avg": "higher",
     "judge_avg": "higher",
     "judge_all_ge7_rate": "higher",
+    "judge_avg_top5": "higher",
     "clips_rendered_rate": "higher",
     "capitalized_start_rate": "higher",
+    "capitalized_start_whisper_rate": "higher",
     "verification_failed_rate": "lower",
     "late_hook_rate": "lower",
     "whisper_mismatch_last_rate": "lower",
@@ -319,6 +436,7 @@ E2E_METRIC_DIRECTIONS: dict[str, str] = {
     "duration_final_avg": "neutral",
     "clips_total": "neutral",
     "clips_judged": "neutral",
+    "clips_per_hour": "higher",
     "videos_ok": "higher",
     "videos_evaluated": "neutral",
 }
@@ -365,12 +483,19 @@ def build_e2e_clip_record(
     *,
     first_n: int = 10,
     last_n: int = 8,
+    lines: list[dict] | None = None,
 ) -> dict[str, Any]:
     """
     Construye el registro por clip del tier e2e a partir de las filas que
     save_content_result habría insertado para ese momento (en dry-run hay
     hasta tres, una por pieza de copy, con los metadatos repetidos: se usa la
     primera).
+
+    `lines` (INT-4): Líneas del transcript completo de este video (W4,
+    TRANSCRIPT_SOURCE=whisper_full|hybrid), para `starts_capitalized` por
+    Línea en vez de por la re-transcripción aislada del clip — ver
+    `resolve_capitalization`. None si el job corrió con `supadata` o no se
+    pudo obtener el transcript cacheado (degrada a la métrica vieja).
     """
     row = rows[0]
     ww = row.get("whisper_words") or {}
@@ -397,6 +522,10 @@ def build_e2e_clip_record(
     snap = ww.get("snap_trim_start")
     snap = round(float(snap), 2) if snap is not None else None
     judge = row.get("score_judge")
+    issues = list(row.get("clip_quality_issues") or [])
+    starts_capitalized, starts_capitalized_whisper = resolve_capitalization(
+        first_words=first_words, clip_quality_issues=issues, start_time=start, lines=lines,
+    )
 
     return {
         "video_id": video.get("id"),
@@ -409,12 +538,13 @@ def build_e2e_clip_record(
         "snap_trim_start": snap,
         "first_words": first_words,
         "last_words": last_words,
-        "starts_capitalized": clip_starts_capitalized(first_words),
+        "starts_capitalized": starts_capitalized,
+        "starts_capitalized_whisper": starts_capitalized_whisper,
         "words_per_sec": wps,
         "density_out_of_range": density_out_of_range(wps),
         "sub_coverage": cov,
         "verification_failed": row.get("verification_failed"),
-        "clip_quality_issues": list(row.get("clip_quality_issues") or []),
+        "clip_quality_issues": issues,
         "score_llm": row.get("score_llm"),
         "score_judge": judge,
         "judge_all_ge7": judge_all_ge(judge),
