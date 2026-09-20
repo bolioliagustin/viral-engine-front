@@ -1,0 +1,2270 @@
+[
+  {
+    "model": "google/gemini-3.5-flash",
+    "video_id": "podcast_general_01",
+    "candidates": [
+      {
+        "start_time": 80,
+        "end_time": 123,
+        "hook": "¿Estamos repitiendo la historia? El alarmante déjà vu del COVID-19 con el nuevo brote.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 141,
+        "end_time": 198,
+        "hook": "La ciencia del Hantavirus explicada para que todos lo entiendan.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 6
+        }
+      },
+      {
+        "start_time": 219,
+        "end_time": 268,
+        "hook": "¡Cuidado al barrer! La insólita forma en la que te puedes contagiar de hantavirus.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 268,
+        "end_time": 321,
+        "hook": "Síntomas del hantavirus: ¿Cómo diferenciarlo de una simple gripe?",
+        "scores": {
+          "hook": 7,
+          "retention": 7,
+          "shareability": 6
+        }
+      },
+      {
+        "start_time": 322,
+        "end_time": 369,
+        "hook": "Mortalidad del hantavirus en Europa: Los datos reales que no te cuentan.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 414,
+        "end_time": 474,
+        "hook": "La letal cepa americana: Cómo este virus inunda literalmente tus pulmones.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 476,
+        "end_time": 527,
+        "hook": "¿Por qué el hantavirus parece más letal de lo que realmente es?",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 6
+        }
+      },
+      {
+        "start_time": 527,
+        "end_time": 586,
+        "hook": "La Cepa Andes: El único hantavirus que se contagia entre humanos.",
+        "scores": {
+          "hook": 9,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 586,
+        "end_time": 646,
+        "hook": "¿Próxima pandemia? Por qué no debes caer en la histeria colectiva.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 679,
+        "end_time": 738,
+        "hook": "Star Wars contra el COVID: La forma más viral de explicar la inmunología.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 766,
+        "end_time": 827,
+        "hook": "Cómo se contagia el hantavirus: El peligro invisible al dormir en la misma cama.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 827,
+        "end_time": 863,
+        "hook": "Hantavirus: ¿Te puedes contagiar solo por hablar media hora con alguien?",
+        "scores": {
+          "hook": 9,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 864,
+        "end_time": 913,
+        "hook": "El peligro oculto en las sábanas de un hospital o crucero.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 960,
+        "end_time": 996,
+        "hook": "La verdad definitiva: Potencial de pandemia de hantavirus es CERO.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 1013,
+        "end_time": 1068,
+        "hook": "¿Qué es el R0? El número que define qué tan peligrosa es una enfermedad.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 6
+        }
+      },
+      {
+        "start_time": 1127,
+        "end_time": 1162,
+        "hook": "Hantavirus Andes vs COVID: Los números demuestran por qué se apaga solo.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 1203,
+        "end_time": 1264,
+        "hook": "Supercontagiadores de hantavirus: El caso real de una fiesta en Argentina.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 1310,
+        "end_time": 1366,
+        "hook": "La prueba definitiva: Si el hantavirus fuera COVID, todo el barco estaría infectado.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 1431,
+        "end_time": 1490,
+        "hook": "El peligro de la incubación silenciosa del hantavirus: ¡Hasta 6 semanas!",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 1590,
+        "end_time": 1637,
+        "hook": "Cruceros de ultra lujo: El obsesivo protocolo de limpieza que descarta plagas.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 6
+        }
+      },
+      {
+        "start_time": 2043,
+        "end_time": 2097,
+        "hook": "Hantavirus: Por qué los asintomáticos NO contagian.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 2232,
+        "end_time": 2292,
+        "hook": "La cruda realidad: Por qué los virus son casi imposibles de curar con pastillas.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 2424,
+        "end_time": 2476,
+        "hook": "La ley de la naturaleza: Por qué un virus súper letal nunca provocará una pandemia.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 2992,
+        "end_time": 3022,
+        "hook": "¿Pueden las ratas nadar o volar del barco a la costa?",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 3399,
+        "end_time": 3458,
+        "hook": "La preocupante razón por la que cada vez surgen más virus letales.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3552,
+        "end_time": 3612,
+        "hook": "Olvídate del hantavirus: El verdadero virus que preocupa a los científicos.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3781,
+        "end_time": 3840,
+        "hook": "La peligrosa razón por la que en España se duerme fatal.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 3935,
+        "end_time": 3984,
+        "hook": "El mejor remedio para tus defensas es el sexo y tus amigos reales.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 4111,
+        "end_time": 4174,
+        "hook": "El superalimento definitivo para tu sistema inmune: No gastes en pastillas.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 4313,
+        "end_time": 4385,
+        "hook": "Cómo las pantallas y consolas están destruyendo tus defensas.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 9
+        }
+      }
+    ],
+    "coverage": [
+      {
+        "rank": 1,
+        "score": 99,
+        "titulo": "Sarampión vs COVID: ¡La Verdad de la Inmunidad de Grupo!",
+        "duracion_seg": 96.5,
+        "match": {
+          "start_time": 1013,
+          "end_time": 1068,
+          "hook": "¿Qué es el R0? El número que define qué tan peligrosa es una enfermedad.",
+          "overlap_sec": 37.6,
+          "overlap_frac": 0.39
+        },
+        "covered": false
+      },
+      {
+        "rank": 2,
+        "score": 98,
+        "titulo": "Virus Mortal: ¿Emergencia Sanitaria y Precaución Máxima?",
+        "duracion_seg": 17.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 3,
+        "score": 98,
+        "titulo": "Virus Misterioso en Crucero: ¡Alerta Sanitaria en España!",
+        "duracion_seg": 44.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 4,
+        "score": 98,
+        "titulo": "Virus: ¿Miedo a Mutaciones? Entiende la Infectividad vs. Letalidad",
+        "duracion_seg": 82.0,
+        "match": {
+          "start_time": 2424,
+          "end_time": 2476,
+          "hook": "La ley de la naturaleza: Por qué un virus súper letal nunca provocará una pandemia.",
+          "overlap_sec": 52.0,
+          "overlap_frac": 0.634
+        },
+        "covered": true
+      },
+      {
+        "rank": 5,
+        "score": 97,
+        "titulo": "Brote Viral en Barco: ¿Peligro Pandémico?",
+        "duracion_seg": 70.5,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 6,
+        "score": 97,
+        "titulo": "Zoonosis: ¿Por qué las enfermedades saltan de animales a humanos?",
+        "duracion_seg": 85.7,
+        "match": {
+          "start_time": 3399,
+          "end_time": 3458,
+          "hook": "La preocupante razón por la que cada vez surgen más virus letales.",
+          "overlap_sec": 34.3,
+          "overlap_frac": 0.4
+        },
+        "covered": false
+      },
+      {
+        "rank": 7,
+        "score": 97,
+        "titulo": "Virus mortal: Baja Transmisibilidad, Alta Letalidad Revelada",
+        "duracion_seg": 132.1,
+        "match": {
+          "start_time": 1310,
+          "end_time": 1366,
+          "hook": "La prueba definitiva: Si el hantavirus fuera COVID, todo el barco estaría infectado.",
+          "overlap_sec": 56.0,
+          "overlap_frac": 0.424
+        },
+        "covered": false
+      },
+      {
+        "rank": 8,
+        "score": 96,
+        "titulo": "Aislamiento Voluntario y Obligatorio: Protocolos de Salud Pública",
+        "duracion_seg": 104.5,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 9,
+        "score": 96,
+        "titulo": "COVID: Delta vs. Omicron - La Evolución Viral Revelada",
+        "duracion_seg": 25.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 10,
+        "score": 96,
+        "titulo": "Virus Mutaciones: ¿Es la de los Andes?",
+        "duracion_seg": 77.0,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 11,
+        "score": 95,
+        "titulo": "Desembarco: Protocolo de Seguridad Revolucionario Revelado",
+        "duracion_seg": 17.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 12,
+        "score": 95,
+        "titulo": "Protección Total Contra Virus Letal en Barcos",
+        "duracion_seg": 54.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 13,
+        "score": 94,
+        "titulo": "Globalización y Viajes: El Riesgo de Enfermedades Zoonóticas",
+        "duracion_seg": 40.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 14,
+        "score": 94,
+        "titulo": "Tu Sueño y Ejercicio Físico: ¡Nunca Es Tarde!",
+        "duracion_seg": 37.4,
+        "match": {
+          "start_time": 3781,
+          "end_time": 3840,
+          "hook": "La peligrosa razón por la que en España se duerme fatal.",
+          "overlap_sec": 36.9,
+          "overlap_frac": 0.987
+        },
+        "covered": true
+      },
+      {
+        "rank": 15,
+        "score": 94,
+        "titulo": "Procedimiento COVID: Lecciones Aprendidas y Mejora",
+        "duracion_seg": 48.6,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 16,
+        "score": 93,
+        "titulo": "¿Cuándo es contagioso un virus? Incertidumbre desvelada",
+        "duracion_seg": 46.3,
+        "match": {
+          "start_time": 2043,
+          "end_time": 2097,
+          "hook": "Hantavirus: Por qué los asintomáticos NO contagian.",
+          "overlap_sec": 23.5,
+          "overlap_frac": 0.508
+        },
+        "covered": true
+      },
+      {
+        "rank": 17,
+        "score": 93,
+        "titulo": "Contagio Cero: Máxima Tranquilidad para Tenerife y Puerto",
+        "duracion_seg": 93.1,
+        "match": {
+          "start_time": 2992,
+          "end_time": 3022,
+          "hook": "¿Pueden las ratas nadar o volar del barco a la costa?",
+          "overlap_sec": 21.5,
+          "overlap_frac": 0.231
+        },
+        "covered": false
+      },
+      {
+        "rank": 18,
+        "score": 93,
+        "titulo": "Virus se Transmite Mal: No es COVID ni Gripe",
+        "duracion_seg": 47.6,
+        "match": {
+          "start_time": 1310,
+          "end_time": 1366,
+          "hook": "La prueba definitiva: Si el hantavirus fuera COVID, todo el barco estaría infectado.",
+          "overlap_sec": 10.9,
+          "overlap_frac": 0.229
+        },
+        "covered": false
+      },
+      {
+        "rank": 19,
+        "score": 92,
+        "titulo": "Gripe Aviar: ¿Más Letal que la Gripe Común?",
+        "duracion_seg": 54.8,
+        "match": {
+          "start_time": 3552,
+          "end_time": 3612,
+          "hook": "Olvídate del hantavirus: El verdadero virus que preocupa a los científicos.",
+          "overlap_sec": 50.3,
+          "overlap_frac": 0.918
+        },
+        "covered": true
+      },
+      {
+        "rank": 20,
+        "score": 92,
+        "titulo": "Alerta Sanitaria: 3 Casos COVID-19 Relacionados con España",
+        "duracion_seg": 58.2,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 21,
+        "score": 92,
+        "titulo": "One Health: Cuidando la Salud del Planeta Completo",
+        "duracion_seg": 23.9,
+        "match": {
+          "start_time": 3399,
+          "end_time": 3458,
+          "hook": "La preocupante razón por la que cada vez surgen más virus letales.",
+          "overlap_sec": 23.9,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      },
+      {
+        "rank": 22,
+        "score": 92,
+        "titulo": "IA Revoluciona Gráficos: De Star Wars a Dibujos Precisos",
+        "duracion_seg": 80.9,
+        "match": {
+          "start_time": 679,
+          "end_time": 738,
+          "hook": "Star Wars contra el COVID: La forma más viral de explicar la inmunología.",
+          "overlap_sec": 59.0,
+          "overlap_frac": 0.729
+        },
+        "covered": true
+      },
+      {
+        "rank": 23,
+        "score": 91,
+        "titulo": "Podcast de Emergencia: Coronavirus y Antivirus",
+        "duracion_seg": 22.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 24,
+        "score": 91,
+        "titulo": "¡Cuidado! Así se Transmiten los Virus de Roedores a Humanos",
+        "duracion_seg": 50.6,
+        "match": {
+          "start_time": 219,
+          "end_time": 268,
+          "hook": "¡Cuidado al barrer! La insólita forma en la que te puedes contagiar de hantavirus.",
+          "overlap_sec": 49.0,
+          "overlap_frac": 0.968
+        },
+        "covered": true
+      },
+      {
+        "rank": 25,
+        "score": 91,
+        "titulo": "Pánico Mediático y Histeria: Entendiendo el Miedo",
+        "duracion_seg": 15.2,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 26,
+        "score": 90,
+        "titulo": "Contagio COVID: 6 Situaciones Clave y Cómo Evitarlo",
+        "duracion_seg": 30.5,
+        "match": {
+          "start_time": 766,
+          "end_time": 827,
+          "hook": "Cómo se contagia el hantavirus: El peligro invisible al dormir en la misma cama.",
+          "overlap_sec": 16.8,
+          "overlap_frac": 0.551
+        },
+        "covered": true
+      },
+      {
+        "rank": 27,
+        "score": 90,
+        "titulo": "R-Zero: ¿Cuántas personas contagias en pandemia?",
+        "duracion_seg": 32.4,
+        "match": {
+          "start_time": 1013,
+          "end_time": 1068,
+          "hook": "¿Qué es el R0? El número que define qué tan peligrosa es una enfermedad.",
+          "overlap_sec": 17.4,
+          "overlap_frac": 0.537
+        },
+        "covered": true
+      },
+      {
+        "rank": 28,
+        "score": 90,
+        "titulo": "Desembarco Marítimo: Logística, Botes y Viaje a Casa",
+        "duracion_seg": 78.7,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 29,
+        "score": 89,
+        "titulo": "¿Cura para esta enfermedad? Tratamientos y esperanza",
+        "duracion_seg": 14.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 30,
+        "score": 89,
+        "titulo": "Mortalidad Virus Americanos: ¿Sobrestimada?",
+        "duracion_seg": 62.1,
+        "match": {
+          "start_time": 476,
+          "end_time": 527,
+          "hook": "¿Por qué el hantavirus parece más letal de lo que realmente es?",
+          "overlap_sec": 51.0,
+          "overlap_frac": 0.821
+        },
+        "covered": true
+      },
+      {
+        "rank": 31,
+        "score": 88,
+        "titulo": "Sistema Inmunitario: ¡Fortalece Tus Defensas Fácilmente!",
+        "duracion_seg": 16.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 32,
+        "score": 88,
+        "titulo": "Virus MORTAL: ¿Estamos Preparados para la Pandemia?",
+        "duracion_seg": 43.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 33,
+        "score": 88,
+        "titulo": "Virus: ¿Defensas Matan o Tiempo de Incubación?",
+        "duracion_seg": 26.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 34,
+        "score": 87,
+        "titulo": "Mejora Tu Vida: El Poder de los Grupos de Interés",
+        "duracion_seg": 21.5,
+        "match": {
+          "start_time": 3935,
+          "end_time": 3984,
+          "hook": "El mejor remedio para tus defensas es el sexo y tus amigos reales.",
+          "overlap_sec": 21.2,
+          "overlap_frac": 0.986
+        },
+        "covered": true
+      },
+      {
+        "rank": 35,
+        "score": 87,
+        "titulo": "Supercontagio: La Ciencia Detrás de los Brotes Virales Revelada",
+        "duracion_seg": 53.4,
+        "match": {
+          "start_time": 1203,
+          "end_time": 1264,
+          "hook": "Supercontagiadores de hantavirus: El caso real de una fiesta en Argentina.",
+          "overlap_sec": 28.9,
+          "overlap_frac": 0.541
+        },
+        "covered": true
+      },
+      {
+        "rank": 36,
+        "score": 86,
+        "titulo": "La Politización de la Pandemia: Un Peligro Real",
+        "duracion_seg": 25.6,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 37,
+        "score": 86,
+        "titulo": "¿Qué es un Antivirus? Lo Básico Explicado Sencillamente",
+        "duracion_seg": 17.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 38,
+        "score": 86,
+        "titulo": "Prebióticos: Descubre sus Fuentes en Frutas y Verduras",
+        "duracion_seg": 25.5,
+        "match": {
+          "start_time": 4111,
+          "end_time": 4174,
+          "hook": "El superalimento definitivo para tu sistema inmune: No gastes en pastillas.",
+          "overlap_sec": 17.0,
+          "overlap_frac": 0.667
+        },
+        "covered": true
+      },
+      {
+        "rank": 39,
+        "score": 85,
+        "titulo": "Alcohol: ¿Por qué lo Normalizamos Tanto?",
+        "duracion_seg": 16.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 40,
+        "score": 85,
+        "titulo": "Inmunidad de Grupo: ¿Cuántos Necesitamos Inmunizados?",
+        "duracion_seg": 15.7,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 41,
+        "score": 83,
+        "titulo": "Alarma Social: ¿Histeria por Nueva Pandemia?",
+        "duracion_seg": 18.6,
+        "match": {
+          "start_time": 586,
+          "end_time": 646,
+          "hook": "¿Próxima pandemia? Por qué no debes caer en la histeria colectiva.",
+          "overlap_sec": 18.6,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      },
+      {
+        "rank": 42,
+        "score": 83,
+        "titulo": "Protocolos Extremos: Desinfección Corporal y Zodiac",
+        "duracion_seg": 23.8,
+        "match": {
+          "start_time": 1590,
+          "end_time": 1637,
+          "hook": "Cruceros de ultra lujo: El obsesivo protocolo de limpieza que descarta plagas.",
+          "overlap_sec": 23.8,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      }
+    ],
+    "summary": {
+      "n_opus_clips": 42,
+      "covered_all42": 15,
+      "coverage_rate_all42": 0.357,
+      "n_top10": 10,
+      "covered_top10": 1,
+      "coverage_rate_top10": 0.1
+    }
+  },
+  {
+    "model": "google/gemini-3.1-pro-preview",
+    "video_id": "podcast_general_01",
+    "candidates": [
+      {
+        "start_time": 984,
+        "end_time": 1020,
+        "hook": "¿Puede el hantavirus causar una pandemia? La respuesta rotunda del experto.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 230,
+        "end_time": 268,
+        "hook": "La forma más común de contagiarte de hantavirus que no imaginabas.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 476,
+        "end_time": 527,
+        "hook": "¿Es el hantavirus tan mortal como dicen? La verdad tras las cifras.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 587,
+        "end_time": 646,
+        "hook": "Por qué la cepa Andes del hantavirus ha encendido todas las alarmas mundiales.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 779,
+        "end_time": 827,
+        "hook": "Las situaciones exactas en las que podrías contagiarte de hantavirus humano.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 1047,
+        "end_time": 1132,
+        "hook": "La increíble evolución del COVID: de contagiar a 3 a contagiar a 15 personas.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 6
+        }
+      },
+      {
+        "start_time": 1132,
+        "end_time": 1162,
+        "hook": "¿A cuántas personas contagia un enfermo de hantavirus? La cifra te sorprenderá.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 1355,
+        "end_time": 1403,
+        "hook": "Si el hantavirus fuera COVID, el barco entero estaría contagiado.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 1451,
+        "end_time": 1486,
+        "hook": "¿Cuánto tiempo puede esconderse el hantavirus en tu cuerpo antes de dar síntomas?",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 6
+        }
+      },
+      {
+        "start_time": 1607,
+        "end_time": 1655,
+        "hook": "¿Había ratas en el crucero de lujo? El experto opina sobre el origen del brote.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 2078,
+        "end_time": 2108,
+        "hook": "La buena noticia: tu sistema inmune puede vencer al hantavirus.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 2425,
+        "end_time": 2466,
+        "hook": "Por qué un virus super letal nunca será extremadamente contagioso.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 2550,
+        "end_time": 2607,
+        "hook": "Es IMPOSIBLE que el hantavirus cause una pandemia, y la ciencia lo demuestra.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 3344,
+        "end_time": 3381,
+        "hook": "¿Sabías que la 'viruela del mono' en realidad viene de los ratones?",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 3399,
+        "end_time": 3458,
+        "hook": "La verdadera razón por la que cada vez surgen más virus mortales.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3560,
+        "end_time": 3613,
+        "hook": "El virus que de verdad aterra a los expertos: la Gripe Aviar.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3783,
+        "end_time": 3810,
+        "hook": "Por qué mirar el móvil antes de dormir está destruyendo tus defensas.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 3855,
+        "end_time": 3887,
+        "hook": "El peligro oculto de las dietas Keto y Vegana para tus defensas.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 3938,
+        "end_time": 3984,
+        "hook": "Los dos mejores 'medicamentos' naturales contra el estrés (y uno te va a gustar).",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 4024,
+        "end_time": 4071,
+        "hook": "¿Es buena una cerveza al día para tus defensas? Un inmunólogo responde.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 4116,
+        "end_time": 4154,
+        "hook": "Los dos súper alimentos baratos que multiplicarán tus defensas.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 4253,
+        "end_time": 4302,
+        "hook": "El secreto de la mujer de 118 años: su microbiota era la de una joven de 26.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 4319,
+        "end_time": 4385,
+        "hook": "Por qué abusar de la tecnología debilita físicamente tus defensas.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 4555,
+        "end_time": 4602,
+        "hook": "El cabreo monumental de Jordi Wild contra los políticos durante las pandemias.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 8
+        }
+      }
+    ],
+    "coverage": [
+      {
+        "rank": 1,
+        "score": 99,
+        "titulo": "Sarampión vs COVID: ¡La Verdad de la Inmunidad de Grupo!",
+        "duracion_seg": 96.5,
+        "match": {
+          "start_time": 1047,
+          "end_time": 1132,
+          "hook": "La increíble evolución del COVID: de contagiar a 3 a contagiar a 15 personas.",
+          "overlap_sec": 79.9,
+          "overlap_frac": 0.828
+        },
+        "covered": true
+      },
+      {
+        "rank": 2,
+        "score": 98,
+        "titulo": "Virus Mortal: ¿Emergencia Sanitaria y Precaución Máxima?",
+        "duracion_seg": 17.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 3,
+        "score": 98,
+        "titulo": "Virus Misterioso en Crucero: ¡Alerta Sanitaria en España!",
+        "duracion_seg": 44.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 4,
+        "score": 98,
+        "titulo": "Virus: ¿Miedo a Mutaciones? Entiende la Infectividad vs. Letalidad",
+        "duracion_seg": 82.0,
+        "match": {
+          "start_time": 2425,
+          "end_time": 2466,
+          "hook": "Por qué un virus super letal nunca será extremadamente contagioso.",
+          "overlap_sec": 41.0,
+          "overlap_frac": 0.5
+        },
+        "covered": true
+      },
+      {
+        "rank": 5,
+        "score": 97,
+        "titulo": "Brote Viral en Barco: ¿Peligro Pandémico?",
+        "duracion_seg": 70.5,
+        "match": {
+          "start_time": 2550,
+          "end_time": 2607,
+          "hook": "Es IMPOSIBLE que el hantavirus cause una pandemia, y la ciencia lo demuestra.",
+          "overlap_sec": 24.7,
+          "overlap_frac": 0.35
+        },
+        "covered": false
+      },
+      {
+        "rank": 6,
+        "score": 97,
+        "titulo": "Zoonosis: ¿Por qué las enfermedades saltan de animales a humanos?",
+        "duracion_seg": 85.7,
+        "match": {
+          "start_time": 3399,
+          "end_time": 3458,
+          "hook": "La verdadera razón por la que cada vez surgen más virus mortales.",
+          "overlap_sec": 34.3,
+          "overlap_frac": 0.4
+        },
+        "covered": false
+      },
+      {
+        "rank": 7,
+        "score": 97,
+        "titulo": "Virus mortal: Baja Transmisibilidad, Alta Letalidad Revelada",
+        "duracion_seg": 132.1,
+        "match": {
+          "start_time": 1355,
+          "end_time": 1403,
+          "hook": "Si el hantavirus fuera COVID, el barco entero estaría contagiado.",
+          "overlap_sec": 47.8,
+          "overlap_frac": 0.362
+        },
+        "covered": false
+      },
+      {
+        "rank": 8,
+        "score": 96,
+        "titulo": "Aislamiento Voluntario y Obligatorio: Protocolos de Salud Pública",
+        "duracion_seg": 104.5,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 9,
+        "score": 96,
+        "titulo": "COVID: Delta vs. Omicron - La Evolución Viral Revelada",
+        "duracion_seg": 25.9,
+        "match": {
+          "start_time": 1047,
+          "end_time": 1132,
+          "hook": "La increíble evolución del COVID: de contagiar a 3 a contagiar a 15 personas.",
+          "overlap_sec": 25.9,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      },
+      {
+        "rank": 10,
+        "score": 96,
+        "titulo": "Virus Mutaciones: ¿Es la de los Andes?",
+        "duracion_seg": 77.0,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 11,
+        "score": 95,
+        "titulo": "Desembarco: Protocolo de Seguridad Revolucionario Revelado",
+        "duracion_seg": 17.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 12,
+        "score": 95,
+        "titulo": "Protección Total Contra Virus Letal en Barcos",
+        "duracion_seg": 54.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 13,
+        "score": 94,
+        "titulo": "Globalización y Viajes: El Riesgo de Enfermedades Zoonóticas",
+        "duracion_seg": 40.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 14,
+        "score": 94,
+        "titulo": "Tu Sueño y Ejercicio Físico: ¡Nunca Es Tarde!",
+        "duracion_seg": 37.4,
+        "match": {
+          "start_time": 3783,
+          "end_time": 3810,
+          "hook": "Por qué mirar el móvil antes de dormir está destruyendo tus defensas.",
+          "overlap_sec": 6.9,
+          "overlap_frac": 0.184
+        },
+        "covered": false
+      },
+      {
+        "rank": 15,
+        "score": 94,
+        "titulo": "Procedimiento COVID: Lecciones Aprendidas y Mejora",
+        "duracion_seg": 48.6,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 16,
+        "score": 93,
+        "titulo": "¿Cuándo es contagioso un virus? Incertidumbre desvelada",
+        "duracion_seg": 46.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 17,
+        "score": 93,
+        "titulo": "Contagio Cero: Máxima Tranquilidad para Tenerife y Puerto",
+        "duracion_seg": 93.1,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 18,
+        "score": 93,
+        "titulo": "Virus se Transmite Mal: No es COVID ni Gripe",
+        "duracion_seg": 47.6,
+        "match": {
+          "start_time": 1355,
+          "end_time": 1403,
+          "hook": "Si el hantavirus fuera COVID, el barco entero estaría contagiado.",
+          "overlap_sec": 47.7,
+          "overlap_frac": 1.002
+        },
+        "covered": true
+      },
+      {
+        "rank": 19,
+        "score": 92,
+        "titulo": "Gripe Aviar: ¿Más Letal que la Gripe Común?",
+        "duracion_seg": 54.8,
+        "match": {
+          "start_time": 3560,
+          "end_time": 3613,
+          "hook": "El virus que de verdad aterra a los expertos: la Gripe Aviar.",
+          "overlap_sec": 51.3,
+          "overlap_frac": 0.936
+        },
+        "covered": true
+      },
+      {
+        "rank": 20,
+        "score": 92,
+        "titulo": "Alerta Sanitaria: 3 Casos COVID-19 Relacionados con España",
+        "duracion_seg": 58.2,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 21,
+        "score": 92,
+        "titulo": "One Health: Cuidando la Salud del Planeta Completo",
+        "duracion_seg": 23.9,
+        "match": {
+          "start_time": 3399,
+          "end_time": 3458,
+          "hook": "La verdadera razón por la que cada vez surgen más virus mortales.",
+          "overlap_sec": 23.9,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      },
+      {
+        "rank": 22,
+        "score": 92,
+        "titulo": "IA Revoluciona Gráficos: De Star Wars a Dibujos Precisos",
+        "duracion_seg": 80.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 23,
+        "score": 91,
+        "titulo": "Podcast de Emergencia: Coronavirus y Antivirus",
+        "duracion_seg": 22.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 24,
+        "score": 91,
+        "titulo": "¡Cuidado! Así se Transmiten los Virus de Roedores a Humanos",
+        "duracion_seg": 50.6,
+        "match": {
+          "start_time": 230,
+          "end_time": 268,
+          "hook": "La forma más común de contagiarte de hantavirus que no imaginabas.",
+          "overlap_sec": 38.0,
+          "overlap_frac": 0.751
+        },
+        "covered": true
+      },
+      {
+        "rank": 25,
+        "score": 91,
+        "titulo": "Pánico Mediático y Histeria: Entendiendo el Miedo",
+        "duracion_seg": 15.2,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 26,
+        "score": 90,
+        "titulo": "Contagio COVID: 6 Situaciones Clave y Cómo Evitarlo",
+        "duracion_seg": 30.5,
+        "match": {
+          "start_time": 779,
+          "end_time": 827,
+          "hook": "Las situaciones exactas en las que podrías contagiarte de hantavirus humano.",
+          "overlap_sec": 3.8,
+          "overlap_frac": 0.125
+        },
+        "covered": false
+      },
+      {
+        "rank": 27,
+        "score": 90,
+        "titulo": "R-Zero: ¿Cuántas personas contagias en pandemia?",
+        "duracion_seg": 32.4,
+        "match": {
+          "start_time": 984,
+          "end_time": 1020,
+          "hook": "¿Puede el hantavirus causar una pandemia? La respuesta rotunda del experto.",
+          "overlap_sec": 22.0,
+          "overlap_frac": 0.679
+        },
+        "covered": true
+      },
+      {
+        "rank": 28,
+        "score": 90,
+        "titulo": "Desembarco Marítimo: Logística, Botes y Viaje a Casa",
+        "duracion_seg": 78.7,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 29,
+        "score": 89,
+        "titulo": "¿Cura para esta enfermedad? Tratamientos y esperanza",
+        "duracion_seg": 14.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 30,
+        "score": 89,
+        "titulo": "Mortalidad Virus Americanos: ¿Sobrestimada?",
+        "duracion_seg": 62.1,
+        "match": {
+          "start_time": 476,
+          "end_time": 527,
+          "hook": "¿Es el hantavirus tan mortal como dicen? La verdad tras las cifras.",
+          "overlap_sec": 51.0,
+          "overlap_frac": 0.821
+        },
+        "covered": true
+      },
+      {
+        "rank": 31,
+        "score": 88,
+        "titulo": "Sistema Inmunitario: ¡Fortalece Tus Defensas Fácilmente!",
+        "duracion_seg": 16.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 32,
+        "score": 88,
+        "titulo": "Virus MORTAL: ¿Estamos Preparados para la Pandemia?",
+        "duracion_seg": 43.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 33,
+        "score": 88,
+        "titulo": "Virus: ¿Defensas Matan o Tiempo de Incubación?",
+        "duracion_seg": 26.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 34,
+        "score": 87,
+        "titulo": "Mejora Tu Vida: El Poder de los Grupos de Interés",
+        "duracion_seg": 21.5,
+        "match": {
+          "start_time": 3938,
+          "end_time": 3984,
+          "hook": "Los dos mejores 'medicamentos' naturales contra el estrés (y uno te va a gustar).",
+          "overlap_sec": 21.2,
+          "overlap_frac": 0.986
+        },
+        "covered": true
+      },
+      {
+        "rank": 35,
+        "score": 87,
+        "titulo": "Supercontagio: La Ciencia Detrás de los Brotes Virales Revelada",
+        "duracion_seg": 53.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 36,
+        "score": 86,
+        "titulo": "La Politización de la Pandemia: Un Peligro Real",
+        "duracion_seg": 25.6,
+        "match": {
+          "start_time": 4555,
+          "end_time": 4602,
+          "hook": "El cabreo monumental de Jordi Wild contra los políticos durante las pandemias.",
+          "overlap_sec": 25.7,
+          "overlap_frac": 1.004
+        },
+        "covered": true
+      },
+      {
+        "rank": 37,
+        "score": 86,
+        "titulo": "¿Qué es un Antivirus? Lo Básico Explicado Sencillamente",
+        "duracion_seg": 17.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 38,
+        "score": 86,
+        "titulo": "Prebióticos: Descubre sus Fuentes en Frutas y Verduras",
+        "duracion_seg": 25.5,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 39,
+        "score": 85,
+        "titulo": "Alcohol: ¿Por qué lo Normalizamos Tanto?",
+        "duracion_seg": 16.8,
+        "match": {
+          "start_time": 4024,
+          "end_time": 4071,
+          "hook": "¿Es buena una cerveza al día para tus defensas? Un inmunólogo responde.",
+          "overlap_sec": 16.5,
+          "overlap_frac": 0.982
+        },
+        "covered": true
+      },
+      {
+        "rank": 40,
+        "score": 85,
+        "titulo": "Inmunidad de Grupo: ¿Cuántos Necesitamos Inmunizados?",
+        "duracion_seg": 15.7,
+        "match": {
+          "start_time": 1047,
+          "end_time": 1132,
+          "hook": "La increíble evolución del COVID: de contagiar a 3 a contagiar a 15 personas.",
+          "overlap_sec": 15.7,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      },
+      {
+        "rank": 41,
+        "score": 83,
+        "titulo": "Alarma Social: ¿Histeria por Nueva Pandemia?",
+        "duracion_seg": 18.6,
+        "match": {
+          "start_time": 587,
+          "end_time": 646,
+          "hook": "Por qué la cepa Andes del hantavirus ha encendido todas las alarmas mundiales.",
+          "overlap_sec": 18.6,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      },
+      {
+        "rank": 42,
+        "score": 83,
+        "titulo": "Protocolos Extremos: Desinfección Corporal y Zodiac",
+        "duracion_seg": 23.8,
+        "match": {
+          "start_time": 1607,
+          "end_time": 1655,
+          "hook": "¿Había ratas en el crucero de lujo? El experto opina sobre el origen del brote.",
+          "overlap_sec": 15.5,
+          "overlap_frac": 0.651
+        },
+        "covered": true
+      }
+    ],
+    "summary": {
+      "n_opus_clips": 42,
+      "covered_all42": 15,
+      "coverage_rate_all42": 0.357,
+      "n_top10": 10,
+      "covered_top10": 3,
+      "coverage_rate_top10": 0.3
+    }
+  },
+  {
+    "model": "google/gemini-3.8-flash",
+    "video_id": "podcast_general_01",
+    "candidates": [
+      {
+        "start_time": 984,
+        "end_time": 1030,
+        "hook": "El doctor Alfredo Corell afirma con total rotundidad que este virus tiene probabilidad cero de convertirse en pandemia.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 1031,
+        "end_time": 1100,
+        "hook": "Esta es la comparativa real entre el sarampión, las variantes de COVID y otros virus al propagarse.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 1132,
+        "end_time": 1162,
+        "hook": "¿Sabías que el Hantavirus pierde casi toda su capacidad de contagio cuando se le vigila?",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 1355,
+        "end_time": 1403,
+        "hook": "Si el hantavirus fuera como el COVID, todo el crucero estaría infectado.",
+        "scores": {
+          "hook": 9,
+          "retention": 8,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 2431,
+        "end_time": 2466,
+        "hook": "La regla de oro de los virus que los medios nunca te explican.",
+        "scores": {
+          "hook": 8,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 773,
+        "end_time": 836,
+        "hook": "Estas son las condiciones exactas en las que el Hantavirus se puede contagiar entre personas.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 837,
+        "end_time": 891,
+        "hook": "¿Cuánto tiempo cara a cara hace falta para contagiarte?",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 960,
+        "end_time": 982,
+        "hook": "No te vas a contagiar de hantavirus por entrar en un ascensor.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 568,
+        "end_time": 613,
+        "hook": "El motivo exacto por el que este brote en el crucero encendió todas las alarmas mundiales.",
+        "scores": {
+          "hook": 9,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 230,
+        "end_time": 268,
+        "hook": "El peligro invisible que corres al barrer un almacén cerrado.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 414,
+        "end_time": 465,
+        "hook": "Así ataca y destruye los pulmones la variante americana del hantavirus.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 466,
+        "end_time": 527,
+        "hook": "¿Es realmente tan letal el hantavirus como dicen los titulares?",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 1451,
+        "end_time": 1499,
+        "hook": "El virus puede permanecer hasta seis semanas dormido dentro de tu cuerpo.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 1578,
+        "end_time": 1637,
+        "hook": "Por qué es imposible que el crucero de 20.000€ estuviera infestado de ratas.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 1713,
+        "end_time": 1756,
+        "hook": "Por qué este virus siempre se autoextingue en el tercer salto.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 2026,
+        "end_time": 2066,
+        "hook": "La gran diferencia entre el COVID y el Hantavirus que cambia todo.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 2205,
+        "end_time": 2236,
+        "hook": "Por qué la ciencia apenas tiene pastillas efectivas contra los virus.",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 2383,
+        "end_time": 2424,
+        "hook": "Los virus no mutan para volverse más inteligentes; mutan por error.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 2576,
+        "end_time": 2623,
+        "hook": "¿Sabes la diferencia real entre brote, epidemia y pandemia?",
+        "scores": {
+          "hook": 7,
+          "retention": 8,
+          "shareability": 7
+        }
+      },
+      {
+        "start_time": 2982,
+        "end_time": 3014,
+        "hook": "La absurda pregunta que le hicieron en directo sobre ratas nadadoras en Canarias.",
+        "scores": {
+          "hook": 9,
+          "retention": 8,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 3344,
+        "end_time": 3384,
+        "hook": "La viruela del mono no viene de los monos: la verdad sobre la zoonosis.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3461,
+        "end_time": 3493,
+        "hook": "El peligro real de las enfermedades tropicales llegando a España por el clima.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3552,
+        "end_time": 3614,
+        "hook": "El virus que de verdad aterra a los científicos no es el hantavirus.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 3625,
+        "end_time": 3660,
+        "hook": "¿Qué pasaría si la gripe aviar mutara para contagiarse entre personas?",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3781,
+        "end_time": 3814,
+        "hook": "Dormimos fatal y por culpa del móvil estamos destrozando nuestro sistema inmune.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      },
+      {
+        "start_time": 3935,
+        "end_time": 3984,
+        "hook": "Tener relaciones sexuales y amigos reales mejora directamente tus defensas.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 4024,
+        "end_time": 4071,
+        "hook": "El mito de la copa de vino diaria al descubierto por un inmunólogo.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 4112,
+        "end_time": 4151,
+        "hook": "Los dos únicos alimentos científicamente probados que disparan tus defensas.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 4274,
+        "end_time": 4306,
+        "hook": "La mujer de 118 años que tenía la microbiota de una chica de 20.",
+        "scores": {
+          "hook": 9,
+          "retention": 9,
+          "shareability": 9
+        }
+      },
+      {
+        "start_time": 4334,
+        "end_time": 4401,
+        "hook": "Tus células inmunes necesitan silencio: cómo las pantallas te enferman.",
+        "scores": {
+          "hook": 8,
+          "retention": 8,
+          "shareability": 8
+        }
+      }
+    ],
+    "coverage": [
+      {
+        "rank": 1,
+        "score": 99,
+        "titulo": "Sarampión vs COVID: ¡La Verdad de la Inmunidad de Grupo!",
+        "duracion_seg": 96.5,
+        "match": {
+          "start_time": 1031,
+          "end_time": 1100,
+          "hook": "Esta es la comparativa real entre el sarampión, las variantes de COVID y otros virus al propagarse.",
+          "overlap_sec": 69.0,
+          "overlap_frac": 0.715
+        },
+        "covered": true
+      },
+      {
+        "rank": 2,
+        "score": 98,
+        "titulo": "Virus Mortal: ¿Emergencia Sanitaria y Precaución Máxima?",
+        "duracion_seg": 17.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 3,
+        "score": 98,
+        "titulo": "Virus Misterioso en Crucero: ¡Alerta Sanitaria en España!",
+        "duracion_seg": 44.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 4,
+        "score": 98,
+        "titulo": "Virus: ¿Miedo a Mutaciones? Entiende la Infectividad vs. Letalidad",
+        "duracion_seg": 82.0,
+        "match": {
+          "start_time": 2431,
+          "end_time": 2466,
+          "hook": "La regla de oro de los virus que los medios nunca te explican.",
+          "overlap_sec": 35.0,
+          "overlap_frac": 0.427
+        },
+        "covered": false
+      },
+      {
+        "rank": 5,
+        "score": 97,
+        "titulo": "Brote Viral en Barco: ¿Peligro Pandémico?",
+        "duracion_seg": 70.5,
+        "match": {
+          "start_time": 2576,
+          "end_time": 2623,
+          "hook": "¿Sabes la diferencia real entre brote, epidemia y pandemia?",
+          "overlap_sec": 40.7,
+          "overlap_frac": 0.577
+        },
+        "covered": true
+      },
+      {
+        "rank": 6,
+        "score": 97,
+        "titulo": "Zoonosis: ¿Por qué las enfermedades saltan de animales a humanos?",
+        "duracion_seg": 85.7,
+        "match": {
+          "start_time": 3344,
+          "end_time": 3384,
+          "hook": "La viruela del mono no viene de los monos: la verdad sobre la zoonosis.",
+          "overlap_sec": 36.3,
+          "overlap_frac": 0.424
+        },
+        "covered": false
+      },
+      {
+        "rank": 7,
+        "score": 97,
+        "titulo": "Virus mortal: Baja Transmisibilidad, Alta Letalidad Revelada",
+        "duracion_seg": 132.1,
+        "match": {
+          "start_time": 1355,
+          "end_time": 1403,
+          "hook": "Si el hantavirus fuera como el COVID, todo el crucero estaría infectado.",
+          "overlap_sec": 47.8,
+          "overlap_frac": 0.362
+        },
+        "covered": false
+      },
+      {
+        "rank": 8,
+        "score": 96,
+        "titulo": "Aislamiento Voluntario y Obligatorio: Protocolos de Salud Pública",
+        "duracion_seg": 104.5,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 9,
+        "score": 96,
+        "titulo": "COVID: Delta vs. Omicron - La Evolución Viral Revelada",
+        "duracion_seg": 25.9,
+        "match": {
+          "start_time": 1031,
+          "end_time": 1100,
+          "hook": "Esta es la comparativa real entre el sarampión, las variantes de COVID y otros virus al propagarse.",
+          "overlap_sec": 14.0,
+          "overlap_frac": 0.541
+        },
+        "covered": true
+      },
+      {
+        "rank": 10,
+        "score": 96,
+        "titulo": "Virus Mutaciones: ¿Es la de los Andes?",
+        "duracion_seg": 77.0,
+        "match": {
+          "start_time": 2383,
+          "end_time": 2424,
+          "hook": "Los virus no mutan para volverse más inteligentes; mutan por error.",
+          "overlap_sec": 38.9,
+          "overlap_frac": 0.505
+        },
+        "covered": true
+      },
+      {
+        "rank": 11,
+        "score": 95,
+        "titulo": "Desembarco: Protocolo de Seguridad Revolucionario Revelado",
+        "duracion_seg": 17.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 12,
+        "score": 95,
+        "titulo": "Protección Total Contra Virus Letal en Barcos",
+        "duracion_seg": 54.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 13,
+        "score": 94,
+        "titulo": "Globalización y Viajes: El Riesgo de Enfermedades Zoonóticas",
+        "duracion_seg": 40.3,
+        "match": {
+          "start_time": 3461,
+          "end_time": 3493,
+          "hook": "El peligro real de las enfermedades tropicales llegando a España por el clima.",
+          "overlap_sec": 1.0,
+          "overlap_frac": 0.025
+        },
+        "covered": false
+      },
+      {
+        "rank": 14,
+        "score": 94,
+        "titulo": "Tu Sueño y Ejercicio Físico: ¡Nunca Es Tarde!",
+        "duracion_seg": 37.4,
+        "match": {
+          "start_time": 3781,
+          "end_time": 3814,
+          "hook": "Dormimos fatal y por culpa del móvil estamos destrozando nuestro sistema inmune.",
+          "overlap_sec": 10.9,
+          "overlap_frac": 0.291
+        },
+        "covered": false
+      },
+      {
+        "rank": 15,
+        "score": 94,
+        "titulo": "Procedimiento COVID: Lecciones Aprendidas y Mejora",
+        "duracion_seg": 48.6,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 16,
+        "score": 93,
+        "titulo": "¿Cuándo es contagioso un virus? Incertidumbre desvelada",
+        "duracion_seg": 46.3,
+        "match": {
+          "start_time": 2026,
+          "end_time": 2066,
+          "hook": "La gran diferencia entre el COVID y el Hantavirus que cambia todo.",
+          "overlap_sec": 40.0,
+          "overlap_frac": 0.864
+        },
+        "covered": true
+      },
+      {
+        "rank": 17,
+        "score": 93,
+        "titulo": "Contagio Cero: Máxima Tranquilidad para Tenerife y Puerto",
+        "duracion_seg": 93.1,
+        "match": {
+          "start_time": 2982,
+          "end_time": 3014,
+          "hook": "La absurda pregunta que le hicieron en directo sobre ratas nadadoras en Canarias.",
+          "overlap_sec": 31.5,
+          "overlap_frac": 0.338
+        },
+        "covered": false
+      },
+      {
+        "rank": 18,
+        "score": 93,
+        "titulo": "Virus se Transmite Mal: No es COVID ni Gripe",
+        "duracion_seg": 47.6,
+        "match": {
+          "start_time": 1355,
+          "end_time": 1403,
+          "hook": "Si el hantavirus fuera como el COVID, todo el crucero estaría infectado.",
+          "overlap_sec": 47.7,
+          "overlap_frac": 1.002
+        },
+        "covered": true
+      },
+      {
+        "rank": 19,
+        "score": 92,
+        "titulo": "Gripe Aviar: ¿Más Letal que la Gripe Común?",
+        "duracion_seg": 54.8,
+        "match": {
+          "start_time": 3552,
+          "end_time": 3614,
+          "hook": "El virus que de verdad aterra a los científicos no es el hantavirus.",
+          "overlap_sec": 52.3,
+          "overlap_frac": 0.954
+        },
+        "covered": true
+      },
+      {
+        "rank": 20,
+        "score": 92,
+        "titulo": "Alerta Sanitaria: 3 Casos COVID-19 Relacionados con España",
+        "duracion_seg": 58.2,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 21,
+        "score": 92,
+        "titulo": "One Health: Cuidando la Salud del Planeta Completo",
+        "duracion_seg": 23.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 22,
+        "score": 92,
+        "titulo": "IA Revoluciona Gráficos: De Star Wars a Dibujos Precisos",
+        "duracion_seg": 80.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 23,
+        "score": 91,
+        "titulo": "Podcast de Emergencia: Coronavirus y Antivirus",
+        "duracion_seg": 22.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 24,
+        "score": 91,
+        "titulo": "¡Cuidado! Así se Transmiten los Virus de Roedores a Humanos",
+        "duracion_seg": 50.6,
+        "match": {
+          "start_time": 230,
+          "end_time": 268,
+          "hook": "El peligro invisible que corres al barrer un almacén cerrado.",
+          "overlap_sec": 38.0,
+          "overlap_frac": 0.751
+        },
+        "covered": true
+      },
+      {
+        "rank": 25,
+        "score": 91,
+        "titulo": "Pánico Mediático y Histeria: Entendiendo el Miedo",
+        "duracion_seg": 15.2,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 26,
+        "score": 90,
+        "titulo": "Contagio COVID: 6 Situaciones Clave y Cómo Evitarlo",
+        "duracion_seg": 30.5,
+        "match": {
+          "start_time": 773,
+          "end_time": 836,
+          "hook": "Estas son las condiciones exactas en las que el Hantavirus se puede contagiar entre personas.",
+          "overlap_sec": 9.8,
+          "overlap_frac": 0.321
+        },
+        "covered": false
+      },
+      {
+        "rank": 27,
+        "score": 90,
+        "titulo": "R-Zero: ¿Cuántas personas contagias en pandemia?",
+        "duracion_seg": 32.4,
+        "match": {
+          "start_time": 984,
+          "end_time": 1030,
+          "hook": "El doctor Alfredo Corell afirma con total rotundidad que este virus tiene probabilidad cero de convertirse en pandemia.",
+          "overlap_sec": 32.0,
+          "overlap_frac": 0.988
+        },
+        "covered": true
+      },
+      {
+        "rank": 28,
+        "score": 90,
+        "titulo": "Desembarco Marítimo: Logística, Botes y Viaje a Casa",
+        "duracion_seg": 78.7,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 29,
+        "score": 89,
+        "titulo": "¿Cura para esta enfermedad? Tratamientos y esperanza",
+        "duracion_seg": 14.8,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 30,
+        "score": 89,
+        "titulo": "Mortalidad Virus Americanos: ¿Sobrestimada?",
+        "duracion_seg": 62.1,
+        "match": {
+          "start_time": 466,
+          "end_time": 527,
+          "hook": "¿Es realmente tan letal el hantavirus como dicen los titulares?",
+          "overlap_sec": 61.0,
+          "overlap_frac": 0.982
+        },
+        "covered": true
+      },
+      {
+        "rank": 31,
+        "score": 88,
+        "titulo": "Sistema Inmunitario: ¡Fortalece Tus Defensas Fácilmente!",
+        "duracion_seg": 16.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 32,
+        "score": 88,
+        "titulo": "Virus MORTAL: ¿Estamos Preparados para la Pandemia?",
+        "duracion_seg": 43.9,
+        "match": {
+          "start_time": 3625,
+          "end_time": 3660,
+          "hook": "¿Qué pasaría si la gripe aviar mutara para contagiarse entre personas?",
+          "overlap_sec": 35.0,
+          "overlap_frac": 0.797
+        },
+        "covered": true
+      },
+      {
+        "rank": 33,
+        "score": 88,
+        "titulo": "Virus: ¿Defensas Matan o Tiempo de Incubación?",
+        "duracion_seg": 26.9,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 34,
+        "score": 87,
+        "titulo": "Mejora Tu Vida: El Poder de los Grupos de Interés",
+        "duracion_seg": 21.5,
+        "match": {
+          "start_time": 3935,
+          "end_time": 3984,
+          "hook": "Tener relaciones sexuales y amigos reales mejora directamente tus defensas.",
+          "overlap_sec": 21.2,
+          "overlap_frac": 0.986
+        },
+        "covered": true
+      },
+      {
+        "rank": 35,
+        "score": 87,
+        "titulo": "Supercontagio: La Ciencia Detrás de los Brotes Virales Revelada",
+        "duracion_seg": 53.4,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 36,
+        "score": 86,
+        "titulo": "La Politización de la Pandemia: Un Peligro Real",
+        "duracion_seg": 25.6,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 37,
+        "score": 86,
+        "titulo": "¿Qué es un Antivirus? Lo Básico Explicado Sencillamente",
+        "duracion_seg": 17.3,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 38,
+        "score": 86,
+        "titulo": "Prebióticos: Descubre sus Fuentes en Frutas y Verduras",
+        "duracion_seg": 25.5,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 39,
+        "score": 85,
+        "titulo": "Alcohol: ¿Por qué lo Normalizamos Tanto?",
+        "duracion_seg": 16.8,
+        "match": {
+          "start_time": 4024,
+          "end_time": 4071,
+          "hook": "El mito de la copa de vino diaria al descubierto por un inmunólogo.",
+          "overlap_sec": 16.5,
+          "overlap_frac": 0.982
+        },
+        "covered": true
+      },
+      {
+        "rank": 40,
+        "score": 85,
+        "titulo": "Inmunidad de Grupo: ¿Cuántos Necesitamos Inmunizados?",
+        "duracion_seg": 15.7,
+        "match": {
+          "start_time": 1031,
+          "end_time": 1100,
+          "hook": "Esta es la comparativa real entre el sarampión, las variantes de COVID y otros virus al propagarse.",
+          "overlap_sec": 15.7,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      },
+      {
+        "rank": 41,
+        "score": 83,
+        "titulo": "Alarma Social: ¿Histeria por Nueva Pandemia?",
+        "duracion_seg": 18.6,
+        "match": null,
+        "covered": false
+      },
+      {
+        "rank": 42,
+        "score": 83,
+        "titulo": "Protocolos Extremos: Desinfección Corporal y Zodiac",
+        "duracion_seg": 23.8,
+        "match": {
+          "start_time": 1578,
+          "end_time": 1637,
+          "hook": "Por qué es imposible que el crucero de 20.000€ estuviera infestado de ratas.",
+          "overlap_sec": 23.8,
+          "overlap_frac": 1.0
+        },
+        "covered": true
+      }
+    ],
+    "summary": {
+      "n_opus_clips": 42,
+      "covered_all42": 15,
+      "coverage_rate_all42": 0.357,
+      "n_top10": 10,
+      "covered_top10": 4,
+      "coverage_rate_top10": 0.4
+    }
+  }
+]

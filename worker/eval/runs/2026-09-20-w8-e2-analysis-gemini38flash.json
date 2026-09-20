@@ -1,0 +1,103 @@
+{
+  "videos_evaluated": 4,
+  "videos_ok": 2,
+  "category_accuracy": 0.5,
+  "duration_pass_rate": 1.0,
+  "duration_untruncated_rate": 1.0,
+  "verification_strict_pass_rate": 0.6571428571428571,
+  "phrase_anchor_pass_rate": 0.9714285714285714,
+  "last_phrase_punct_rate": 0.4166666666666667,
+  "min_moments_per_video": 5,
+  "results": [
+    {
+      "id": "business_spanish_01",
+      "ok": true,
+      "category_match": false,
+      "moments_selected": 5,
+      "moments_valid": 5,
+      "moments_truncated": 0,
+      "verification_strict_pass": 3,
+      "verification_strict_total": 5,
+      "phrase_anchor_pass": 4,
+      "phrase_anchor_total": 5,
+      "errors": [],
+      "category_detected": "business",
+      "last_phrase_punct_rate": 0.0,
+      "phrase_anchor_rate": 0.8,
+      "verification_strict_rate": 0.6,
+      "models": {
+        "analysis": "google/gemini-3.8-flash",
+        "copy": "google/gemini-3.5-flash",
+        "judge": "openai/gpt-5.4-nano",
+        "classifier": "google/gemini-2.5-flash-lite"
+      }
+    },
+    {
+      "id": "podcast_general_01",
+      "ok": true,
+      "category_match": true,
+      "moments_selected": 30,
+      "moments_valid": 30,
+      "moments_truncated": 0,
+      "verification_strict_pass": 20,
+      "verification_strict_total": 30,
+      "phrase_anchor_pass": 30,
+      "phrase_anchor_total": 30,
+      "errors": [],
+      "category_detected": "podcast",
+      "last_phrase_punct_rate": 0.8333333333333334,
+      "phrase_anchor_rate": 1.0,
+      "verification_strict_rate": 0.6666666666666666,
+      "models": {
+        "analysis": "google/gemini-3.8-flash",
+        "copy": "google/gemini-3.5-flash",
+        "judge": "openai/gpt-5.4-nano",
+        "classifier": "google/gemini-2.5-flash-lite"
+      }
+    },
+    {
+      "id": "claude_hacks_regression_01",
+      "ok": false,
+      "category_match": true,
+      "moments_selected": 0,
+      "moments_valid": 0,
+      "moments_truncated": 0,
+      "verification_strict_pass": 0,
+      "verification_strict_total": 0,
+      "phrase_anchor_pass": 0,
+      "phrase_anchor_total": 0,
+      "errors": [
+        "analysis_failed: Error code: 403 - {'error': {'message': 'Key limit exceeded (weekly limit). Manage it using https://openrouter.ai/workspaces/default/keys/c16740083f51"
+      ],
+      "category_detected": "business"
+    },
+    {
+      "id": "user_recommended_01",
+      "ok": false,
+      "category_match": false,
+      "moments_selected": 0,
+      "moments_valid": 0,
+      "moments_truncated": 0,
+      "verification_strict_pass": 0,
+      "verification_strict_total": 0,
+      "phrase_anchor_pass": 0,
+      "phrase_anchor_total": 0,
+      "errors": [
+        "analysis_failed: Error code: 403 - {'error': {'message': 'Key limit exceeded (weekly limit). Manage it using https://openrouter.ai/workspaces/default/keys/c16740083f51"
+      ],
+      "category_detected": "business"
+    }
+  ],
+  "tier": "analysis",
+  "models": {
+    "analysis": "google/gemini-3.8-flash",
+    "copy": "google/gemini-3.5-flash",
+    "judge": "openai/gpt-5.4-nano",
+    "classifier": "google/gemini-2.5-flash-lite"
+  },
+  "failures": [
+    "2 video(s) fallaron la evaluación",
+    "category_accuracy=0.50 < 0.75 (category_accuracy_min)"
+  ],
+  "passed": false
+}

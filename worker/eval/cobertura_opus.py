@@ -83,7 +83,13 @@ def run_pasada_a(video_id: str, model: str) -> list[dict]:
     if not loaded:
         raise RuntimeError(f"no se pudo obtener transcript para {video_id}")
     transcript, video_info = loaded
-    video_info["id"] = video_id  # asegura la key de analysis_cache
+    # NO pisar video_info["id"]: get_video_metadata ya lo pone al youtube_id
+    # (p.ej. "XxoVRjTySsM"), que es la key real con la que analysis_cache
+    # guarda el resultado (run_golden_set.evaluate_video tampoco lo pisa) —
+    # sobreescribirlo con el slug del golden set ("podcast_general_01") rompe
+    # el cache hit y fuerza una llamada nueva (bug encontrado en W8-E2 al
+    # pegar contra el límite semanal de OpenRouter con una corrida que
+    # debía ser 100% cache).
 
     analysis = analyze_with_openrouter(transcript, video_info)
     if not analysis:
@@ -175,7 +181,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         results = []
         for model in args.model:
-            candidates = run_pasada_a(video_id, model)
+            try:
+                candidates = run_pasada_a(video_id, model)
+            except Exception as e:
+                # Un modelo sin cache que pega contra un límite/error de API no
+                # debe tirar abajo la comparación de los modelos que sí están
+                # cacheados (bug real de W8-E2: límite semanal de OpenRouter).
+                print(f"❌ {model} falló, se omite: {str(e)[:200]}", file=sys.stderr)
+                results.append({"model": model, "video_id": video_id, "error": str(e)[:500]})
+                continue
             rows = coverage(candidates, opus_clips)
             summary = summarize(rows)
             results.append({
@@ -189,7 +203,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(results, ensure_ascii=False, indent=2), file=real_stdout)
     else:
         for r in results:
-            print(render_text(r["video_id"], r["model"], r["candidates"], r["coverage"], r["summary"]))
+            if "error" in r:
+                print(f"Video: {r['video_id']}  |  MODEL_ANALYSIS={r['model']}  |  ERROR: {r['error']}")
+            else:
+                print(render_text(r["video_id"], r["model"], r["candidates"], r["coverage"], r["summary"]))
             print()
     return 0
 

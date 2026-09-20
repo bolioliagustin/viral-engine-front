@@ -1,0 +1,114 @@
+{
+  "videos_evaluated": 4,
+  "videos_ok": 4,
+  "category_accuracy": 0.75,
+  "duration_pass_rate": 1.0,
+  "duration_untruncated_rate": 1.0,
+  "verification_strict_pass_rate": 0.40404040404040403,
+  "phrase_anchor_pass_rate": 0.9696969696969697,
+  "last_phrase_punct_rate": 0.7555555555555555,
+  "min_moments_per_video": 9,
+  "results": [
+    {
+      "id": "business_spanish_01",
+      "ok": true,
+      "category_match": false,
+      "moments_selected": 30,
+      "moments_valid": 30,
+      "moments_truncated": 0,
+      "verification_strict_pass": 9,
+      "verification_strict_total": 30,
+      "phrase_anchor_pass": 30,
+      "phrase_anchor_total": 30,
+      "errors": [],
+      "category_detected": "business",
+      "last_phrase_punct_rate": 0.8,
+      "phrase_anchor_rate": 1.0,
+      "verification_strict_rate": 0.3,
+      "models": {
+        "analysis": "google/gemini-3.5-flash",
+        "copy": "google/gemini-3.5-flash",
+        "judge": "openai/gpt-5.4-nano",
+        "classifier": "google/gemini-2.5-flash-lite"
+      }
+    },
+    {
+      "id": "podcast_general_01",
+      "ok": true,
+      "category_match": true,
+      "moments_selected": 30,
+      "moments_valid": 30,
+      "moments_truncated": 0,
+      "verification_strict_pass": 12,
+      "verification_strict_total": 30,
+      "phrase_anchor_pass": 30,
+      "phrase_anchor_total": 30,
+      "errors": [],
+      "category_detected": "podcast",
+      "last_phrase_punct_rate": 0.7,
+      "phrase_anchor_rate": 1.0,
+      "verification_strict_rate": 0.4,
+      "models": {
+        "analysis": "google/gemini-3.5-flash",
+        "copy": "google/gemini-3.5-flash",
+        "judge": "openai/gpt-5.4-nano",
+        "classifier": "google/gemini-2.5-flash-lite"
+      }
+    },
+    {
+      "id": "claude_hacks_regression_01",
+      "ok": true,
+      "category_match": true,
+      "moments_selected": 9,
+      "moments_valid": 9,
+      "moments_truncated": 0,
+      "verification_strict_pass": 4,
+      "verification_strict_total": 9,
+      "phrase_anchor_pass": 9,
+      "phrase_anchor_total": 9,
+      "errors": [],
+      "category_detected": "business",
+      "last_phrase_punct_rate": 0.8888888888888888,
+      "phrase_anchor_rate": 1.0,
+      "verification_strict_rate": 0.4444444444444444,
+      "models": {
+        "analysis": "google/gemini-3.5-flash",
+        "copy": "google/gemini-3.5-flash",
+        "judge": "openai/gpt-5.4-nano",
+        "classifier": "google/gemini-2.5-flash-lite"
+      }
+    },
+    {
+      "id": "user_recommended_01",
+      "ok": true,
+      "category_match": true,
+      "moments_selected": 30,
+      "moments_valid": 30,
+      "moments_truncated": 0,
+      "verification_strict_pass": 15,
+      "verification_strict_total": 30,
+      "phrase_anchor_pass": 27,
+      "phrase_anchor_total": 30,
+      "errors": [],
+      "category_detected": "podcast",
+      "last_phrase_punct_rate": 0.6333333333333333,
+      "phrase_anchor_rate": 0.9,
+      "verification_strict_rate": 0.5,
+      "models": {
+        "analysis": "google/gemini-3.5-flash",
+        "copy": "google/gemini-3.5-flash",
+        "judge": "openai/gpt-5.4-nano",
+        "classifier": "google/gemini-2.5-flash-lite"
+      }
+    }
+  ],
+  "tier": "analysis",
+  "models": {
+    "analysis": "google/gemini-3.5-flash",
+    "copy": "google/gemini-3.5-flash",
+    "judge": "openai/gpt-5.4-nano",
+    "classifier": "google/gemini-2.5-flash-lite"
+  },
+  "failures": [],
+  "passed": true
+}

@@ -92,3 +92,127 @@ más, no infla parejo) es ahora la lectura más sólida que la de n=30.
 Recomendación: adoptar `openai/gpt-5.4-mini` como `MODEL_JUDGE` — el costo
 del cambio es insignificante (US$0.09 para re-medir 59 clips; en producción
 es una llamada corta más por clip, no la Pasada A).
+
+## E2 — modelo de la Pasada A (PARCIAL, cortado por el límite semanal de OpenRouter)
+
+**Corrección de nombre:** `google/gemini-3.5-pro` (el modelo que pedía la
+tarea original) **no existe** — confirmado contra el listado real de
+OpenRouter (`GET /api/v1/models`): la familia 3.5 de Google solo tiene
+`flash`/`flash-lite`. Se probaron dos sustitutos reales:
+- `google/gemini-3.1-pro-preview` ($2.00/$12.00 por millón — **~1.33x**
+  `gemini-3.5-flash`, no ~5x como se esperaba).
+- `google/gemini-3.8-flash` ($0.75/$3.75 por millón — **la mitad** de
+  `gemini-3.5-flash`, generación más nueva; también existen 3.6/3.7-flash a
+  igual precio pero no se probaron).
+
+**Bloqueo:** a mitad de la 3ª corrida la API key de OpenRouter pegó en su
+**límite semanal** (403 `Key limit exceeded`, no falta de crédito — la
+cuenta tiene ~US$2.6 de saldo, límite 5/semana, remaining 0 en el momento
+de la corrida). No se pudo terminar `user_recommended_01` con ningún
+modelo nuevo, ni `claude_hacks_regression_01` con `gemini-3.8-flash`. Nada
+más se lanzó contra OpenRouter después de detectarlo.
+
+**Bug encontrado y arreglado en el camino:** la primera versión de
+`cobertura_opus.py` pisaba `video_info["id"]` con el slug del golden set
+("podcast_general_01") antes de llamar a `analyze_with_openrouter` — pero
+`analysis_cache` guarda con la key real (`video_info["id"]` tal como lo
+pone `get_video_metadata`, que es el `youtube_id`, p.ej. "XxoVRjTySsM").
+Pisarlo rompía el cache hit y forzaba una llamada nueva — la que hizo notar
+el límite semanal por primera vez. Sacado el pisado, las tres corridas de
+cobertura fueron 100% cache hit (US$0 — los candidatos ya estaban
+guardados de las corridas de `--tier analysis` de más arriba).
+
+### Paso 1a — calidad de candidatos (`--tier analysis`, solo Pasada A)
+
+Comparable **1:1 en 2 videos** (los únicos donde los tres modelos
+completaron antes del límite): `business_spanish_01` y `podcast_general_01`.
+`claude_hacks_regression_01` solo tiene flash + gemini-3.1-pro-preview
+(gemini-3.8-flash pegó en el límite ahí). `user_recommended_01`: ningún
+modelo nuevo lo completó — excluido de los tres.
+
+| Video | Modelo | candidatos | verification_strict_rate | phrase_anchor_rate | category_match |
+|---|---|---|---|---|---|
+| business_spanish_01 | gemini-3.5-flash (actual) | 30 | 30% | 100% | ❌ |
+| business_spanish_01 | gemini-3.1-pro-preview | 30 | 40% | 97% | ❌ |
+| business_spanish_01 | gemini-3.8-flash | **5** (≠30, ver nota) | 60% | 80% | ❌ |
+| podcast_general_01 | gemini-3.5-flash (actual) | 30 | 40% | 100% | ✅ |
+| podcast_general_01 | gemini-3.1-pro-preview | 24 | 54% | 100% | ✅ |
+| podcast_general_01 | gemini-3.8-flash | 30 | 67% | 100% | ✅ |
+| claude_hacks_regression_01 | gemini-3.5-flash (actual) | 9 | 44% | 100% | ✅ |
+| claude_hacks_regression_01 | gemini-3.1-pro-preview | 9 | 33% | 100% | ✅ |
+
+Archivos: [`2026-09-20-w8-e2-analysis-baseline-flash.json`](2026-09-20-w8-e2-analysis-baseline-flash.json),
+[`2026-09-20-w8-e2-analysis-gemini31propreview.json`](2026-09-20-w8-e2-analysis-gemini31propreview.json),
+[`2026-09-20-w8-e2-analysis-gemini38flash.json`](2026-09-20-w8-e2-analysis-gemini38flash.json)
+(los tres solo tienen los videos que llegaron a correr antes del límite).
+
+**Nota business_spanish_01/gemini-3.8-flash:** generó 5 candidatos en vez de
+30 — no se investigó la causa (¿corte de tokens, formato distinto?) dentro
+del presupuesto de esta tarea; con n=5 su 60% de verification_strict_rate
+es ruidoso, no comparable en confianza contra los n=30 del resto. Queda
+como pendiente antes de confiar en este modelo para producción.
+
+**Lectura (parcial, 2-3 videos, no concluyente):** ambos candidatos superan
+a `gemini-3.5-flash` en `verification_strict_rate` en `podcast_general_01`
+(40%→54%/67%) pero no hay patrón consistente en los otros dos videos
+(mixto, y `gemini-3.8-flash` tiene el problema de n=5 en uno de ellos). No
+alcanza para una recomendación de "calidad de candidatos" con confianza —
+hace falta terminar los 4 videos con los 3 modelos.
+
+### Paso 1b — cobertura contra los 42 clips de Opus (métrica dura, COMPLETA)
+
+**[`2026-09-20-w8-e2-cobertura-opus42.json`](2026-09-20-w8-e2-cobertura-opus42.json)**
+— `eval/cobertura_opus.py` contra `eval/opus_benchmark.json` (rama
+`eval/opus-benchmark`, 42 clips reales de Opus sobre `podcast_general_01`,
+fusionando los 5 clips con dos tramos). Umbral: solapamiento ≥50% de la
+duración del clip de Opus. Esta parte SÍ es 1:1 completa (cache hit en los
+tres modelos, mismo video, mismos 30 candidatos ya generados en el paso 1a).
+
+| Modelo | Cobertura de los 42 | Cobertura del top-10 |
+|---|---|---|
+| gemini-3.5-flash (actual) | 15/42 (35.7%) | **1/10 (10%)** |
+| gemini-3.1-pro-preview | 15/42 (35.7%) | **3/10 (30%)** |
+| gemini-3.8-flash | 15/42 (35.7%) | **4/10 (40%)** |
+
+**Hallazgo central:** los tres modelos cubren la MISMA fracción del total
+(35.7%, exactamente los mismos 15 clips) — la breadth no cambia. Lo que
+cambia es la PUNTERÍA sobre los mejores: el #1 de Opus (score 99,
+"Sarampión vs COVID", 1030.4-1126.9s) lo solapa `gemini-3.5-flash` en
+**39%** (bajo el umbral — no cuenta como cubierto, es el caso que motivó
+toda la tarea W8), `gemini-3.1-pro-preview` en **83%** y `gemini-3.8-flash`
+en **72%** — ambos candidatos SÍ lo cubren. El patrón se repite en el resto
+del top-10: `gemini-3.8-flash` cubre #1, #5, #9, #10; `gemini-3.1-pro-preview`
+cubre #1, #4, #9; `gemini-3.5-flash` solo #4. **Ninguno de los tres cubre
+#2, #3, #6, #7, #8** (clips cortos de 15-30s o con tramos partidos — puede
+ser un límite estructural del prompt actual, no del modelo).
+
+**Lectura:** esta es la métrica más limpia y concluyente de todo W8 —
+cambiar el modelo de análisis (a cualquiera de los dos candidatos) no
+amplía cuántos temas se detectan, pero SÍ mejora significativamente qué
+tan bien se recorta el mejor material (top-10: 10%→30-40%). Y
+`gemini-3.8-flash`, que es la MITAD de costo, cubre más top-10 que el
+`gemini-3.1-pro-preview` de 1.33x costo — con la salvedad de que es un solo
+video y el bug de candidatos truncados en `business_spanish_01` (paso 1a)
+pide desconfiar un poco de `gemini-3.8-flash` hasta ver más videos.
+
+### Qué falta (bloqueado por el límite semanal de OpenRouter)
+
+1. Terminar `--tier analysis` de `gemini-3.1-pro-preview` y
+   `gemini-3.8-flash` en `user_recommended_01` (y `claude_hacks_regression_01`
+   para `gemini-3.8-flash`), para tener el paso 1a comparable en los 4 videos:
+   ```
+   TRANSCRIPT_SOURCE=whisper_full MODEL_ANALYSIS=google/gemini-3.1-pro-preview \
+     python eval/run_golden_set.py --tier analysis --json
+   TRANSCRIPT_SOURCE=whisper_full MODEL_ANALYSIS=google/gemini-3.8-flash \
+     python eval/run_golden_set.py --tier analysis --json
+   ```
+2. Investigar por qué `gemini-3.8-flash` generó 5 candidatos en vez de 30
+   en `business_spanish_01` antes de confiar en él.
+3. Recién con (1)-(2) resueltos: si alguno de los dos candidatos gana claro
+   en paso 1a también, correr el e2e completo de ese modelo (`--tier e2e`,
+   el paso 2 original de E2) y comparar contra `2026-09-20-w8-e1.json` con
+   `compare_runs.py` — no se llegó a esta parte.
+4. Agregar `google/gemini-3.1-pro-preview`/`gemini-3.6/3.7/3.8-flash` a
+   `config/pricing.py` si alguno se adopta (hoy solo `3.1-pro-preview` está
+   en la tabla; el estimador de costo cae al fallback genérico para los
+   `-flash` nuevos).
