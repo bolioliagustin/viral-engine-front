@@ -5,10 +5,11 @@ Prompt enfocado SOLO en encontrar momentos: timing, hook conceptual, trigger
 emocional, verificación de frases y scores preliminares. SIN copy (el copy
 completo se genera en la pasada B post-Whisper con el texto real del clip).
 
-Sobre-generación: pedimos hasta `min(12, minutos_de_video)` candidatos con
-score preliminar, rankeamos y nos quedamos con los top N (N según duración,
-igual que el pipeline legacy). Esto reemplaza la densidad fija "video >5min
-= 5 momentos" por selección competitiva entre candidatos.
+Sobre-generación: pedimos `candidate_count()` candidatos con score
+preliminar (W9-B: `min(30, max(6, minutos // 2))`), el juez evalúa TODOS en
+main.py y se entrega por umbral (`select_finalists`, `DELIVERY_JUDGE_MIN`),
+no una cantidad fija. Esto reemplaza la densidad fija "video >5min = 5
+momentos" por selección competitiva entre candidatos.
 """
 import copy
 import json
@@ -31,23 +32,50 @@ def target_moment_count(duration_sec: float) -> int:
     return 5
 
 
-def candidate_count(duration_sec: float, target: int) -> int:
+def candidate_count(duration_sec: float) -> int:
     """
-    Candidatos a sobre-generar: min(12, minutos de video), nunca menos que
-    el target final (para videos cortos pedimos al menos target+1 y rankear).
+    Candidatos a pedirle a la Pasada A (W9-B, docs/PLAN_CALIDAD.md §9 W9):
+    min(30, max(6, minutos // 2)). Ya no se acota a `target+1` — TODOS los
+    candidatos que devuelva la Pasada A se evalúan de verdad (descarga +
+    Whisper + juez) en main.py, así que el techo de cuántos pedir lo pone
+    el costo objetivo (~US$0.0015/candidato evaluado, medido en
+    eval/runs/2026-09-18-w2c-verificacion.json), no el `target` final de
+    entrega (que ahora es un piso, no un tope — ver
+    moment_selector.select_finalists / DELIVERY_MAX_CLIPS).
     """
     minutes = max(1, int(duration_sec // 60))
-    n = min(12, minutes)
-    return max(n, min(target + 1, 12))
+    return min(30, max(6, minutes // 2))
 
 
 # ─── W2: el juez elige ───────────────────────────────────────────────────────
 # docs/PLAN_CALIDAD.md §4 W2 (causas C4/C5): la Pasada A sobre-genera pero el
 # auto-score del propio LLM no discrimina (8-9 a casi todo); el juez corría
-# después de renderizar y no decidía nada. Ahora: cuántos candidatos extra
-# sobre el target final pasan por descarga+Whisper+ancla(W1)+juez antes de
-# descartarse (evaluación barata, sin Pasada B ni render).
-EVAL_POOL_EXTRA = 3
+# después de renderizar y no decidía nada. Ahora el juez evalúa a TODOS los
+# candidatos (W9-B: ya no se trunca a un pool chico, ver
+# `rank_and_prune_candidates`) antes de decidir qué se entrega.
+
+# ─── W9-B: entrega por umbral, no por target fijo ────────────────────────────
+# docs/PLAN_CALIDAD.md §9 W9, docs/adr/0008: el plan de créditos (1/3/5) ya no
+# limita la cantidad de clips entregados — se entrega todo lo que pase la
+# nota del juez, hasta un tope de costo/UX. `target_moment_count` (el 1/3/5
+# de siempre) pasa de "cantidad exacta a entregar" a "piso mínimo
+# garantizado" (junto con DELIVERY_MIN_CLIPS) en `select_finalists`.
+#
+# DELIVERY_MAX_CLIPS: 12, no 30. Con candidate_count() pidiendo hasta 30
+# candidatos para un video de 60 min, evaluarlos cuesta ~30×US$0.0015≈
+# US$0.045 (Whisper+juez, medido). Entregar cada candidato que pasa el
+# umbral cuesta además la Pasada B (~US$0.0073/clip, medido en
+# eval/runs/2026-09-18-w2c-verificacion.json → cost_by_task.copy/clips_count).
+# Si el propio objetivo de Fase 0 se cumple (juez sube y MUCHOS candidatos
+# pasan el umbral), entregar los 30 costaría 30×0.0073≈US$0.22 solo de
+# copy — sumado a la evaluación, ~US$0.27/job, muy por encima del tope de
+# US$0.15/job (docs/PLAN_CALIDAD.md §3). Con el tope en 12: peor caso
+# (30 evaluados, los 12 mejores entregados) ≈ 0.045 + 12×0.0073 ≈
+# US$0.13/job — bajo el tope, con margen, y sigue cumpliendo el objetivo de
+# "≥8 clips por video de 60 min" de docs/ANALISIS_OPUS_CLIP.md §6 fila B.
+DELIVERY_JUDGE_MIN = float(os.getenv("DELIVERY_JUDGE_MIN", "15"))     # sobre 30 (3 métricas × 10)
+DELIVERY_MAX_CLIPS = int(os.getenv("DELIVERY_MAX_CLIPS", "12"))
+DELIVERY_MIN_CLIPS = 3   # piso absoluto, aunque target_moment_count() sea 1
 
 # Penalizaciones sobre la suma de notas del juez (hook+retention+shareability,
 # rango teórico 3-30), en tres niveles según qué tan roto está el candidato
@@ -189,45 +217,62 @@ def select_finalists(
     candidates: list["CandidateEval"], target: int
 ) -> tuple[list["CandidateEval"], list["CandidateEval"]]:
     """
-    W2 — el juez elige: rankea por `score_candidate` (el juez sobre el clip
-    real, no el auto-score de la Pasada A) y entrega los `target` mejores.
+    W9-B — entrega por umbral (docs/PLAN_CALIDAD.md §9 W9), no por `target`
+    fijo: se entregan TODOS los candidatos usables, sin conflicto de
+    diversidad, con `score_candidate() >= DELIVERY_JUDGE_MIN`, hasta
+    `DELIVERY_MAX_CLIPS`. `target` (`target_moment_count`, el 1/3/5 de
+    siempre) y `DELIVERY_MIN_CLIPS` (3) son ahora un PISO: si menos
+    candidatos que `max(target, DELIVERY_MIN_CLIPS)` pasan el umbral, se
+    completa con los siguientes mejores igual aunque no lo pasen — mejor
+    un clip mediocre que entregar menos de lo mínimo (mismo criterio que
+    W2, ahora aplicado a un piso más alto). Nunca se entrega un candidato
+    `usable=False` (sin `clip_text`, no hay nada que renderizar), ni
+    siquiera para completar el piso.
 
     Diversidad: un candidato se descarta si solapa > MAX_OVERLAP_RATIO en
     tiempo con uno ya elegido, o si su hook es casi el mismo (Jaccard de
-    palabras > MAX_HOOK_SIMILARITY). Si la diversidad deja menos de `target`
-    elegidos, se completa con los siguientes mejores igual — mejor un
-    candidato repetido que entregar menos clips de los que pidió el usuario.
-    Con menos candidatos que `target`, no se rompe: devuelve los que haya.
+    palabras > MAX_HOOK_SIMILARITY) — igual que W2. El backfill del piso
+    ignora la diversidad (como antes): mejor un candidato repetido que
+    entregar menos del piso.
 
     Returns:
         (elegidos, en orden cronológico), (descartados, con `discard_reason`)
     """
+    floor = max(target, DELIVERY_MIN_CLIPS)
     ranked = sorted(candidates, key=score_candidate, reverse=True)
     selected: list[CandidateEval] = []
     deferred: list[CandidateEval] = []
 
     for cand in ranked:
+        if not cand.usable:
+            cand.discard_reason = cand.discard_reason or "sin clip_text: no se puede entregar"
+            deferred.append(cand)
+            continue
+        if len(selected) >= DELIVERY_MAX_CLIPS:
+            cand.discard_reason = f"tope: ya se alcanzaron los {DELIVERY_MAX_CLIPS} clips de DELIVERY_MAX_CLIPS"
+            deferred.append(cand)
+            continue
         conflict = any(
             _overlap_ratio(cand, s) > MAX_OVERLAP_RATIO
             or _hook_similarity(cand.hook, s.hook) > MAX_HOOK_SIMILARITY
             for s in selected
         )
-        if len(selected) < target and not conflict:
+        if conflict:
+            cand.discard_reason = "diversidad: solapa o repite el hook de un candidato ya elegido"
+            deferred.append(cand)
+            continue
+        if score_candidate(cand) >= DELIVERY_JUDGE_MIN:
             selected.append(cand)
         else:
-            cand.discard_reason = (
-                "diversidad: solapa o repite el hook de un candidato ya elegido"
-                if conflict else
-                "ranking: quedó fuera del top por nota del juez"
-            )
+            cand.discard_reason = "umbral: nota del juez por debajo de DELIVERY_JUDGE_MIN"
             deferred.append(cand)
 
-    if len(selected) < target:
+    if len(selected) < floor:
         selected_idx = {c.index for c in selected}
         for cand in deferred:
-            if len(selected) >= target:
+            if len(selected) >= floor or len(selected) >= DELIVERY_MAX_CLIPS:
                 break
-            if cand.index in selected_idx:
+            if cand.index in selected_idx or not cand.usable:
                 continue
             cand.discard_reason = None
             selected.append(cand)
@@ -347,17 +392,22 @@ def rank_and_prune_candidates(
     transcript: dict | None = None,
 ) -> dict:
     """
-    Pre-filtro barato por auto-score de la Pasada A (suma hook+retention+
-    shareability): cuando se generaron muchos más candidatos de los que se
-    van a evaluar de verdad, descarta los peores por auto-score para no
-    gastar descarga+Whisper+juez en todos. Conserva `target + EVAL_POOL_EXTRA`
-    candidatos (W2) — NO `target`: la selección final la hace el juez sobre
-    el clip real en `select_finalists`, después de W1 (main.py), porque el
-    auto-score del propio LLM no discrimina (causa C4, PLAN_CALIDAD.md §1.3).
-    Mantiene orden cronológico en el output (se procesan en orden de aparición).
+    W9-B (docs/PLAN_CALIDAD.md §9 W9): ya NO trunca. Hasta esta línea de
+    trabajo, esto podaba a un pool chico (`target + EVAL_POOL_EXTRA`, W2)
+    por auto-score de la Pasada A antes de gastar en descarga+Whisper+juez;
+    ahora `candidate_count()` ya pone el techo de cuántos candidatos pedirle
+    al LLM (según el costo objetivo, no según `target`), y TODOS los que
+    devuelve se evalúan de verdad en main.py — la selección final la hace
+    el juez sobre el clip real en `select_finalists`, por umbral, no acá
+    por auto-score (el auto-score del propio LLM no discrimina, causa C4,
+    PLAN_CALIDAD.md §1.3). `target` queda sin usar en esta función (se
+    conserva en la firma por compatibilidad con el único caller,
+    `select_moments`, y porque documenta la intención de quien la llama).
+
+    Solo anota `candidates_all` (auto-score + penalización de borde de
+    segmento) para poder comparar después contra el ranking del juez.
     """
     moments = result_dict.get("viral_moments") or []
-    pool_size = target + EVAL_POOL_EXTRA
 
     def _score(m: dict) -> float:
         s = m.get("scores") or {}
@@ -383,21 +433,6 @@ def rank_and_prune_candidates(
         {**copy.deepcopy(m), "rank_score": round(_score(m), 2)} if isinstance(m, dict) else m
         for m in moments
     ]
-
-    if len(moments) <= pool_size:
-        return result_dict
-
-    ranked = sorted(moments, key=_score, reverse=True)[:pool_size]
-    dropped = len(moments) - len(ranked)
-    # Orden cronológico para presentación
-    ranked.sort(key=lambda m: float(m.get("start_time") or 0))
-    print(
-        f"   🏊 Pool de evaluación: {len(moments)} generados → {len(ranked)} "
-        f"pasan a Whisper+juez (top {pool_size} por auto-score, {dropped} "
-        f"descartados antes de gastar en descarga; el juez decide el target "
-        f"final de {target} en main.py)"
-    )
-    result_dict["viral_moments"] = ranked
     return result_dict
 
 
@@ -422,7 +457,7 @@ def select_moments(
         Exception si el LLM falla tras los retries (el caller cae al mega-prompt).
     """
     target = target_moment_count(duration)
-    num_candidates = candidate_count(duration, target)
+    num_candidates = candidate_count(duration)
 
     prompt = get_selection_prompt(
         duration=int(duration),

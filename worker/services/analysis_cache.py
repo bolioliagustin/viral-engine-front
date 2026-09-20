@@ -31,15 +31,23 @@ from services.supabase_client import get_supabase
 #     Pasada A (start_time/end_time SIEMPRE en segundos absolutos, conversión
 #     de marcas [mm:ss]) sin bumpear la versión, por acuerdo: se sube una sola
 #     vez acá, al cerrar la integración de las siete ramas.
-# v8: W8-E1 (docs/PLAN_CALIDAD.md §4 W8) — moment_selector.get_selection_prompt:
-#     first_phrase_in_audio tiene que citar desde la PRIMERA palabra de la
-#     oración (conector incluido, el motivo por el que W1-C existe del lado
-#     del pipeline); last_phrase_in_audio explícitamente "el cierre real del
-#     remate"; instrucción de diversidad de temas entre los N candidatos (no
-#     proponer variantes del mismo minuto); "PREFERÍ 40-90s" en vez de "lo
-#     normal es" para podcasts. Formato JSON sin cambios — no hace falta tocar
-#     el parseo, solo invalidar el cache viejo.
-PROMPT_VERSION = "v8"
+# v8: W9-B (docs/PLAN_CALIDAD.md §9 W9) — `candidate_count()` pasa de pedir
+#     hasta 12 candidatos a hasta 30 (`min(30, max(6, minutos // 2))`). El
+#     texto del prompt de la Pasada A no cambió, pero el shape de lo
+#     cacheado sí (hasta 30 `viral_moments` en vez de hasta 12), igual que
+#     el bump v4→v5 de W2: sin esto, un cache hit devolvería el pool viejo
+#     y chico, y W9-B (evaluar TODOS los candidatos) nunca se ejercitaría.
+# v9: W8-E1 (docs/PLAN_CALIDAD.md §4 W8) — moment_selector.get_selection_prompt,
+#     esta vez sí cambia el TEXTO: first_phrase_in_audio tiene que citar
+#     desde la PRIMERA palabra de la oración (conector incluido, el motivo
+#     por el que W1-C existe del lado del pipeline); last_phrase_in_audio
+#     explícitamente "el cierre real del remate"; instrucción de diversidad
+#     de temas entre los N candidatos (no proponer variantes del mismo
+#     minuto); "PREFERÍ 40-90s" en vez de "lo normal es" para podcasts.
+#     Formato JSON sin cambios — no hace falta tocar el parseo, solo
+#     invalidar el cache viejo (que además va a estar mezclado con el shape
+#     nuevo de v8, así que había que subir igual).
+PROMPT_VERSION = "v9"
 
 
 def effective_prompt_version(transcript_source: str | None = None) -> str:

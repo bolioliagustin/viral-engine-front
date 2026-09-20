@@ -117,14 +117,15 @@ class TestGapBSubtitleStyleDefault:
 class TestGapEPromptVersion:
     """(e) PROMPT_VERSION sube a v7 una sola vez (W4 agregó una línea al
     prompt de la Pasada A sin subirla, por acuerdo con el coordinador).
-    Subió de nuevo a v8 en W8-E1 (docs/PLAN_CALIDAD.md §4 W8): el prompt de
-    get_selection_prompt cambió de texto otra vez (citar desde el inicio de
-    la oración, diversidad de temas, "PREFERÍ 40-90s" en podcast) — ver
-    services/analysis_cache.py para el historial completo de bumps."""
+    Subió a v8 en W9-B (candidate_count hasta 30, no 12) y de nuevo a v9 en
+    W8-E1 (docs/PLAN_CALIDAD.md §4 W8): el prompt de get_selection_prompt
+    cambió de texto (citar desde el inicio de la oración, diversidad de
+    temas, "PREFERÍ 40-90s" en podcast) — ver services/analysis_cache.py
+    para el historial completo de bumps."""
 
-    def test_prompt_version_es_v8(self):
+    def test_prompt_version_es_v9(self):
         from services.analysis_cache import PROMPT_VERSION
-        assert PROMPT_VERSION == "v8"
+        assert PROMPT_VERSION == "v9"
 
 
 class TestGapDReframeModeDefaultOff:

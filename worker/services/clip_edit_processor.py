@@ -262,9 +262,30 @@ def process_clip_edit(edit: dict) -> None:
     """
     Procesa un único clip_edit. Side-effects: actualiza la fila de DB,
     sube MP4 a R2. No levanta excepciones — las captura y marca failed.
+
+    W9-B (docs/PLAN_CALIDAD.md §9 W9, docs/adr/0008): `edit_type='hd_upgrade'`
+    usa el MISMO pipeline que un edit de estilo (`target_width=720,
+    target_height=1280`, ya hardcodeado más abajo) — antes de W9-B esto no
+    era una mejora real porque el clip original YA se entregaba en 720x1280;
+    ahora que `main.py._deliver_moment` entrega un preview de 480x854, este
+    re-render SÍ sube la calidad. `POST /api/clips/:id/hd` (backend) ya es
+    idempotente a nivel API (no encola un `hd_upgrade` nuevo si hay uno
+    `queued/processing`, y devuelve el existente si está `completed` sin
+    tocar la cola) — el chequeo de acá es una red de seguridad extra por si
+    una fila ya completada (`rendered_clip_url` seteado) vuelve a la cola
+    por algún reintento externo: no vuelve a descargar ni a renderizar.
     """
     edit_id = edit["id"]
     content_result_id = edit["content_result_id"]
+
+    if edit.get("edit_type") == "hd_upgrade" and edit.get("rendered_clip_url"):
+        print(f"\n✅ clip_edit {edit_id}: hd_upgrade ya tiene rendered_clip_url, no se re-renderiza")
+        try:
+            mark_clip_edit_completed(edit_id, edit["rendered_clip_url"])
+        except Exception as e:
+            print(f"   ⚠️ mark_clip_edit_completed (idempotente) falló: {e}")
+        return
+
     overlay_text = edit.get("overlay_text")
     subtitle_style = _resolve_subtitle_style(edit)
     overlay_position = edit.get("overlay_position") or "top"
