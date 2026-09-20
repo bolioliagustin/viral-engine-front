@@ -129,3 +129,39 @@ describe('GET /status/:jobId — campos de galería (W9-A)', () => {
         expect(cr1.hd_url).toBe('https://r2.example/hd1.mp4');
     });
 });
+
+describe('GET /status/:jobId — pantalla de progreso en dos fases (P1)', () => {
+    test('progress_detail null y partial false en un job viejo/completado sin la columna', async () => {
+        const res = await request(app).get(`/status/${JOB_ID}`);
+        expect(res.status).toBe(200);
+        expect(res.body.progress_detail).toBeNull();
+        expect(res.body.partial).toBe(false);
+    });
+
+    test('progress_detail viaja tal cual cuando el worker lo escribió', async () => {
+        tableData.jobs.single.data.progress_detail = {
+            current: 7, total: 24, message: 'Evaluando candidato 7 de 24', clips_ready: 3,
+        };
+        const res = await request(app).get(`/status/${JOB_ID}`);
+        expect(res.body.progress_detail).toEqual({
+            current: 7, total: 24, message: 'Evaluando candidato 7 de 24', clips_ready: 3,
+        });
+    });
+
+    test('partial true y results ya presentes mientras el job sigue processing', async () => {
+        tableData.jobs.single.data.status = 'processing';
+        tableData.jobs.single.data.current_step = 'evaluating';
+        const res = await request(app).get(`/status/${JOB_ID}`);
+        expect(res.status).toBe(200);
+        expect(res.body.partial).toBe(true);
+        expect(res.body.current_step).toBe('evaluating');
+        // Los content_results ya entregados viajan igual que en un job completado.
+        expect(res.body.results.length).toBe(2);
+    });
+
+    test('partial false cuando el job falló (lo que hay ya es definitivo, no "por venir")', async () => {
+        tableData.jobs.single.data.status = 'failed';
+        const res = await request(app).get(`/status/${JOB_ID}`);
+        expect(res.body.partial).toBe(false);
+    });
+});
