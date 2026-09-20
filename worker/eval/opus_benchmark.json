@@ -1,0 +1,533 @@
+{
+ "fuente": "Opus Clip (ClipBasic, TRIAL), 18-sep-2026",
+ "video_id": "XxoVRjTySsM",
+ "video_golden_set": "podcast_general_01",
+ "duracion_video_seg": 4640,
+ "nota": "Rangos de los 42 clips que entregó Opus sobre el mismo video de nuestro golden set. Sirve como referencia de cobertura: qué momentos eligió un producto maduro. El score es el curvado que muestra su UI (83-99); su juez crudo daba 32-37 sobre 40. Ver docs/ANALISIS_OPUS_CLIP.md.",
+ "clips": [
+  {
+   "rank": 1,
+   "score": 99,
+   "rangos_seg": [
+    [
+     1030.4,
+     1126.9
+    ]
+   ],
+   "duracion_seg": 96.5,
+   "titulo": "Sarampión vs COVID: ¡La Verdad de la Inmunidad de Grupo!"
+  },
+  {
+   "rank": 2,
+   "score": 98,
+   "rangos_seg": [
+    [
+     3172.1,
+     3180.8
+    ],
+    [
+     3180.8,
+     3189.5
+    ]
+   ],
+   "duracion_seg": 17.4,
+   "titulo": "Virus Mortal: ¿Emergencia Sanitaria y Precaución Máxima?"
+  },
+  {
+   "rank": 3,
+   "score": 98,
+   "rangos_seg": [
+    [
+     25.3,
+     70.1
+    ]
+   ],
+   "duracion_seg": 44.8,
+   "titulo": "Virus Misterioso en Crucero: ¡Alerta Sanitaria en España!"
+  },
+  {
+   "rank": 4,
+   "score": 98,
+   "rangos_seg": [
+    [
+     2423.1,
+     2505.1
+    ]
+   ],
+   "duracion_seg": 82.0,
+   "titulo": "Virus: ¿Miedo a Mutaciones? Entiende la Infectividad vs. Letalidad"
+  },
+  {
+   "rank": 5,
+   "score": 97,
+   "rangos_seg": [
+    [
+     2582.3,
+     2604.4
+    ],
+    [
+     2604.4,
+     2652.8
+    ]
+   ],
+   "duracion_seg": 70.5,
+   "titulo": "Brote Viral en Barco: ¿Peligro Pandémico?"
+  },
+  {
+   "rank": 6,
+   "score": 97,
+   "rangos_seg": [
+    [
+     3347.7,
+     3433.3
+    ]
+   ],
+   "duracion_seg": 85.7,
+   "titulo": "Zoonosis: ¿Por qué las enfermedades saltan de animales a humanos?"
+  },
+  {
+   "rank": 7,
+   "score": 97,
+   "rangos_seg": [
+    [
+     1270.7,
+     1339.5
+    ],
+    [
+     1339.5,
+     1402.8
+    ]
+   ],
+   "duracion_seg": 132.1,
+   "titulo": "Virus mortal: Baja Transmisibilidad, Alta Letalidad Revelada"
+  },
+  {
+   "rank": 8,
+   "score": 96,
+   "rangos_seg": [
+    [
+     3066.9,
+     3171.4
+    ]
+   ],
+   "duracion_seg": 104.5,
+   "titulo": "Aislamiento Voluntario y Obligatorio: Protocolos de Salud Pública"
+  },
+  {
+   "rank": 9,
+   "score": 96,
+   "rangos_seg": [
+    [
+     1086.0,
+     1111.9
+    ]
+   ],
+   "duracion_seg": 25.9,
+   "titulo": "COVID: Delta vs. Omicron - La Evolución Viral Revelada"
+  },
+  {
+   "rank": 10,
+   "score": 96,
+   "rangos_seg": [
+    [
+     2344.9,
+     2400.6
+    ],
+    [
+     2400.6,
+     2421.9
+    ]
+   ],
+   "duracion_seg": 77.0,
+   "titulo": "Virus Mutaciones: ¿Es la de los Andes?"
+  },
+  {
+   "rank": 11,
+   "score": 95,
+   "rangos_seg": [
+    [
+     2674.2,
+     2692.0
+    ]
+   ],
+   "duracion_seg": 17.8,
+   "titulo": "Desembarco: Protocolo de Seguridad Revolucionario Revelado"
+  },
+  {
+   "rank": 12,
+   "score": 95,
+   "rangos_seg": [
+    [
+     2773.5,
+     2828.3
+    ]
+   ],
+   "duracion_seg": 54.8,
+   "titulo": "Protección Total Contra Virus Letal en Barcos"
+  },
+  {
+   "rank": 13,
+   "score": 94,
+   "rangos_seg": [
+    [
+     3492.0,
+     3532.3
+    ]
+   ],
+   "duracion_seg": 40.3,
+   "titulo": "Globalización y Viajes: El Riesgo de Enfermedades Zoonóticas"
+  },
+  {
+   "rank": 14,
+   "score": 94,
+   "rangos_seg": [
+    [
+     3803.1,
+     3840.5
+    ]
+   ],
+   "duracion_seg": 37.4,
+   "titulo": "Tu Sueño y Ejercicio Físico: ¡Nunca Es Tarde!"
+  },
+  {
+   "rank": 15,
+   "score": 94,
+   "rangos_seg": [
+    [
+     3267.7,
+     3316.4
+    ]
+   ],
+   "duracion_seg": 48.6,
+   "titulo": "Procedimiento COVID: Lecciones Aprendidas y Mejora"
+  },
+  {
+   "rank": 16,
+   "score": 93,
+   "rangos_seg": [
+    [
+     2020.1,
+     2066.5
+    ]
+   ],
+   "duracion_seg": 46.3,
+   "titulo": "¿Cuándo es contagioso un virus? Incertidumbre desvelada"
+  },
+  {
+   "rank": 17,
+   "score": 93,
+   "rangos_seg": [
+    [
+     2920.5,
+     3013.5
+    ]
+   ],
+   "duracion_seg": 93.1,
+   "titulo": "Contagio Cero: Máxima Tranquilidad para Tenerife y Puerto"
+  },
+  {
+   "rank": 18,
+   "score": 93,
+   "rangos_seg": [
+    [
+     1355.1,
+     1402.8
+    ]
+   ],
+   "duracion_seg": 47.6,
+   "titulo": "Virus se Transmite Mal: No es COVID ni Gripe"
+  },
+  {
+   "rank": 19,
+   "score": 92,
+   "rangos_seg": [
+    [
+     3561.7,
+     3616.4
+    ]
+   ],
+   "duracion_seg": 54.8,
+   "titulo": "Gripe Aviar: ¿Más Letal que la Gripe Común?"
+  },
+  {
+   "rank": 20,
+   "score": 92,
+   "rangos_seg": [
+    [
+     1857.1,
+     1915.3
+    ]
+   ],
+   "duracion_seg": 58.2,
+   "titulo": "Alerta Sanitaria: 3 Casos COVID-19 Relacionados con España"
+  },
+  {
+   "rank": 21,
+   "score": 92,
+   "rangos_seg": [
+    [
+     3434.0,
+     3457.9
+    ]
+   ],
+   "duracion_seg": 23.9,
+   "titulo": "One Health: Cuidando la Salud del Planeta Completo"
+  },
+  {
+   "rank": 22,
+   "score": 92,
+   "rangos_seg": [
+    [
+     671.4,
+     752.3
+    ]
+   ],
+   "duracion_seg": 80.9,
+   "titulo": "IA Revoluciona Gráficos: De Star Wars a Dibujos Precisos"
+  },
+  {
+   "rank": 23,
+   "score": 91,
+   "rangos_seg": [
+    [
+     2.9,
+     25.3
+    ]
+   ],
+   "duracion_seg": 22.4,
+   "titulo": "Podcast de Emergencia: Coronavirus y Antivirus"
+  },
+  {
+   "rank": 24,
+   "score": 91,
+   "rangos_seg": [
+    [
+     218.0,
+     268.6
+    ]
+   ],
+   "duracion_seg": 50.6,
+   "titulo": "¡Cuidado! Así se Transmiten los Virus de Roedores a Humanos"
+  },
+  {
+   "rank": 25,
+   "score": 91,
+   "rangos_seg": [
+    [
+     2505.4,
+     2520.6
+    ]
+   ],
+   "duracion_seg": 15.2,
+   "titulo": "Pánico Mediático y Histeria: Entendiendo el Miedo"
+  },
+  {
+   "rank": 26,
+   "score": 90,
+   "rangos_seg": [
+    [
+     752.3,
+     782.8
+    ]
+   ],
+   "duracion_seg": 30.5,
+   "titulo": "Contagio COVID: 6 Situaciones Clave y Cómo Evitarlo"
+  },
+  {
+   "rank": 27,
+   "score": 90,
+   "rangos_seg": [
+    [
+     998.0,
+     1030.4
+    ]
+   ],
+   "duracion_seg": 32.4,
+   "titulo": "R-Zero: ¿Cuántas personas contagias en pandemia?"
+  },
+  {
+   "rank": 28,
+   "score": 90,
+   "rangos_seg": [
+    [
+     2692.4,
+     2771.2
+    ]
+   ],
+   "duracion_seg": 78.7,
+   "titulo": "Desembarco Marítimo: Logística, Botes y Viaje a Casa"
+  },
+  {
+   "rank": 29,
+   "score": 89,
+   "rangos_seg": [
+    [
+     2150.3,
+     2165.1
+    ]
+   ],
+   "duracion_seg": 14.8,
+   "titulo": "¿Cura para esta enfermedad? Tratamientos y esperanza"
+  },
+  {
+   "rank": 30,
+   "score": 89,
+   "rangos_seg": [
+    [
+     465.6,
+     527.7
+    ]
+   ],
+   "duracion_seg": 62.1,
+   "titulo": "Mortalidad Virus Americanos: ¿Sobrestimada?"
+  },
+  {
+   "rank": 31,
+   "score": 88,
+   "rangos_seg": [
+    [
+     3762.2,
+     3772.0
+    ],
+    [
+     3772.0,
+     3778.4
+    ]
+   ],
+   "duracion_seg": 16.3,
+   "titulo": "Sistema Inmunitario: ¡Fortalece Tus Defensas Fácilmente!"
+  },
+  {
+   "rank": 32,
+   "score": 88,
+   "rangos_seg": [
+    [
+     3616.5,
+     3660.3
+    ]
+   ],
+   "duracion_seg": 43.9,
+   "titulo": "Virus MORTAL: ¿Estamos Preparados para la Pandemia?"
+  },
+  {
+   "rank": 33,
+   "score": 88,
+   "rangos_seg": [
+    [
+     1403.5,
+     1430.4
+    ]
+   ],
+   "duracion_seg": 26.9,
+   "titulo": "Virus: ¿Defensas Matan o Tiempo de Incubación?"
+  },
+  {
+   "rank": 34,
+   "score": 87,
+   "rangos_seg": [
+    [
+     3962.8,
+     3984.3
+    ]
+   ],
+   "duracion_seg": 21.5,
+   "titulo": "Mejora Tu Vida: El Poder de los Grupos de Interés"
+  },
+  {
+   "rank": 35,
+   "score": 87,
+   "rangos_seg": [
+    [
+     1178.5,
+     1231.9
+    ]
+   ],
+   "duracion_seg": 53.4,
+   "titulo": "Supercontagio: La Ciencia Detrás de los Brotes Virales Revelada"
+  },
+  {
+   "rank": 36,
+   "score": 86,
+   "rangos_seg": [
+    [
+     4564.8,
+     4590.5
+    ]
+   ],
+   "duracion_seg": 25.6,
+   "titulo": "La Politización de la Pandemia: Un Peligro Real"
+  },
+  {
+   "rank": 37,
+   "score": 86,
+   "rangos_seg": [
+    [
+     123.7,
+     141.0
+    ]
+   ],
+   "duracion_seg": 17.3,
+   "titulo": "¿Qué es un Antivirus? Lo Básico Explicado Sencillamente"
+  },
+  {
+   "rank": 38,
+   "score": 86,
+   "rangos_seg": [
+    [
+     4157.0,
+     4182.5
+    ]
+   ],
+   "duracion_seg": 25.5,
+   "titulo": "Prebióticos: Descubre sus Fuentes en Frutas y Verduras"
+  },
+  {
+   "rank": 39,
+   "score": 85,
+   "rangos_seg": [
+    [
+     4023.7,
+     4040.5
+    ]
+   ],
+   "duracion_seg": 16.8,
+   "titulo": "Alcohol: ¿Por qué lo Normalizamos Tanto?"
+  },
+  {
+   "rank": 40,
+   "score": 85,
+   "rangos_seg": [
+    [
+     1070.3,
+     1086.0
+    ]
+   ],
+   "duracion_seg": 15.7,
+   "titulo": "Inmunidad de Grupo: ¿Cuántos Necesitamos Inmunizados?"
+  },
+  {
+   "rank": 41,
+   "score": 83,
+   "rangos_seg": [
+    [
+     627.3,
+     645.9
+    ]
+   ],
+   "duracion_seg": 18.6,
+   "titulo": "Alarma Social: ¿Histeria por Nueva Pandemia?"
+  },
+  {
+   "rank": 42,
+   "score": 83,
+   "rangos_seg": [
+    [
+     1598.7,
+     1622.5
+    ]
+   ],
+   "duracion_seg": 23.8,
+   "titulo": "Protocolos Extremos: Desinfección Corporal y Zodiac"
+  }
+ ]
+}
