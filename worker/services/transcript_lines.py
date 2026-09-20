@@ -579,10 +579,15 @@ def punctuate_unpunctuated_runs(
         model = get_model("classifier")
 
     # Los tramos son independientes: en paralelo (cada llamada tarda ~5 s).
+    # `in_current_context` propaga el contexto del job a los hilos del pool; si
+    # no, `usage_tracker` descarta los eventos de estas llamadas (mismo motivo
+    # que en `transcriber.transcribe_full_audio`).
     from concurrent.futures import ThreadPoolExecutor
+    from context.job_context import in_current_context
+    _punctuate = in_current_context(punctuate_words_with_llm)
     with ThreadPoolExecutor(max_workers=min(max_parallel, len(runs))) as pool:
         punctuated = list(pool.map(
-            lambda r: punctuate_words_with_llm(ws[r[0]:r[1]], language=language, client=client, model=model),
+            lambda r: _punctuate(ws[r[0]:r[1]], language=language, client=client, model=model),
             runs,
         ))
     out = list(ws)
