@@ -54,10 +54,41 @@ a hook=7/ret=7/**share=7** (B, avg 7.0). Es el primer clip ≥7 en las tres
 métricas en TODA la rueda de mejora (todas las corridas anteriores de esta
 tabla dieron 0%). Costo real: US$0.0107 (A) + US$0.0353 (B) = **US$0.046**.
 
-**Lectura honesta:** B puntúa un poco más alto y un poco más disperso, y
-generó el primer clip ≥7-en-las-tres del proyecto — pero es UN clip sobre
-30, y con un desvío estándar de ~1 punto no alcanza para decir que B
-"discrimina mejor" con confianza estadística (n=30, correlación 0.622 deja
-bastante desacuerdo). Es señal a favor de seguir mirando gpt-5.4-mini como
-juez, no evidencia de que resuelva el techo de calidad. Costo del cambio de
-juez: insignificante (el juez es una llamada corta, no la Pasada A).
+**Lectura honesta (n=30):** B puntúa un poco más alto y un poco más
+disperso, y generó el primer clip ≥7-en-las-tres del proyecto — pero es UN
+clip sobre 30, y con un desvío estándar de ~1 punto no alcanza para decir
+que B "discrimina mejor" con confianza estadística (correlación 0.622 deja
+bastante desacuerdo). Señal a favor, no evidencia todavía — por eso se
+amplió la muestra (ver abajo).
+
+**[`2026-09-20-w8-e3-n59.json`](2026-09-20-w8-e3-n59.json)** — ampliación a
+**59 clips**: los 30 de `2026-09-20-w8-e1.json` + los 29 de
+`2026-09-20-integracion-fase0.json` (mismo comando, dos JSON de corrida:
+`comparar_jueces.py a.json b.json`). Texto completo reconstruido en 59/59.
+
+Control de sanidad (n=59): diff absoluta media **0.51** (bajó de 0.62 con
+más muestra), diff firmada media +0.16 (32 más alto/23 más bajo/4 igual —
+sesgo leve, no preocupante), correlación **0.658**. Un outlier
+(`integracion-fase0` podcast_general_01 m6, diff −2.67) probablemente por un
+corte de Líneas menos preciso en ese clip puntual — no cambia la lectura
+general.
+
+**A vs. B (n=59):** promedio 5.38 (A) vs. **5.42** (B, +0.04 — la media casi
+no se mueve). Desvío estándar **0.84 (A) vs. 1.04 (B)** — B es
+consistentemente más disperso, no solo en la muestra chica. Correlación
+A/B por clip: **0.67**. **≥7 en las tres: A 1.7% (1/59) vs. B 6.8% (4/59)**
+— con n=59, B encuentra CUATRO veces más clips que cruzan el umbral que A,
+no solo uno: `business_spanish_01` m7, `podcast_general_01` m5 (pierde el
+que A tenía) y m7, `claude_hacks_regression_01` m1, `user_recommended_01`
+m5. Costo real: US$0.0208 (A) + US$0.069 (B) = **US$0.0898**.
+
+**Lectura honesta (n=59):** con muestra casi el doble, la señal se
+confirma y se afirma: B no es "A + una constante" (la media casi no
+cambia, delta +0.04) — es una regla MÁS ANCHA (stdev +24%) que efectivamente
+encuentra más clips en la cola alta (4/59 vs 1/59 ≥7-en-las-tres). Sigue sin
+ser un n grande y la correlación de 0.67 dice que hay desacuerdo real
+clip a clip, no solo ruido de redondeo — pero la dirección (B discrimina
+más, no infla parejo) es ahora la lectura más sólida que la de n=30.
+Recomendación: adoptar `openai/gpt-5.4-mini` como `MODEL_JUDGE` — el costo
+del cambio es insignificante (US$0.09 para re-medir 59 clips; en producción
+es una llamada corta más por clip, no la Pasada A).

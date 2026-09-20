@@ -1,0 +1,1399 @@
+{
+  "model_a": "openai/gpt-5.4-nano",
+  "model_b": "openai/gpt-5.4-mini",
+  "n_clips": 59,
+  "text_sources": {
+    "full": 59,
+    "partial": 0,
+    "none": 0
+  },
+  "dist_avg_a": {
+    "n": 59,
+    "mean": 5.384,
+    "stdev": 0.837,
+    "min": 3.0,
+    "max": 7.0
+  },
+  "dist_avg_b": {
+    "n": 59,
+    "mean": 5.424,
+    "stdev": 1.043,
+    "min": 3.0,
+    "max": 7.67
+  },
+  "all_ge7_rate_a": 0.017,
+  "all_ge7_rate_b": 0.068,
+  "correlation_avg_a_b": 0.67,
+  "sanity_check_a_vs_stored": {
+    "n_considered": 59,
+    "mean_abs_diff": 0.508,
+    "max_abs_diff": 2.666,
+    "correlation_stored_vs_new": 0.658
+  },
+  "cost_usd_a": 0.0208,
+  "cost_usd_b": 0.069,
+  "cost_usd_total": 0.0898,
+  "per_clip": [
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 699,
+      "scores_a": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El hook promete una propuesta clara (crear web de marca personal usando solo Instagram) y engancha, pero tarda en llegar al “cómo” y al rango de precio, que es lo más concreto para frenar el scroll. La retención es media porque hay bastante explicación y ejemplos, pero el final queda abrupto con la transición a “auditoría de meta ads” y el remate no se siente cerrado. Es compartible porque menciona un caso/beneficio y rangos de precio (útil para vender), pero ganaría mucho si empezara con el precio/resultado desde el primer segundo y cerrara con un CTA o ejemplo final antes de pasar al siguiente tema."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 5,
+        "reasoning": "El hook es interesante porque plantea una automatización concreta y útil, pero tarda demasiado en llegar a la idea principal y empieza con relleno. La retención cae porque repite la misma explicación varias veces y termina cortado en otra idea, así que no cierra con fuerza; lo mejor sería abrir con el beneficio y el rango de precio desde la primera frase. Es compartible como idea de negocio, pero no lo bastante sorprendente o urgente para que alguien lo reenvíe de inmediato."
+      },
+      "avg_a": 5.667,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 1093,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es claro y alineado con el overlay (dinero quemado en Meta Ads), pero tarda en aterrizar en qué se ofrece y por qué “Meta Ads” va a estar mal para negocios pequeños. El clip explica la auditoría y qué incluye, aunque se siente algo repetitivo (“analizar todo”) y el remate comercial llega, pero sin un dato/resultado contundente; para mejorar, empezaría con el beneficio concreto en una frase y cerraría con un resultado o caso (p. ej., “reduce X% el gasto” o “encuentra Y fallas en Z minutos”) para subir el impacto y hacerlo más compartible."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El arranque plantea una tensión clara con “queman dinero”, y el overlay refuerza bien esa idea, aunque tarda unos segundos en concretar qué se está vendiendo. La retención aguanta porque explica la auditoría con suficiente detalle, pero el tramo medio se vuelve algo repetitivo y más largo de lo necesario; recortaría repeticiones y abriría antes con el beneficio concreto y el precio. Es compartible para dueños de pequeños negocios por el dolor directo que toca, pero subiría bastante si empezara con una frase más contundente y específica, como el coste o el fallo exacto que detecta la auditoría."
+      },
+      "avg_a": 6.0,
+      "avg_b": 6.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 1009,
+      "scores_a": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El hook promete una cifra concreta y orienta a la venta, pero en el primer segundo el transcript no aterriza del todo en esa promesa: tarda en explicar qué es la skill y cómo impacta exactamente. La retención baja por el salto a una segunda skill (auditoría) y por cambios de precio/moneda sin un remate claro del mensaje principal; además, algunos tramos se sienten explicativos (“como ya sabes”, “por supuesto”). Es compartible porque sugiere una utilidad monetizable con rangos de precio, pero subiría la shareability si el clip cerrara con un CTA y una conclusión única (una sola oferta o un “qué obtienes + por qué pagar”)."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El inicio plantea una promesa clara sobre automatizaciones vendibles, pero entra directamente en explicación y tarda unos segundos en dar el gancho fuerte. La idea tiene valor y el rango de precios ayuda, aunque el tramo medio se vuelve repetitivo con listas de servicios, así que recortarlo y abrir con el precio más alto o con una afirmación más contraintuitiva haría el clip más potente. Es compartible para gente interesada en IA/negocio, pero no llega a ser una idea tan novedosa como para disparar la difusión masiva."
+      },
+      "avg_a": 5.667,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 1263,
+      "scores_a": {
+        "hook": 4,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El hook arranca con una frase general (“la gente se confunde un montón”) pero tarda en aterrizar el tema y no fija una promesa clara sobre qué se va a aclarar. La retención queda a medias: enumera precios y familias, pero se siente desordenado con muletillas y cambio de nombres (Anthropic/Haiku/Sonet/Opus/Capibara) y el remate no termina de cerrar la idea. La compartibilidad es media: puede ser útil para quien compra modelos, pero falta un dato/argumento sorprendente y un resumen final tipo “en 10 segundos diferencia X vs Y” que invite a etiquetar a otros."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 3,
+        "shareability": 4,
+        "reasoning": "El hook arranca con una confusión común y encaja con el overlay, pero es bastante genérico y tarda en concretar qué se está aclarando. La retención cae por bastante relleno, repeticiones y una promo metida en medio que rompe el hilo; si fuera más directo con la comparación exacta de precios y familias, sostendría mucho mejor la atención. Es útil para alguien que sigue Anthropic, pero no tiene suficiente tensión ni sorpresa como para que merezca compartirse mucho."
+      },
+      "avg_a": 4.667,
+      "avg_b": 4.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 832,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook engancha con la comparación (cerebro de Homer Simpson vs fuerza), y el overlay refuerza el concepto, pero tarda en aterrizar la idea con un “por qué” claro y consistente. La analogía del Ferrari ayuda a completar, aunque hay repetición (“muy fuerte, muy fuerte…”) y el final queda más como añadido (mención de IA) que como remate nítido; una versión más directa y con menos muletillas mejoraría la retención. Es compartible porque es fácil de entender, pero le falta una afirmación/dato incómodo o una recomendación cerrada para volverse más “estatus”."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El arranque tiene una imagen clara y curiosa, pero tarda un poco en llegar al contraste más fuerte porque repite la introducción de la analogía. La idea se entiende y se sostiene bien hasta el final, aunque hay bastante repetición y el cierre se alarga sin un remate más contundente. Es compartible a nivel utilidad, pero no tiene una frase especialmente memorable o polémica que lo haga urgente de enviar a alguien."
+      },
+      "avg_a": 6.0,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 6,
+      "text_source": "full",
+      "text_chars": 1058,
+      "scores_a": {
+        "hook": 2,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El hook es relleno y poco específico: “aparece aquí… esto se llama carpetas ocultas” llega tarde y el overlay está quemado/ambiguo, lo que resta impacto. Se entiende el flujo y el comando en Mac (Shift+Cmd+.), pero repite varias veces “carpetas ocultas” sin aportar nuevas capas hasta el final, así que la tensión no se sostiene. La idea es útil, pero falta un dato sorprendente o un beneficio inmediato (“para qué te sirve en el día a día”) para que sea más compartible."
+      },
+      "scores_b": {
+        "hook": 4,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El arranque menciona un elemento técnico y una acción concreta, pero no tiene una tensión clara ni una promesa fuerte en los primeros segundos. La explicación se entiende, aunque se alarga con repeticiones y podría ganar mucho si empezara directamente con el atajo de teclado y el resultado visible; eso también haría más compartible el clip."
+      },
+      "avg_a": 4.0,
+      "avg_b": 4.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 7,
+      "text_source": "full",
+      "text_chars": 1237,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es claro y engancha con la promesa de una “pasada de página web”, pero empieza con una frase explicativa y tarda en aterrizar el beneficio/dato concreto (qué se logra y para quién) hasta varios segundos después. Mantiene atención con una lista de secciones y el remate de “automática en cuestión de minutos”, pero hay exceso de enumeración y referencias a “tribu/escenario” que suenan genéricas para quien no conoce el contexto. Sería más compartible si incluyeras un dato verificable/resultado específico desde el inicio (p. ej., antes vs. después, tiempo exacto, ejemplo de CTA) y cortaras relleno para que el flujo sea más contundente."
+      },
+      "scores_b": {
+        "hook": 8,
+        "retention": 7,
+        "shareability": 7,
+        "reasoning": "El arranque tiene buen gancho porque muestra algo concreto y llamativo de inmediato: una web que simula una cuenta de Instagram y además parece automatizada. La retención se mantiene bastante bien porque va enumerando funciones útiles y credenciales, aunque el clip se apoya mucho en lista y explicación repetitiva; recortaría un poco el relleno y ordenaría mejor el beneficio principal. Es compartible porque toca una verdad muy atractiva para público de marca personal y marketing: hacer una web de conferenciante en minutos con IA, pero subiría más si empezara con el resultado final o con el dato de que se hizo automáticamente en minutos."
+      },
+      "avg_a": 6.0,
+      "avg_b": 7.333,
+      "ge7_a": false,
+      "ge7_b": true
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "business_spanish_01",
+      "moment_index": 8,
+      "text_source": "full",
+      "text_chars": 1351,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook funciona mejor que el promedio porque promete un resultado concreto (“6 clínicas” + “fíjate la locura”), pero “ya lo tenemos listo” y el rodeo inicial tardan en aterrizar el dato sin contexto de valor. Mantiene bastante bien la atención con ejemplos y el informe (6 clínicas, top 3, detalles del ROI), aunque hay repetición (“fíjate…”) y cambia de guías/HTML antes de rematar con una idea final clara. Es compartible porque presenta una comparación/descubrimiento práctico (oportunidades y ausencia de IA), pero le falta un cierre tipo “qué hacer mañana” o un dato más impactante y único para volverse imprescindible."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El arranque tiene curiosidad inmediata con “fíjate la locura” y el dato de 6 clínicas analizadas, pero tarda un poco en concretar qué cambia realmente. La retención aguanta por la lista de datos y el ranking, aunque hay bastante relleno técnico y termina con sensación de continuidad, no de cierre; empezar con el hallazgo más impactante y recortar pasos de pantalla lo haría más sólido. Es compartible como demo de prospección y automatización, pero no llega a ser una verdad tan contundente como para que la gente lo reenvíe de forma masiva."
+      },
+      "avg_a": 6.0,
+      "avg_b": 6.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 629,
+      "scores_a": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook engancha con la idea “¿Cómo estoy?” y la comparación con déjà vu, pero se va a explicaciones largas (COVID, tiempo, contexto del podcast) antes de aterrizar el punto del clip. La retención cae hacia el medio porque el mensaje se diluye en improvisación y marco general, sin un dato claro o remate contundente; recortar a una frase más directa y adelantar el objetivo (qué “está sucediendo realmente” y cómo) mejoraría el final. La compa de “desinformación” suma valor para compartir, pero haría falta una promesa más específica para que sea más “etiquetable”."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 4,
+        "shareability": 5,
+        "reasoning": "El arranque tiene gancho porque plantea una comparación fuerte con el COVID-19 y transmite tensión inmediata, aunque la frase tarda un poco en llegar al punto exacto. La retención baja porque el clip se queda en introducción y contexto del episodio, sin desarrollar una idea cerrada; además, el texto suena a arranque improvisado más que a remate. Se compartiría por la referencia al COVID y la sensación de urgencia, pero no tiene una frase tan contundente o útil como para volverse especialmente viral."
+      },
+      "avg_a": 5.333,
+      "avg_b": 5.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 855,
+      "scores_a": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook plantea una pregunta clara y tematiza la comparación (virus americanos vs europeos), lo que frena el scroll. Sin embargo, la explicación se vuelve enredada por cortes y repeticiones (“Perdón”, frases incompletas/rectificaciones) y el flujo tarda en concretarse, bajando la tensión hasta el final; el remate numérico (30-40%) llega tarde y queda poco “cerrado” el argumento. Mejoraría empezando con la consecuencia en una sola frase (p. ej., “causan más fallo respiratorio y elevan mortalidad a 30-40%”) y luego sostener una narrativa limpia sin correcciones, para que el final se sienta más inevitable y compartible."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El arranque plantea una comparación clara y curiosa, pero la primera frase es más descriptiva que impactante, así que engancha sin ser un golpe fuerte. La retención cae un poco por las repeticiones, la corrección a mitad de frase y el cierre algo técnico; recortarlo y abrir con la mortalidad del 30-40% lo haría más sólido. Es compartible por el contraste entre virus americanos y europeos, aunque le faltan una frase más contundente o un dato inicial más sorprendente para volverse realmente urgente."
+      },
+      "avg_a": 5.333,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 850,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook y el overlay van en la misma línea (“sobreestimada”), pero la idea se formula rápido sin aportar un dato o una conclusión concreta en los primeros segundos. La explicación es clara y llega a un remate consistente (diagnóstico/traslado tardío), aunque hay algo de rodeo con el contexto (“endémico… todos los años…”) y el argumento podría ser más directo y más corto para sostener tensión hasta el final. Para mejorar shareability, añadir un número/intervalo de mortalidad o una comparación con diagnósticos tempranos haría el clip más “compartible por estatus”."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 7,
+        "shareability": 5,
+        "reasoning": "El hook arranca con una afirmación polémica y clara, pero la frase es algo larga y depende del contexto del resto del audio para rematar su fuerza. La retención es buena porque desarrolla una explicación completa con ejemplo concreto, aunque el tramo central repite la misma idea varias veces; recortarlo y abrir con la conclusión lo haría más contundente. La compartibilidad es media: tiene un ángulo debatible y útil, pero no alcanza aún el nivel de dato sorprendente o frase memorable que impulse a compartirlo."
+      },
+      "avg_a": 6.0,
+      "avg_b": 6.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 556,
+      "scores_a": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El hook arranca con una comparación clara (“no es como el COVID en un ascensor”), pero tarda en aterrizar el punto completo y el overlay además queda ambiguo (“proximo”) y no refuerza la idea. La retención cae por lo técnico y frases largas (“potencialidad…”, “pandemia…”) sin un remate sencillo; para mejorar, acorta a un dato/idea por frase y cierra con una afirmación breve y verificable. Es medianamente compartible por el mensaje tranquilizador, pero para llegar a “estatus” faltaría claridad y credibilidad (número concreto o fuente) en lugar de explicaciones abstractas."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El arranque plantea una comparación reconocible con el COVID, lo que capta algo de atención, pero tarda en llegar a la idea fuerte y empieza con relleno. La retención cae porque el clip repite la misma idea varias veces y suena algo enredado, aunque sí cierra con una conclusión clara sobre la “potencialidad nula”. Compartirlo no es muy urgente: tiene un matiz informativo, pero le falta una frase más contundente o una cifra/dato memorable que lo haga más citables."
+      },
+      "avg_a": 5.667,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 855,
+      "scores_a": {
+        "hook": 7,
+        "retention": 7,
+        "shareability": 7,
+        "reasoning": "El hook arranca fuerte con una referencia directa al COVID y al R0, y el overlay “CÓMO SE CALCULA ESTO” promete mecánica, aunque el transcript tarda un poco en entrar en “cómo se calcula” y se queda más en explicar qué es. La explicación está completa y con ejemplos claros (sarampión 18-20, COVID ~3) y el remate sobre vacunar al 70% cierra bien, pero hay margen para quitar muletillas y llegar antes al cálculo; añadir un mini-ejemplo/condición de cálculo haría el final más contundente y compartible."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 7,
+        "shareability": 6,
+        "reasoning": "El arranque plantea un término reconocido y abre una explicación útil, aunque no es una frase tan contundente como para frenar el scroll sin contexto. La explicación mantiene bien el interés porque traduce un concepto técnico a un ejemplo sencillo, pero el tramo medio es algo expositivo y más largo de lo ideal; empezaría con el dato del sarampión o con una comparación más sorprendente para hacerlo más pegajoso. Es compartible por ser educativo y aplicable, aunque le falta una verdad incómoda o un giro más fuerte para disparar más etiquetas."
+      },
+      "avg_a": 7.0,
+      "avg_b": 6.667,
+      "ge7_a": true,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 6,
+      "text_source": "full",
+      "text_chars": 1101,
+      "scores_a": {
+        "hook": 3,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook es demasiado genérico y además redundante (“Esto es una media”) sin prometer una cifra ni una consecuencia clara en los primeros 3 segundos. La retención aguanta porque aterriza en ejemplos (supercontagiadores, Argentina, 33 y 11), pero el discurso se vuelve algo repetitivo y con frases largas que bajan el ritmo; para mejorar, habría que abrir con el número/idea central (p. ej., “un caso contagia a X”) y cerrar con una conclusión accionable o una explicación más compacta del 33%."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El arranque tiene una idea clara, pero “esto es una media” necesita contexto y no frena el scroll por sí solo; empezar con el dato de los supercontagiadores o con la cifra de 33 personas sería más potente. La explicación mantiene interés con ejemplos concretos, aunque repite varias veces la misma idea y podría recortarse para ganar tensión. Es compartible por el dato de letalidad y el caso de contagio en cadena, pero no llega a ser especialmente sorprendente o urgente."
+      },
+      "avg_a": 4.667,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 7,
+      "text_source": "full",
+      "text_chars": 971,
+      "scores_a": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es claro y concreto (holandés, fallece tras 4-5 días), pero el transcript tarda en llegar a ese dato exacto y además empieza con contexto tipo “primer caso” que no refuerza el impacto de inmediato. La retención es buena porque hay números y una comparación (“esto no pasaba en el COVID”), aunque el centro se vuelve explicativo y repetitivo (“cambia cada hora”, “a día de hoy”), y el cierre queda algo discursivo. Es compartible por la comparación y las cifras, pero falta un remate más contundente tipo conclusión/implicación práctica para que se sienta “de estatus”. "
+      },
+      "scores_b": {
+        "hook": 8,
+        "retention": 7,
+        "shareability": 7,
+        "reasoning": "El arranque entra rápido con un caso concreto y una consecuencia fuerte, así que frena bastante bien el scroll. La idea se sostiene con el dato de los 8 contagios en un mes y la comparación con COVID/gripe, aunque hay algo de repetición y el tramo final se alarga un poco; recortarlo y empezar con la cifra del barco lo haría más contundente. Es compartible porque plantea una comparación chocante y fácil de comentar, pero no llega a nivel 9 porque le falta una frase más cerrada y memorable."
+      },
+      "avg_a": 6.333,
+      "avg_b": 7.333,
+      "ge7_a": false,
+      "ge7_b": true
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 8,
+      "text_source": "full",
+      "text_chars": 982,
+      "scores_a": {
+        "hook": 3,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook queda poco claro en los primeros segundos: “Argentina y fuera…” no se conecta con el dato principal y el contexto tarda en llegar. La parte central es interesante y concluye con una idea completa (dificultad de que haya ratones por la limpieza extrema), pero hay dispersión y frases largas que bajan la tensión hasta el final. Haría falta abrir con el dato más “incomodidad/contraste” (p. ej., precio + nivel de limpieza) en la primera frase y apretar la narración con cortes o números concretos para mejorar el “share”."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 4,
+        "shareability": 4,
+        "reasoning": "El arranque menciona un barco de hiperlujo y unas medidas de limpieza tan extremas que despiertan curiosidad, pero tarda en aterrizar la idea principal y viene algo enredado. La retención cae porque el razonamiento se repite varias veces y el clip termina de forma algo cortada, sin un remate fuerte. Para hacerlo más compartible, ayudaría abrir con la afirmación más chocante y concreta sobre los ratones o la desinfección extrema, y cerrar con una conclusión más tajante."
+      },
+      "avg_a": 4.667,
+      "avg_b": 4.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 9,
+      "text_source": "full",
+      "text_chars": 946,
+      "scores_a": {
+        "hook": 5,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook es llamativo por el tono (“más cabrón el VIH que el hantavirus”), pero no encaja con lo que dice el transcript al inicio, que empieza hablando de antivirales, COVID y anticuerpos monoclonales; tarda en llegar a una afirmación clara sobre VIH vs hantavirus. La retención cae porque el contenido va explicativo y se diluye con comparaciones (“no son maravillosos”) sin un remate contundente hacia el final. Es compartible por ser de podcast educativo y con lenguaje directo, pero mejorarías si el overlay y la primera frase anticiparan el tema exacto que se desarrolla (VIH/hantavirus) y cerraras con una conclusión específica."
+      },
+      "scores_b": {
+        "hook": 4,
+        "retention": 3,
+        "shareability": 4,
+        "reasoning": "El hook propuesto promete una comparación fuerte, pero el audio real entra directamente en explicación técnica y no entrega una afirmación contundente en los primeros segundos. La retención cae porque el clip se va a una cadena de ejemplos médicos y además termina cortado con un “no hay”, así que no cierra una idea completa; empezar con la conclusión más polémica y recortar ejemplos mejoraría mucho. La compartibilidad es baja-media: hay información útil, pero no hay una verdad incómoda ni un dato sorprendente lo bastante claro como para que alguien lo reenvíe."
+      },
+      "avg_a": 5.0,
+      "avg_b": 3.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 10,
+      "text_source": "full",
+      "text_chars": 878,
+      "scores_a": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es una afirmación directa y enmarca una idea potente (el “miedo” a mutaciones más infectivas), pero tarda en aterrizar el porqué con datos concretos. El resto explica una relación biológica plausible (alta letalidad vs alta infectividad), aunque el final se corta o queda en una frase inconclusa (“han desconocido…”), bajando el cierre y la sensación de remate. Haría el clip más compartible cerrando una conclusión clara en la última frase y evitando el tramo final incompleto; además, fijaría un número o ejemplo (“según estudios/laboratorio X”) para reforzar autoridad."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 5,
+        "reasoning": "El arranque plantea una tensión clara y relevante, pero depende bastante del contexto del podcast y no golpea con una frase totalmente autónoma. La retención cae porque el clip avanza con bastante explicación y además termina cortado a mitad de idea, lo que deja una sensación incompleta. Se podría mejorar empezando con una afirmación más contundente o un dato contraintuitivo, y cerrando con una conclusión breve y redonda."
+      },
+      "avg_a": 6.333,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 11,
+      "text_source": "full",
+      "text_chars": 456,
+      "scores_a": {
+        "hook": 4,
+        "retention": 5,
+        "shareability": 3,
+        "reasoning": "El hook (“Y es un miedo natural”) suena genérico y no anticipa el punto clave; además el dato real tarda varios segundos en aparecer cuando empieza la anécdota de la entrevista. La idea está, pero se diluye con repeticiones (“no nadan…”) y remata de forma poco contundente para un cierre de 22s. Para mejorar: empezar con la afirmación específica y luego el argumento en una sola secuencia, evitando repeticiones y cerrando con un remate claro/accionable."
+      },
+      "scores_b": {
+        "hook": 4,
+        "retention": 3,
+        "shareability": 3,
+        "reasoning": "El arranque con una cita a Radio Canarias despierta algo de curiosidad, pero tarda en llegar a la idea central y no tiene una tensión inmediata fuerte. La explicación se vuelve redundante con repeticiones de \"las ratas\" y termina con un cierre algo administrativo, así que la retención cae; empezaría con la frase más contundente o una afirmación directa para acelerar el gancho. El mensaje es entendible, pero no tiene suficiente rareza ni impacto social para que alguien lo comparta con urgencia."
+      },
+      "avg_a": 4.0,
+      "avg_b": 3.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "podcast_general_01",
+      "moment_index": 12,
+      "text_source": "full",
+      "text_chars": 1030,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook menciona “virus hemorrágico del Nilo” y “los ébolas”, pero el transcript enseguida cambia a una idea general (One Health y deterioro del planeta), así que la promesa inicial no se concreta y el arranque no frena tanto el scroll. La explicación avanza con lógica hasta cerrar con el concepto One Health, aunque hay frases algo largas y poco “rematadas” para un clip corto; además el overlay es muy específico y el contenido termina siendo más general. Para mejorar: empezar con un dato/afirmación clara que conecte directamente con “Nilo” (o ajustar el overlay al tema real), y condensar el tramo medio con una cifra o ejemplo concreto para elevar la tensión hasta el final."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El arranque menciona brotes y virus, pero la frase es algo enrevesada y tarda en concretar la idea; empezar con el dato del 80% o con la relación directa entre deforestación y brotes le daría más fuerza. La retención cae un poco por lo explicativo y repetitivo, aunque el cierre con One Health sí completa la idea. Es compartible a nivel informativo, pero no tiene una frase especialmente contundente o sorprendente que lo haga urgente para enviar a alguien."
+      },
+      "avg_a": 5.333,
+      "avg_b": 5.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 959,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook “herramienta… de forma muy sencilla y visual” es genérico y tarda en aterrizar en un beneficio concreto; ayudaría empezar ya con el “hack número 1” o con el resultado exacto (ej. “le pasas una imagen y te genera X”). La explicación es clara y llega a un caso de uso, pero se nota contexto previo y el remate queda prometido (“os voy a poner un ejemplo”) sin cerrarse con una conclusión fuerte en el texto mostrado. Es compartible por la utilidad del flujo “captura → genera”, aunque el overlay quemado y la falta de un dato sorprendente bajan el impulso social para etiquetar a alguien."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El arranque plantea una idea útil, pero no entra con una tensión clara ni con un dato sorprendente, así que tarda un poco en despegar. La explicación es comprensible y el ejemplo ayuda, aunque se apoya demasiado en contexto y no llega a un remate fuerte; empezaría directamente con el caso de la captura para hacerlo más inmediato. Es útil para perfiles business, pero no tiene todavía un ángulo lo bastante inesperado como para que la gente lo comparta de forma urgente."
+      },
+      "avg_a": 5.0,
+      "avg_b": 5.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 1114,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es flojo: el overlay “PÁGINA WEB EN AUTOMÁTICO” y la frase “página web, un software…” no generan tensión ni un dato concreto en los primeros segundos. La explicación del hack 2 sí mantiene el hilo y llega a un ejemplo de prueba, pero hay pausas/recursos (“como hemos visto…”, repetición de “¿Puedo…?”) que diluyen el ritmo y el remate no queda especialmente “accionable” o sorprendente para compartir. Para mejorar: empezar con el resultado exacto (qué se desactiva y qué cambia), concretar el “antes/después” y cerrar con un beneficio medible o paso a paso más directo (p. ej., dónde se configura el modo automático)."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El arranque entra directo en el tema, pero abre con explicación técnica y repetición de la idea antes de llegar al beneficio, así que engancha solo a medias. La retención se sostiene por tratarse de una utilidad clara, aunque el clip se alarga en contexto y termina sin un cierre especialmente fuerte; empezar con el beneficio concreto y reducir la repetición haría el tramo medio más ágil. La compartibilidad es moderada porque puede ser útil para gente de producto o dev, pero no tiene una frase sorprendente ni una verdad incómoda lo bastante contundente para empujar a compartirlo."
+      },
+      "avg_a": 5.333,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 1012,
+      "scores_a": {
+        "hook": 6,
+        "retention": 7,
+        "shareability": 6,
+        "reasoning": "El hook es claro y sostiene la idea desde el inicio, pero menciona “Claude”/“Cloud” y el contexto llega pronto: una cifra concreta o el resultado (qué habilidad logró) en los primeros 3 segundos haría el arranque más contundente. La retención es buena porque sigue una secuencia (pedidos → creación → enlace → integración en Shopify) sin cortar la explicación, aunque falta un remate más memorable y se repite “básicamente” varias veces. Se comparte algo útil por ser un mini caso práctico, pero no hay un dato sorprendente ni una conclusión tipo “esto te ahorra X” que aumente el impulso social."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El arranque define bien qué es una skill, pero no trae una tensión o sorpresa inmediata; empezar con un ejemplo concreto o con el resultado de la tienda habría frenado más el scroll. La explicación se entiende y mantiene el interés, aunque repite varias veces la misma idea y se siente algo lineal; recortarlo y llegar antes al caso práctico mejoraría bastante. Es compartible para gente de business/IA, pero no tiene todavía un dato o hallazgo lo bastante contundente como para que alguien lo mande de forma urgente."
+      },
+      "avg_a": 6.333,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 1601,
+      "scores_a": {
+        "hook": 4,
+        "retention": 4,
+        "shareability": 4,
+        "reasoning": "El hook del overlay promete algo impactante, pero en los primeros segundos el clip arranca con “hack número 4” y tarda en conectar esa promesa con un punto concreto. La idea del “cloud.md” y la solución aparece completa, pero hay explicaciones confusas (“no se ve”, “le vamos a pedir… pero…”) y el remate no llega con un resultado claro, lo que baja la retención. Es compartible por ser técnico y de business, pero el mensaje no tiene un dato sorprendente ni una conclusión accionable inmediata; mejoraría si abrieras con el beneficio cuantificado o una regla clara (qué hacer exactamente) y cerraras con un ejemplo/resultado en 1-2 frases."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 4,
+        "reasoning": "El arranque plantea una comparación clara y entendible, pero tarda demasiado en llegar al punto realmente interesante y depende de bastante contexto técnico. La explicación se vuelve densa y algo repetitiva, así que recortaría la introducción y abriría directamente con la consecuencia práctica para sostener mejor la atención. No es especialmente compartible tal como está, aunque la idea de organizar la memoria de la IA sí podría ganar fuerza si se resumiera en una frase más sorprendente y concreta."
+      },
+      "avg_a": 4.0,
+      "avg_b": 4.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 1239,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook promete un “hack 5” claro, pero tarda demasiado en concretar qué hace exactamente y llega como continuación de un listado, no como afirmación potente. La explicación sí es completa y llega a un ejemplo con “18 errores”, pero se apoya en frases largas y repite ideas (capturas/ojos/manos) sin un remate contundente; recorta relleno y empieza con el dato (p. ej., “en una tienda encontró 18 errores y los corrigió sola”). Es compartible porque es un caso útil en business, pero falta un ángulo más sorprendente o una recomendación accionable para volverlo “de etiqueta”. "
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook plantea una idea interesante sobre corrección automática, pero tarda en concretar el beneficio y depende demasiado del contexto previo del “hack número 5”. La retención se sostiene por el ejemplo de Shopify y el dato de los 18 errores, aunque hay bastante repetición explicativa en el medio. Es compartible para gente de business o IA por la utilidad práctica, pero no tiene todavía un giro lo bastante contundente como para que alguien lo mande de inmediato; abrir con el caso de Shopify y el número exacto le daría más fuerza."
+      },
+      "avg_a": 5.0,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "user_recommended_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 762,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook arranca conversacional y con un “loco” que suena a chisme, pero tarda en concretar el punto (la frase del “un día lo voy a cruzar” no crea suficiente tensión inmediata). Mantiene interés por el tono agresivo y las repeticiones (“nadie”, “se aburren”, “cara de culo”), pero hay varios tramos divagados (bucle de ideas y ejemplos) y el final no remata como conclusión clara. Lo haría más compartible empezando con una afirmación más directa y cuantificable desde el segundo 1 (o un punchline), y cerrando con una frase final más redonda que explique el “por qué” del argumento."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El arranque tiene una tensión clara y directa al nombrar a Endrick y anticipar un cruce, así que frena el scroll aunque no es explosivo por sí solo. La retención cae un poco porque la idea se repite varias veces y hay divague, pero el clip sí completa una postura con remate. Es compartible por el tono de chicana y el ataque frontal a una figura conocida, aunque no llega a ser lo bastante original como para un 8 o 9."
+      },
+      "avg_a": 5.0,
+      "avg_b": 6.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "user_recommended_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 775,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook arranca con referencia confusa (“ayer… hicieron lo boludo”) y llega tarde a lo concreto del incidente, aunque el tema de pelea en entrenamiento sí genera curiosidad. La historia avanza y se entiende hasta el final, pero hay varios momentos de relleno/ambigüedad (“parecía haberse fumado”, frases cortadas) y el remate (“¿de qué lado estás?”) no cierra con un dato contundente. Compartiría el clip si el overlay y la primera frase fueran más específicas (p. ej., el nombre del hecho + quién hizo qué) y si se limpiaran cortes y muletillas para sostener tensión hasta el último segundo."
+      },
+      "scores_b": {
+        "hook": 4,
+        "retention": 4,
+        "shareability": 5,
+        "reasoning": "El arranque menciona una pelea y eso genera algo de tensión, pero entra desordenado, con muletillas y sin una idea cerrada en los primeros segundos. La historia se entiende a medias y se dispersa bastante, así que cortaría el rodeo y empezaría directo con el incidente más fuerte y con nombres claros. Es compartible solo por el tema polémico de vestuario, pero no tiene una frase lo bastante contundente o memorable para dar ganas de reenviarlo mucho."
+      },
+      "avg_a": 5.0,
+      "avg_b": 4.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "user_recommended_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 1101,
+      "scores_a": {
+        "hook": 3,
+        "retention": 3,
+        "shareability": 3,
+        "reasoning": "El hook “¿Braille lo conocieron?” no encaja con el transcript (incidente en un vestuario/lesión), así que el inicio no frena el scroll porque se siente como relleno o edición inconexa. La retención cae porque la historia es larga y repetitiva sin un remate claro orientado al espectador; además el overlay “BRAILLE LO CONOCIERON” queda quemado pero no aporta significado al relato. Para mejorar, alinear overlay y audio desde el primer segundo con una frase directa del hecho (qué pasó y aclaración concreta) y cerrar con una conclusión breve tipo “no hubo agresión, fue accidente” para que sea compartible."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El arranque entra directo en un incidente, pero la frase inicial es confusa y tarda en aclarar de qué pelea habla, así que frena menos de lo ideal. La idea se entiende completa, aunque hay bastante rodeo y repeticiones antes del cierre; recortar contexto y empezar con la negación del golpe la haría mucho más contundente. Es compartible solo de forma moderada porque hay tensión de vestuario y fama, pero el texto no deja una frase especialmente memorable o sorprendente para etiquetar a alguien."
+      },
+      "avg_a": 3.0,
+      "avg_b": 4.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "user_recommended_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 474,
+      "scores_a": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 7,
+        "reasoning": "El hook engancha porque plantea una confesión concreta (no tiene sexo hace 8 años), y eso genera tensión inmediata. Sin embargo, el clip se siente conversacional y con ida y vuelta (interrupciones y preguntas) que diluyen un poco el hilo hasta que aparece la explicación; además el overlay no aporta contexto extra más allá de “desarmaderos y abstinencia”. Mejoraría empezando con el dato rematado y una promesa clara del porqué/qué revelación viene (en vez de arrancar con preguntas de otros) para sostener más la tensión y aumentar el motivo de compartir."
+      },
+      "scores_b": {
+        "hook": 9,
+        "retention": 6,
+        "shareability": 8,
+        "reasoning": "Arranca con una confesión muy fuerte y contraintuitiva, así que frena el scroll de inmediato. La conversación mantiene interés por la sorpresa y la reacción de los demás, pero el cierre queda un poco abierto y repetitivo; le vendría bien una remate más tajante o una frase final más memorable. Es muy compartible por lo incómodo y lo confesional del tema, aunque el overlay de “57 desarmaderos” no ayuda y parece desalineado con el audio."
+      },
+      "avg_a": 6.667,
+      "avg_b": 7.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-w8-e1",
+      "video_id": "user_recommended_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 1232,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook tiene una premisa clara y polémica (“no le importaba… nuestra vida”), pero tarda en volverse una idea concreta y el arranque suena a continuidad, no a declaración cerrada. La retención es media: hay detalles del contexto laboral (Telefe, Susana, Mirta, publicidades y devoluciones) pero el hilo se enreda y el final queda como conversación sin remate contundente. Es compartible por el tono backstage y los conflictos mediáticos, aunque falta una conclusión o dato final más “punzante” para que motive a etiquetar a alguien."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 7,
+        "reasoning": "El arranque tiene una idea potente y con tensión interna: que el programa era tan dominante que “no le importaba a la gente nuestra vida” engancha bastante bien. La retención baja un poco porque el clip se apoya en varias anécdotas seguidas y algo repetitivas; lo haría más fuerte recortando y yendo más rápido a la prohibición concreta o al momento de devolver la plata. Compartible por el nombre de Tinelli y la interna del medio, pero subiría mucho si cerrara con una frase más redonda o una revelación más contundente."
+      },
+      "avg_a": 5.667,
+      "avg_b": 6.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "business_spanish_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 699,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es bastante genérico y tarda en llegar al “por qué debería importarme” (primero explica, pero no engancha con un dato o tensión inmediata). La retención mejora porque explica el flujo (pasas el Instagram y genera la web) y cierra con un rango de precio, aunque el remate queda flojo al cambiar a otra skill y el final se siente brusco. Para subirlo, empieza con el beneficio/resultado más concreto (p. ej., “con solo tu Instagram se crea una web con tus fotos y bio”) y remata redondeando el cierre antes de saltar a “auditoría de meta ads”."
+      },
+      "scores_b": {
+        "hook": 4,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El hook entra directo en el tema, pero no plantea una tensión o dato sorprendente en los primeros segundos; empieza más como explicación que como gancho. La idea es clara y útil, aunque el medio se apoya mucho en repetición y termina cortándose justo al pasar a otra skill, así que no sostiene mejor puntuación de retención. Haría el inicio más fuerte con un beneficio concreto o un rango de precio más llamativo, y recortaría la repetición de 'creador pequeñito' para que se sienta más compacto y compartible."
+      },
+      "avg_a": 5.333,
+      "avg_b": 4.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "business_spanish_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 1093,
+      "scores_a": {
+        "hook": 5,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook va directo a la idea de “quemar dinero” pero llega con contexto genérico (Meta Ads) sin un dato o sentencia más contraintuitiva desde la primera frase; el overlay también sugiere un problema fuerte pero el audio tarda en enfocarse en la promesa concreta. La retención es razonable (se explica qué incluye la auditoría y el rango de precio), aunque hay frases largas y redundantes que bajan el ritmo. Es compartible por su enfoque práctico (auditoría y precio), pero le falta un remate más claro/medible (resultado esperado o ejemplo) para que se vuelva “de estatus” o urgente."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 7,
+        "reasoning": "El arranque entra rápido en un problema reconocible para negocios pequeños y el overlay refuerza bien esa tensión, aunque no es una frase tan contundente como para frenar el scroll con fuerza máxima. La idea se sostiene porque explica qué hace la auditoría y por qué se puede vender, pero el tramo medio repite varias veces la misma noción de ‘quemar dinero’ y de ‘presentación potente’, lo que baja algo el ritmo; recortaría repeticiones y empezaría con el precio o el resultado final para hacerlo más directo. Es compartible para gente de marketing o dueños de negocios porque toca una frustración real y concreta, pero le falta una cifra o ejemplo más sorprendente para subir a un nivel más viral."
+      },
+      "avg_a": 5.667,
+      "avg_b": 6.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "business_spanish_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 1655,
+      "scores_a": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook funciona porque abre con una cifra clara (400 a 900€) y promete un rango concreto, pero falta una micro-explicación de por qué se puede “vender” y a quién, para que no suene genérico. La retención es media: enumera ejemplos con bastante detalle, aunque se nota mucho rodeo y cambios de tema (skills de Cloud Code y luego extensiones) sin un hilo final más contundente. Es compartible por la utilidad de los ejemplos, pero mejoraría si cerrara con un resultado/beneficio medible o un paso inmediato (“cómo empezar hoy”) para que den ganas de etiquetar."
+      },
+      "scores_b": {
+        "hook": 8,
+        "retention": 6,
+        "shareability": 7,
+        "reasoning": "El arranque con el rango de precio llama la atención y promete una oportunidad concreta, así que el hook funciona bien sin mucho contexto. La retención aguanta porque encadena varios ejemplos útiles, pero el centro se alarga repitiendo variantes de la misma idea; recortarlo y llegar antes a la utilidad más diferenciadora lo haría más sólido. Es compartible para gente de e-commerce o automatización porque suena a ventaja práctica, aunque le falta una frase más sorprendente o específica para subirlo más."
+      },
+      "avg_a": 6.333,
+      "avg_b": 7.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "business_spanish_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 996,
+      "scores_a": {
+        "hook": 5,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook engancha por la tesis inicial (“CloudCode pertenece a Anthropic”), pero tarda en concretar el “por qué te importa” y además el overlay es correcto y directo pero no aporta tensión. La retención baja por explicaciones largas y aclaraciones (“no es un modelo de lenguaje”, “no vas a programar nada”) sin un remate claro hasta el final; cortaría/compactaría y daría un beneficio inmediato. Aun así, es compartible porque resume comparaciones OpenAI vs Anthropic y aclara qué es CloudCode frente a ChatGPT, lo que tiene utilidad para quien está empezando."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 3,
+        "shareability": 4,
+        "reasoning": "El arranque plantea una afirmación clara sobre CloudCode y Anthropic, pero tarda en concretar y mezcla varias explicaciones que restan impacto inmediato. La retención cae por la repetición y porque la idea se vuelve confusa; recortarlo a una sola tesis con un ejemplo simple mejoraría mucho el cierre. Es compartible solo de forma moderada: aporta una aclaración útil, pero no tiene un dato sorprendente ni una frase lo bastante afilada como para que alguien lo etiquete con urgencia."
+      },
+      "avg_a": 5.0,
+      "avg_b": 4.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "business_spanish_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 1268,
+      "scores_a": {
+        "hook": 3,
+        "retention": 6,
+        "shareability": 3,
+        "reasoning": "El hook es demasiado descriptivo y tarda en llegar a una idea clara o un dato concreto; “yo utilizo la terminal” no crea tensión ni curiosidad. La retención es media: el recorrido “lamparita cambia de color → web search → resultado” funciona, pero hay desorden y muletillas (“pequeñas tonterías”, “y demás”, cambios repetidos) que diluyen el final, aunque no se corta. No hay un ángulo compartible (no se promete un beneficio, truco o resultado sorprendente); mejor sería empezar con un impacto específico (“así consigues X en la terminal en 10s”) y rematar con un mini-resultado/beneficio claro y aplicable."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 4,
+        "shareability": 3,
+        "reasoning": "El hook arranca con una demostración concreta, pero tarda demasiado en llegar al punto y depende de contexto técnico para entenderse. La idea se sostiene un poco con la metáfora de la lamparita y el estado de pensamiento, pero hay bastante repetición y el cierre no remata con una conclusión fuerte. Para mejorar, empezaría con la consecuencia llamativa de conectar Cloud Code en la terminal y recortaría las repeticiones para llegar antes al ejemplo útil."
+      },
+      "avg_a": 4.0,
+      "avg_b": 4.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "business_spanish_01",
+      "moment_index": 6,
+      "text_source": "full",
+      "text_chars": 1151,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook cumple la promesa (“conceptos que no te los van a contar”), pero tarda en aterrizar el primer dato concreto (recién después empieza con el comando en Mac). La explicación es clara y llega a un “cómo hacerlo” y el flip de mostrar/ocultar, aunque hay repeticiones y un momento con poca precisión (“aparece .clot”/“.cloth”) que quita pulso. Se puede compartir porque es útil y práctico, pero el overlay quemado y la confusión del nombre del archivo/comando reducen el valor social; empezaría con el comando exacto desde el segundo 1 y corregiría/estandarizaría la nomenclatura."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El arranque promete un concepto poco común, pero la frase inicial es genérica y tarda unos segundos en aterrizar en la idea concreta de carpetas ocultas. La retención se sostiene por la demostración práctica, aunque hay bastante repetición y explicación redundante; recortaría repeticiones de Shift+Command+punto y empezaría antes con el ejemplo exacto para hacerlo más ágil. Es útil para quien use Mac o VS Code, pero no tiene una sorpresa suficientemente fuerte ni un cierre memorable como para impulsar mucho el compartirlo."
+      },
+      "avg_a": 6.0,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 630,
+      "scores_a": {
+        "hook": 3,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook es demasiado genérico (“hombre”) y no plantea la promesa del clip; además el overlay está quemado y no ayuda a contextualizar la pregunta en los primeros segundos. La retención es media: la explicación avanza con detalle, pero el inicio “¿Cómo pasaban? hay varias maneras…” diluye tensión y el final queda en nota secundaria (“también está documentado…”), aunque el contenido sí aporta una idea útil para compartir. Para mejorar, empezaría con el dato/idea central desde la primera frase (la vía más habitual y una consecuencia concreta) y cerraría con un remate claro tipo “por eso X prevención”. "
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El arranque pregunta directamente cómo pasaban, lo que despierta curiosidad, pero no es una frase lo bastante contundente por sí sola y necesita contexto rápido. La explicación es clara y completa, aunque tiene bastante densidad y un tramo medio algo repetitivo; recortar y empezar con la vía de contagio más probable haría el clip más ágil. Es compartible porque da una respuesta útil y concreta a una duda real, pero no llega a ser especialmente sorprendente o estatus."
+      },
+      "avg_a": 4.333,
+      "avg_b": 6.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 608,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook (“fallan los riñones”) promete una consecuencia contundente, pero el transcript arranca hablando de mortalidad y virus, sin conectar de inmediato con “riñones”, lo que frena el impacto inicial. La retención es decente porque aporta números (1%, hasta 15%), pero el final se queda en geografía (“Alemania y Finlandia”) sin remate claro que aterrice la idea del overlay. Haría el inicio más directo al dato del overlay desde la primera frase (o eliminaría el overlay si no se menciona), y cerraría con una conclusión explícita para que el mensaje sea más “compartible”."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 4,
+        "shareability": 4,
+        "reasoning": "El arranque aporta un dato técnico, pero no tiene una frase de choque inmediata y además necesita contexto para entenderse. La explicación mantiene cierta claridad, pero se alarga en porcentajes y localización geográfica sin un remate fuerte; empezaría con la estirpe más mortal o con el dato del 15% para subir tensión. El overlay ayuda un poco, pero por sí solo no convierte el clip en algo especialmente compartible."
+      },
+      "avg_a": 5.0,
+      "avg_b": 4.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 720,
+      "scores_a": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook es una buena pregunta directa que promete una respuesta clara, pero no aterriza el dato desde el inicio y tarda en concretar (empieza explicativo). La retención baja porque el audio se enreda con titubeos (“Perdón”) y frases largas sin cortes, además de que el remate llega, pero con explicación parcial y confusa. Lo compartiría algo porque el overlay y el tema comparativo (“americanos vs europeos”) generan curiosidad, pero faltan cifras/verdad incómoda o una conclusión más nítida para subir el valor social; recortaría la introducción, quitaría las correcciones y remataría con una idea final en una frase."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El arranque plantea una comparación clara y curiosa, pero la pregunta es demasiado genérica y tarda unos segundos en dar la diferencia concreta. Para subir el hook, convendría empezar directo con la afirmación más chocante: que los virus “americanos” evolucionan hacia un cuadro respiratorio y cardiovascular. La retención cae por las repeticiones, la corrección en medio del discurso y la explicación algo enredada; un cierre más limpio y breve haría el remate más potente."
+      },
+      "avg_a": 5.333,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 1070,
+      "scores_a": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es potente y relativamente inmediato: plantea a la cepa Andes como “la estrella más peligrosa” y abre una promesa clara. Sin embargo, tarda en aterrizar el porqué con un esquema más largo (contagio habitual, excepciones) y el clip no remata con una conclusión igual de afilada; además, el overlay “ESTO NOS HA TOCADO” puede sentirse genérico sin un dato final. Para mejorar, empezaría directamente con la excepción (que permite transmisión persona-persona) con un dato concreto desde el segundo inicial y cerraría con una frase de consecuencia/alerta más contundente para que el final quede completo y compartible."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 7,
+        "reasoning": "El hook es bastante fuerte porque plantea una afirmación específica y alarmante sobre la cepa Andes, aunque la frase de entrada podría ser todavía más directa si empezara con que es el único hantavirus con contagio persona a persona. La retención se sostiene bien porque desarrolla una explicación clara y progresiva, pero hay bastante reiteración y rodeos antes de llegar al dato más impactante. Es compartible por el componente de verdad incómoda y excepcionalidad, y subiría más si el clip cerrara con una conclusión más tajante y menos explicativa."
+      },
+      "avg_a": 6.333,
+      "avg_b": 6.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 1454,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook promete “seis situaciones” pero el transcript arranca con la primera y tarda en aterrizar el listado completo, además de que la frase introductoria no genera tensión inmediata. La explicación del contagio por proximidad/respiración está bien desarrollada y concreta, pero hay desvíos y un tramo confuso con “contacto no estrecho/estrechísimo” y el ejemplo del café no remata con una conclusión clara del “punto tres” antes de seguir. Es compartible por ser información útil sobre contagio, pero la falta de estructura y claridad del listado (si realmente son seis) reduce el valor “de estatus” para etiquetar a otros."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El hook plantea una lista concreta y promete claridad, pero no arranca con una tensión fuerte ni con una cifra sorprendente, así que engancha solo a medias. La retención cae porque el clip se alarga explicando ejemplos similares y termina en mitad de una enumeración, sin un cierre contundente que redondee la idea. Para subirlo, empezaría con la situación más inesperada o el riesgo más contraintuitivo y condensaría la lista en frases más cortas con un remate final claro."
+      },
+      "avg_a": 5.0,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 6,
+      "text_source": "full",
+      "text_chars": 1622,
+      "scores_a": {
+        "hook": 2,
+        "retention": 6,
+        "shareability": 3,
+        "reasoning": "El hook en overlay es confuso y poco informativo para quien llega tarde: empieza con una frase rara (“voz… cargada de virus”) que no conecta directamente con la explicación posterior del “contacto estrecho” en el barco. La retención aguanta razonablemente porque enumera situaciones y ejemplos (barco, sábanas, personal sanitario), pero hay aclaraciones largas y vuelven frases genéricas que diluyen el clímax final; además el audio arranca con “Ya llevamos…” sin contexto. Para mejorar shareability, falta un dato concreto o una conclusión resumida tipo “3 casos que sí cuentan como contacto estrecho” y una frase final de alto impacto; así sería más “etiquetable” y compartible."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 4,
+        "reasoning": "El arranque propone una idea llamativa por lo de “cargada de virus”, pero necesita bastante contexto para entenderla y no pega con fuerza en los primeros segundos. La explicación luego es clara, pero se alarga con varios ejemplos similares y pierde tensión, así que recortaría y abriría con una frase más directa y concreta sobre el riesgo. Compartirlo tiene utilidad informativa, pero no tiene un giro especialmente sorprendente ni una formulación memorable que invite mucho a enviarlo."
+      },
+      "avg_a": 3.667,
+      "avg_b": 4.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 7,
+      "text_source": "full",
+      "text_chars": 514,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook engancha con una afirmación tajante (“potencialidad nula”), pero suena a frase en contexto cortado: falta aterrizar rápido qué “características” y qué causa esa conclusión. La retención es media porque aunque explica la referencia a R0, la idea se desordena (“y ahí vamos…”) y no llega a un remate cuantitativo claro. Es compartible por lo contundente del mensaje, pero subiría mucho si incluyera un dato o conclusión final más específica y una estructura más limpia desde el primer minuto."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El arranque tiene una afirmación fuerte y clara, pero tarda un poco en formularse bien porque repite ‘potencialidad’ y parece enredarse antes de llegar al golpe. La idea se entiende, aunque el tramo final queda abierto al introducir el R0 sin desarrollarlo; si empezara con ‘potencialidad nula’ y cerrara con una explicación concreta, retendría más. El contenido es útil e interesante, pero no lo bastante sorprendente o práctico como para compartirlo con urgencia."
+      },
+      "avg_a": 6.0,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 8,
+      "text_source": "full",
+      "text_chars": 1296,
+      "scores_a": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook (33 contagiados→11 fallecidos) es potente y contrasta, pero el transcript no lo entrega de inmediato: abre con explicación (“efecto… súper contagio”, “tinglao”) y tarda en llegar a los números, lo que baja el freno inicial. La idea está completa y el final remata con el 33% y la letalidad, pero hay frases de relleno y reiteraciones (“esto es una media…”) que diluyen tensión; para mejorar, empieza con el dato exacto al inicio del audio y reduce repeticiones, manteniendo el cierre con un único remate claro."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook tiene un dato fuerte, pero no entra con la cifra de impacto de forma inmediata; además el texto tarda en llegar al caso concreto, así que se siente más explicativo que explosivo. La retención es correcta porque cuenta una cadena causal clara y cierra con el dato de 11 fallecidos, aunque hay bastante repetición y rodeo antes del remate; recortar la introducción lo haría mucho más tenso. La compartibilidad es moderada porque el número 33% y la idea de supercontagio generan impacto, pero el tono es más divulgativo que memorable, así que ayudaría empezar directamente con el caso de la fiesta y la cifra final."
+      },
+      "avg_a": 6.333,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 9,
+      "text_source": "full",
+      "text_chars": 1764,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook engancha con un caso concreto (“la azafata”), pero la tensión llega a medias: tarda en aclarar el escenario y el punto de contagio. La retención es sólida (historia con conclusión de “negativa”), aunque hay repeticiones (“tan malita, tan malita”) y frases largas que diluyen el ritmo. Es compartible por el valor informativo sobre contacto estrecho, pero le falta un dato/afirmación más contundente y corto para invitar a etiquetar a alguien de inmediato."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El arranque plantea una idea clara y con cierta tensión, pero no es una frase lo bastante contundente para funcionar sin contexto completo. Aun así, el caso concreto de la azafata sostiene la atención porque introduce riesgo, sospecha de contagio y un resultado final, aunque hay bastante repetición en la explicación intermedia. Para hacerlo más viral, recortaría redundancias y abriría con la consecuencia más fuerte o con el dato de que finalmente dio negativo, porque eso daría un remate más memorable y compartible."
+      },
+      "avg_a": 6.0,
+      "avg_b": 5.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 10,
+      "text_source": "full",
+      "text_chars": 630,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook engancha con una afirmación clara (“se transmite sobre todo cuando tenemos síntomas”), pero llega en la mitad de la idea y tarda en concretar el “por qué” o el dato exacto desde el inicio. Mantiene atención con una explicación estructurada (fase prodrómica vs incubación), aunque hay aclaraciones largas y el remate no queda como una conclusión memorable; además, el overlay “Síntomas para el contagio” no aporta una promesa específica. Para mejorar, empezaría con un dato más contundente/preciso (sin rodeos) y cerraría con una frase final tipo “en resumen: X periodo sí/no contagia” que invite a compartir."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El arranque plantea una duda clara y útil, pero no entra con una afirmación más contundente; empezar directamente con “en general no” o con la comparación con coronavirus lo haría más fuerte. La idea se entiende completa y mantiene atención razonablemente bien, aunque hay repetición y un tramo medio algo explicativo que baja la tensión. Es compartible por utilidad, pero no tiene un giro especialmente sorprendente ni una frase de alto impacto para provocar que lo envíen."
+      },
+      "avg_a": 6.0,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 11,
+      "text_source": "full",
+      "text_chars": 1028,
+      "scores_a": {
+        "hook": 7,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es una pregunta contundente y genera tensión inmediata (tratamiento vs esperar), con buen encaje al tema. Sin embargo, tarda en aterrizar el dato y el discurso se dispersa con matices (familia de virus/variantes, vacunas en ensayo) sin un remate igual de claro hacia el final; además, el “no sé/desconozco” reduce autoridad. Para mejorar: empezar con una afirmación más concreta (qué se sabe hoy y qué no), reducir muletillas y cerrar con un takeaway único (p. ej., “hoy solo se ensaya X; lo demás es soporte/prevención en investigación”)."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El hook plantea una duda clara y útil desde el primer segundo, así que frena bastante el scroll, pero no llega a ser realmente contraintuitivo porque depende de contexto médico previo. La retención cae un poco por el rodeo explicativo y por la mención de que no se conoce con certeza el fármaco, aunque el cierre sí deja una idea completa. Para hacerlo más viral, empezaría con la respuesta más tajante posible sobre si existe o no tratamiento y luego añadiría la matización de vacunas/ensayos; eso también subiría su compartibilidad."
+      },
+      "avg_a": 6.333,
+      "avg_b": 5.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "podcast_general_01",
+      "moment_index": 12,
+      "text_source": "full",
+      "text_chars": 878,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es claro y contrasta con una intuición común (“miedo a la mutación”) pero tarda en afianzarse con el porqué: la frase inicial engancha, aunque el matiz llega en el segundo bloque. La retención es correcta: explica una idea completa sobre el trade-off infectividad/letalidad, pero el final se corta y queda una transición confusa (“por lo que sabemos…”). Sería compartible por su formato educativo, pero falta un dato concreto o remate más contundente para que la gente lo etiquete como “imprescindible”."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 5,
+        "reasoning": "El arranque toca un miedo universal y el overlay ayuda, pero la frase inicial es algo larga y necesita contexto para golpear más fuerte. La idea central es interesante, aunque en el medio repite la misma noción varias veces y el clip además queda cortado al final, lo que baja bastante la retención. Para subirlo, convendría abrir con una afirmación más directa y cerrar con una conclusión completa y contundente sobre por qué no suelen coexistir alta letalidad y alta infectividad."
+      },
+      "avg_a": 6.0,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 1037,
+      "scores_a": {
+        "hook": 6,
+        "retention": 7,
+        "shareability": 6,
+        "reasoning": "El hook engancha porque promete una diferencia clara, pero la frase inicial tarda en aterrizar y el término “Cloud Code” aparece sin contexto antes de explicarlo. La explicación es completa y con analogías que ayudan a retener, aunque hay cierta repetición y el ejemplo se estira antes del remate; además, el overlay “DIFERENCIA CLAUDE Y CLAUDE” está quemado y puede confundir. Haría el inicio con una afirmación más contraintuitiva y cerraría con un “resultado práctico” (cuándo conviene cada uno) para aumentar la compartibilidad."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 8,
+        "shareability": 7,
+        "reasoning": "El arranque plantea una diferencia clara y útil entre dos productos casi idénticos, así que frena bastante bien el scroll. La explicación mantiene el interés con una metáfora fácil de seguir, aunque empezaría nombrando primero la distinción exacta entre ambos para evitar la confusión de ‘Cloud/Claude’ y hacer el hook más contundente. Es bastante compartible para gente de business o IA porque resuelve una duda práctica de forma simple, pero no llega a nivel viral alto porque el dato no es especialmente sorprendente."
+      },
+      "avg_a": 6.333,
+      "avg_b": 7.333,
+      "ge7_a": false,
+      "ge7_b": true
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 888,
+      "scores_a": {
+        "hook": 3,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook propuesto es genérico (“es bastante sencillo”) y no introduce una promesa concreta ni un dato que frene el scroll; además el overlay está “quemado”, lo que resta impacto. La explicación tiene una idea clara (instalarlo en ordenador porque no funciona desde navegador), pero hay relleno y opiniones (“es estético”, “no hay pérdida”) y el remate es marketing más que un cierre útil. Se podría mejorar abriendo con una afirmación más específica tipo “no se usa desde el navegador: hay que instalarlo” y terminando con un mini paso a paso/CTA (1-2-3) para que sea más compartible."
+      },
+      "scores_b": {
+        "hook": 3,
+        "retention": 4,
+        "shareability": 2,
+        "reasoning": "El arranque es funcional pero genérico; no crea tensión ni curiosidad en los primeros 3 segundos. La explicación es clara, pero se repite mucho y tarda demasiado en llegar a una idea realmente útil o sorprendente; empezando con el cambio de “antes solo para programadores y ahora para todos” ganaría más fuerza. La compartibilidad es baja porque suena a tutorial básico sin una verdad incómoda, dato potente o beneficio inmediato que motive a enviarlo."
+      },
+      "avg_a": 4.333,
+      "avg_b": 3.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 1114,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook plantea un “hack 2” con una idea concreta, pero la primera frase es densa y tarda en aterrizar en el problema (permisos constantes) y en el “qué consigues exactamente”. La retención es decente porque explica el flujo de permisos y el objetivo (modo automático), aunque el ejemplo de la prueba y algunos rodeos hacen que se sienta menos apretado para 52s. Es compartible para gente que usa herramientas tipo Claude Code y suena práctico, pero el overlay “TRABAJA SIN PEDIR PERMISO” puede sentirse agresivo/ambiguo; lo haría más claro con un dato exacto o un matiz de seguridad para subir el valor social."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El arranque plantea una promesa útil y clara, pero no tiene una tensión fuerte ni una frase realmente contraintuitiva que frene el scroll de inmediato. La retención cae un poco porque el clip se apoya mucho en repetición y explicación general, y además cierra en una transición más que en una conclusión contundente; empezaría con el beneficio exacto de automatizar permisos y recortaría repeticiones para que el remate sea más redondo. La idea es relevante para un público técnico, pero no es lo bastante sorprendente o accionable como para que mucha gente lo comparta por sí sola."
+      },
+      "avg_a": 6.0,
+      "avg_b": 5.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 1014,
+      "scores_a": {
+        "hook": 4,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook es claro en intención, pero llega tarde: la frase inicial es genérica y tarda en aterrizar en el “hack” prometido y el dato concreto. Mantiene bien la demostración y el proceso hasta el final, aunque hay desvíos (descripción del producto/página) que diluyen el foco del hack #3. Es compartible porque muestra un caso de uso útil (conectar Claude Code con Shopify), pero para subir a “muy compartible” faltaría un remate más tajante: pasos/beneficio medible y por qué es el hack #3 frente a alternativas."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El arranque promete un caso práctico, pero tarda demasiado en concretar el beneficio y abre con muletillas como “otro ejemplo”, así que no frena mucho el scroll. La idea se entiende y mantiene interés porque muestra un resultado completo, pero hay bastante explicación repetitiva y el cierre se queda en transición, no en remate. Lo haría más fuerte empezando con el resultado final o con una afirmación más tajante sobre lo que Claude Code puede hacer con Shopify, y recortando la introducción del ejemplo."
+      },
+      "avg_a": 5.333,
+      "avg_b": 5.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "claude_hacks_regression_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 1303,
+      "scores_a": {
+        "hook": 5,
+        "retention": 6,
+        "shareability": 5,
+        "reasoning": "El hook va directo al proceso (Shopify y luego “lo primero”), pero suena a inicio de tutorial genérico y tarda casi demasiado en plantear el “por qué” o el resultado. La narración es completa hasta el final, aunque hay mucho relleno explicativo (skill/mini manual, “palabra desbloqueada”) y el overlay (“CREAR ESTA TIENDA”) no aporta una promesa clara; para mejorar, abre con un dato o resultado concreto y reduce repeticiones. Es compartible para quienes les interesa montar tiendas, pero le falta un ángulo más social (tiempo/coste/errores evitados) para que se sienta “para etiquetar” a alguien."
+      },
+      "scores_b": {
+        "hook": 4,
+        "retention": 5,
+        "shareability": 5,
+        "reasoning": "El arranque promete porque menciona crear una tienda en Shopify, pero tarda demasiado en entrar en una acción concreta y repite varias veces la misma idea. La explicación es útil, aunque se siente más tutorial que clip viral; empezaría con el resultado o con la parte más sorprendente de la automatización para generar más tensión desde el segundo uno. Termina entendible, pero con un ritmo algo plano y poco motivo social para compartirlo."
+      },
+      "avg_a": 5.333,
+      "avg_b": 4.667,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "user_recommended_01",
+      "moment_index": 1,
+      "text_source": "full",
+      "text_chars": 753,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook con “NADIE DICE ESTO” y “nadie dice eso” es claro y polémico, pero la primera parte tarda en concretar el argumento (arranca con un “nadie. Eso voy a…” que se siente redundante). La retención es media: hay frases potentes (“cara de orto”, crítica a videos), pero el hilo se vuelve repetitivo con “siempre” y el final queda más interrogativo que rematado. Es compartible por el tono provocador, aunque sería más viral si incluyera un dato/idea cerrada (por ejemplo, una tesis única y una conclusión más directa sobre por qué “no disfruta” o qué evidencia lo prueba)."
+      },
+      "scores_b": {
+        "hook": 7,
+        "retention": 5,
+        "shareability": 7,
+        "reasoning": "El arranque tiene tensión inmediata y una postura polémica sobre Endrick, así que frena bastante el scroll. La retención baja por las repeticiones y las ideas algo desordenadas; recortando redundancias y yendo más directo al remate podría sostener mejor la atención. Es compartible porque ataca una figura conocida con una opinión filosa, pero ganaría mucho si abre con la afirmación más contundente desde el primer segundo."
+      },
+      "avg_a": 6.0,
+      "avg_b": 6.333,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "user_recommended_01",
+      "moment_index": 2,
+      "text_source": "full",
+      "text_chars": 615,
+      "scores_a": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 6,
+        "reasoning": "El hook engancha con la “segunda vez consecutiva” y crea tensión, pero el clip tarda en concretar quiénes son y en qué contexto (“en el entrenamiento”) para que el impacto sea inmediato. La retención baja por el exceso de repeticiones (“ese rumor”) y por dejar el punto en una pregunta sin cerrar un remate claro; un dato más firme (qué pasó exactamente o qué fuentes lo confirman) mejoraría el final. Es medianamente compartible por el chisme deportivo, pero faltan precisión y conclusión para que genere “estatus” al etiquetarlo a un amigo."
+      },
+      "scores_b": {
+        "hook": 8,
+        "retention": 6,
+        "shareability": 7,
+        "reasoning": "El arranque entra rápido en conflicto y con una novedad concreta (“por segunda vez”), así que frena bien el scroll aunque depende un poco de contexto para entender los nombres. La retención se sostiene por la escalada del rumor a la confirmación, pero el cierre queda algo abierto y con una pregunta que no remata del todo. Se comparte bastante por lo insólito del enfrentamiento repetido; para subirlo más, convendría abrir con la repetición exacta y cerrar con una conclusión más contundente."
+      },
+      "avg_a": 5.667,
+      "avg_b": 7.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "user_recommended_01",
+      "moment_index": 3,
+      "text_source": "full",
+      "text_chars": 346,
+      "scores_a": {
+        "hook": 5,
+        "retention": 3,
+        "shareability": 4,
+        "reasoning": "El overlay y la primera frase generan curiosidad, pero el hook no llega a un dato concreto y tarda en enfocarse: la conversación arranca con humor (“Boludo…”) y luego divaga sobre “misma edad” sin una afirmación cerrada. La retención cae por relleno y falta de remate claro (no hay conclusión ni explicación del “¿cómo será a cara lavada?”). Para mejorar, arrancaría con un dato/verificación específica (año, comparación exacta, índice) y cerraría con una conclusión nítida sobre qué se prueba y qué no."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 5,
+        "shareability": 4,
+        "reasoning": "El arranque tiene una observación llamativa sobre Shakira y su edad aparente, pero tarda un poco en aterrizar una idea fuerte y el hook propuesto depende demasiado del contexto del “tema de mundial”. La retención cae porque el intercambio se queda en comentarios repetitivos y no cierra con un remate más contundente; recortarlo a la mejor frase y terminar con una comparación más precisa lo haría más sólido. Se puede compartir por lo reconocible de Shakira, pero hoy no tiene una verdad incómoda ni un dato lo bastante sorprendente como para impulsarlo mucho."
+      },
+      "avg_a": 4.0,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "user_recommended_01",
+      "moment_index": 4,
+      "text_source": "full",
+      "text_chars": 676,
+      "scores_a": {
+        "hook": 4,
+        "retention": 4,
+        "shareability": 5,
+        "reasoning": "El hook/overlay promete un misterio claro (“¿Qué pasó con Shakira…?”), pero el transcript arranca tarde y con jerga/confusión, sin concretar la queja en los primeros segundos. La retención cae por tangentes y falta de un remate claro (la idea se diluye y el final suena cortado/derivado). Aun así, el tema polémico y la frase “bring Shakira back” dan un motivo para compartir, pero haría falta más estructura: empezar con el motivo exacto de las quejas y cerrar con una conclusión concreta."
+      },
+      "scores_b": {
+        "hook": 5,
+        "retention": 3,
+        "shareability": 4,
+        "reasoning": "El arranque menciona a Shakira y al mundial, pero entra con muletillas y contexto confuso, así que no frena del todo el scroll. La idea central se entiende a medias y el clip divaga bastante, con frases repetidas y cierres poco claros; abrir con la queja concreta de la gente y la explicación en una sola línea lo haría mucho más fuerte."
+      },
+      "avg_a": 4.333,
+      "avg_b": 4.0,
+      "ge7_a": false,
+      "ge7_b": false
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "user_recommended_01",
+      "moment_index": 5,
+      "text_source": "full",
+      "text_chars": 305,
+      "scores_a": {
+        "hook": 6,
+        "retention": 6,
+        "shareability": 6,
+        "reasoning": "El hook con “¿Qué pasó con Cármen” y “Cármen Barbieri” abre con interés, pero llega tarde a la afirmación concreta (la frase “No tengo sexo hace 8 años” tarda en aparecer). La conversación se mantiene con tensión y preguntas todo el tiempo, aunque hay algo de ida y vuelta (“¿de dónde sacás?”, repeticiones) que baja el empuje hacia un remate claro. Sería más compartible si el overlay incluyera el dato exacto (p. ej., “No tengo sexo hace 8 años”) y el inicio pusiera esa cifra inmediatamente para generar un punch inmediato."
+      },
+      "scores_b": {
+        "hook": 8,
+        "retention": 7,
+        "shareability": 7,
+        "reasoning": "El arranque pega fuerte porque abre con una confesión chocante y contraintuitiva: “No tengo sexo hace 8 años”. Eso frena el scroll aunque el overlay esté cortado y le falte el apellido completo al personaje. La retención es buena porque la mini-discusión sostiene la tensión hasta el cierre, aunque hay repetición en el medio; lo haría todavía mejor limpiando la ida y vuelta para llegar antes a la explicación final. Compartible por lo incómodo y sorprendente del dato, aunque no llega a nivel “imprescindible” porque depende bastante del contexto del podcast."
+      },
+      "avg_a": 6.0,
+      "avg_b": 7.333,
+      "ge7_a": false,
+      "ge7_b": true
+    },
+    {
+      "run_label": "2026-09-20-integracion-fase0",
+      "video_id": "user_recommended_01",
+      "moment_index": 6,
+      "text_source": "full",
+      "text_chars": 577,
+      "scores_a": {
+        "hook": 5,
+        "retention": 4,
+        "shareability": 6,
+        "reasoning": "El hook es directo y despierta curiosidad (“No te dejaban…”) pero tarda en aterrizar la idea completa y aparece repetición/desorientación temprana (“No me vas a acordar…”). La retención cae por saltos y exceso de contexto poco ordenado hasta que el punto se entiende (devolución de la plata); un cierre con una frase remate clara reforzaría mucho el final. Es compartible por el conflicto y la anécdota concreta, pero mejoraría si la historia se estructura con un dato puntual desde el inicio (quién/qué canal/qué pasó exactamente) para que resulte “etiquetable”."
+      },
+      "scores_b": {
+        "hook": 6,
+        "retention": 4,
+        "shareability": 5,
+        "reasoning": "El arranque tiene un gancho razonable porque plantea una prohibición concreta en televisión, pero tarda en aclarar el contexto y la idea se dispersa enseguida. La retención baja por el salto entre frases, las repeticiones y la falta de una conclusión nítida; si cerrara con el momento de devolver la plata o con una frase más directa, quedaría mucho más fuerte. Compartirlo sería moderado: hay una anécdota curiosa de medios y publicidad, pero no llega a sentirse especialmente sorprendente ni memorable."
+      },
+      "avg_a": 5.0,
+      "avg_b": 5.0,
+      "ge7_a": false,
+      "ge7_b": false
+    }
+  ],
+  "source_runs": [
+    "eval/runs/2026-09-20-w8-e1.json",
+    "eval/runs/2026-09-20-integracion-fase0.json"
+  ]
+}

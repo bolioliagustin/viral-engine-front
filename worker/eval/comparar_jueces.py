@@ -10,6 +10,7 @@ Uso:
     python eval/comparar_jueces.py eval/runs/2026-09-20-w8-e1.json \
         --model-a openai/gpt-5.4-nano --model-b openai/gpt-5.4-mini --json
     python eval/comparar_jueces.py eval/runs/2026-09-20-w8-e1.json --partial
+    python eval/comparar_jueces.py eval/runs/2026-09-20-w8-e1.json eval/runs/2026-09-20-integracion-fase0.json --json
 
 TEXTO DEL CLIP: el JSON de una corrida e2e no guarda el transcript completo
 por clip (`eval/eval_metrics.py::build_e2e_clip_record` trunca a
@@ -22,8 +23,11 @@ concatenando las Líneas cuyo rango se solapa con `[start_time, end_time]`
 (ver `_full_clip_text`). Si no hay transcript cacheado para ese video (source
 distinto de whisper_full/hybrid, o cache vencido), degrada a un texto PARCIAL
 (primeras + últimas palabras guardadas) y lo marca en `text_source` — con
-`--partial` se fuerza ese modo parcial para los 30 clips (más rápido, sirve
-como punto de referencia "peor caso").
+`--partial` se fuerza ese modo parcial para todos los clips (más rápido,
+sirve como punto de referencia "peor caso"). Se puede pasar más de un JSON
+de corrida (los clips de todas se juntan en un solo pool, cada uno anotado
+con `run_label` = nombre del archivo) para juntar tamaño de muestra sin
+pagar un e2e nuevo.
 
 CONTROL DE SANIDAD: cuando el texto es "full", se compara el re-juzgado con
 `model_a` contra el `score_judge` ya guardado en el JSON de la corrida
@@ -68,10 +72,16 @@ def _load_categories() -> dict[str, str]:
     return {v["id"]: v.get("expected_category") or "business" for v in data.get("videos", [])}
 
 
-def _load_clips(run: dict) -> list[dict]:
+def _load_clips(run: dict, run_label: str) -> list[dict]:
+    """Clips de una corrida, anotados con `_run_label` (de qué archivo vienen
+    — dos corridas pueden repetir (video_id, moment_index), así que hace
+    falta para no confundirlos al mostrar resultados)."""
     clips = []
     for video in run.get("results") or []:
-        clips.extend(video.get("clips") or [])
+        for clip in video.get("clips") or []:
+            clip = dict(clip)
+            clip["_run_label"] = run_label
+            clips.append(clip)
     return clips
 
 
@@ -273,6 +283,7 @@ def compare(clips: list[dict], model_a: str, model_b: str, categories: dict[str,
     per_clip = []
     for clip, (text, source), sa, sb in zip(clips, texts, scores_a, scores_b):
         per_clip.append({
+            "run_label": clip.get("_run_label"),
             "video_id": clip.get("video_id"),
             "moment_index": clip.get("moment_index"),
             "text_source": source,
@@ -333,31 +344,36 @@ def render_text(result: dict) -> str:
     )
     lines.append("")
     lines.append("Por clip:")
-    lines.append(f"{'clip':<32} {'texto':<8} {'avg A':>7} {'avg B':>7} {'≥7 A':>6} {'≥7 B':>6}")
-    lines.append("─" * 68)
+    lines.append(f"{'clip':<44} {'texto':<8} {'avg A':>7} {'avg B':>7} {'≥7 A':>6} {'≥7 B':>6}")
+    lines.append("─" * 80)
     for row in result["per_clip"]:
-        name = f"{row['video_id']} m{row['moment_index']}"
+        name = f"[{row['run_label']}] {row['video_id']} m{row['moment_index']}"
         lines.append(
-            f"{name:<32} {row['text_source']:<8} {row['avg_a']!s:>7} {row['avg_b']!s:>7} "
+            f"{name:<44} {row['text_source']:<8} {row['avg_a']!s:>7} {row['avg_b']!s:>7} "
             f"{'sí' if row['ge7_a'] else '—':>6} {'sí' if row['ge7_b'] else '—':>6}"
         )
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Compara dos jueces sobre los clips de una corrida e2e guardada")
-    parser.add_argument("run_json", help="JSON de una corrida del tier e2e (eval/runs/*.json)")
+    parser = argparse.ArgumentParser(description="Compara dos jueces sobre los clips de una o más corridas e2e guardadas")
+    parser.add_argument(
+        "run_jsons", nargs="+",
+        help="JSON de una o más corridas del tier e2e (eval/runs/*.json) — los clips de todas se juntan en un solo pool",
+    )
     parser.add_argument("--model-a", default=DEFAULT_MODEL_A, help=f"Juez actual (default {DEFAULT_MODEL_A})")
     parser.add_argument("--model-b", default=DEFAULT_MODEL_B, help=f"Juez candidato (default {DEFAULT_MODEL_B})")
     parser.add_argument(
         "--partial", action="store_true",
-        help="Forzar texto parcial (first/last words) para los 30 clips, sin buscar el transcript completo cacheado",
+        help="Forzar texto parcial (first/last words), sin buscar el transcript completo cacheado",
     )
     parser.add_argument("--json", action="store_true", help="Salida JSON en vez de tabla")
     args = parser.parse_args(argv)
 
-    run = json.loads(Path(args.run_json).read_text(encoding="utf-8"))
-    clips = _load_clips(run)
+    clips = []
+    for run_json in args.run_jsons:
+        run = json.loads(Path(run_json).read_text(encoding="utf-8"))
+        clips.extend(_load_clips(run, Path(run_json).stem))
     categories = _load_categories()
 
     # En modo --json, cualquier print() suelto durante compare() (cliente de
@@ -370,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         result = compare(clips, args.model_a, args.model_b, categories, allow_full=not args.partial)
     finally:
         sys.stdout = real_stdout
-    result["source_run"] = args.run_json
+    result["source_runs"] = args.run_jsons
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2), file=real_stdout)
