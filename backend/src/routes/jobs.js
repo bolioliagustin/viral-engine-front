@@ -269,10 +269,20 @@ router.get('/status/:jobId', optionalAuth, async (req, res) => {
             videoTitle: job.video_title,
             status: job.status,
             current_step: job.current_step,
+            // P1 (docs/PROYECTO.md §7/§8): el worker (W9-B, pendiente) va a
+            // escribir esto en cada paso — {current, total, message,
+            // clips_ready}. NULL en jobs viejos o mientras no lo escriba;
+            // el frontend cae al comportamiento de hoy sin romperse.
+            progress_detail: job.progress_detail ?? null,
             progress_percentage: job.progress_percentage,
             errorMessage: job.error_message,
             createdAt: job.created_at,
             updatedAt: job.updated_at,
+            // P1: `results` ya se devolvía completo mientras el job seguía
+            // 'processing' (sin gate por status) — la galería puede pollear
+            // y mostrar clips antes de que termine. `partial` se lo dice
+            // explícito al frontend en vez de inferirlo de `status`.
+            partial: job.status === 'processing',
             results: resultsWithDisplay
         });
 
