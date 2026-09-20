@@ -318,6 +318,27 @@ Todas las líneas de código de la Fase 0 (W0–W11, más las que nacieron despu
 - ≥ 8 clips entregados por video de 60 min (W9), 0 clips con `bad_segment` entregados.
 - Posteable ≥ 70 % en la etiqueta humana (W7), que sigue siendo la verdad.
 
+### Calibración del umbral de entrega (20-sep-2026, INT-5)
+
+Decisión pendiente #2 de Agustín (¿`DELIVERY_JUDGE_MIN`/`DELIVERY_MAX_CLIPS` están bien calibrados?), con datos y sin gastar en API: la medición final de INT-3 evaluó 99 candidatos (30+30+9+30 sobre los 4 videos, `TRANSCRIPT_SOURCE=whisper_full`) y guardó la nota del juez de **todos** en `analysis_cache.candidates_all` (W0), no solo de los entregados. `worker/eval/umbral_entrega.py` re-simula `moment_selector.select_finalists` sobre esas notas ya calculadas (`w2_score`, con las penalizaciones de W2-C ya aplicadas) para distintos valores de `DELIVERY_JUDGE_MIN`, sin volver a llamar a ningún LLM. Verificado contra la corrida real: a `DELIVERY_JUDGE_MIN=15`/`DELIVERY_MAX_CLIPS=12` (los defaults actuales) reproduce exactamente los mismos 6/12/5/6 clips por video que entregó la corrida de INT-3.
+
+| Umbral | Tope | Clips: business/podcast/claude/user_rec | Clips/hora (prom.) | Videos ≥8/h | Juez entregados | Juez top-5 | US$/job (prom.) |
+|---|---|---|---|---|---|---|---|
+| 15 (actual) | 12 (actual) | 6 / 12 / 5 / 6 | 8.05 | 2/4 | 5.52 | 5.65 | 0.2095 |
+| 14 | 12 | 9 / 12 / 6 / 8 | 9.61 | 2/4 | 5.37 | 5.65 | 0.2204 |
+| **13** | **12** | **12 / 12 / 7 / 10** | **11.17** | **3/4** | **5.22** | **5.65** | **0.2314** |
+| 13 | 15 | 13 / 15 / 7 / 10 | 11.92 | 3/4 | 5.19 | 5.65 | 0.2387 |
+| 12 | 12 | 12 / 12 / 7 / 12 | 11.45 | 3/4 | 5.16 | 5.65 | 0.2350 |
+| 12 | sin tope | 14 / 23 / 7 / 12 | 13.92 | 3/4 | 4.99 | 5.65 | 0.2587 |
+
+(Tabla completa de 12 a 21, con tope 12/15/20/sin tope, en la salida de `umbral_entrega.py` — no se pega entera acá por espacio.)
+
+**Hallazgo clave: el juez top-5 no se mueve — 5,65 en TODAS las filas, para cualquier umbral de 12 a 21 y cualquier tope.** Los 5 mejores candidatos de cada video ya superan cualquier umbral en este rango; bajar el umbral no baja la calidad de los mejores clips, solo decide cuántos clips *adicionales*, de menor nota, se entregan además de esos 5. La restricción "no bajar el juez top-5 más de 0,3" del pedido está satisfecha por construcción en todo el rango probado — el trade-off real es únicamente **cantidad/costo vs. juez promedio de TODOS los entregados** (que sí baja, de 5,65 a ~5,0-5,5, al incluir candidatos más débiles).
+
+**Recomendación: `DELIVERY_JUDGE_MIN=13` (bajar de 15), `DELIVERY_MAX_CLIPS` sin cambios en 12.** Con eso: 3 de 4 videos alcanzan ≥8 clips/hora (vs. 2 de 4 hoy), el juez top-5 no se mueve (5,65), el juez promedio de todos los entregados baja de 5,52 a 5,22 (una caída aceptable porque son clips extra, no un reemplazo de los mejores), y el costo sube de US$0,2095 a US$0,2314 por job (+10,5 %) — ambos ya por encima del techo histórico de US$0,15/job (§3), que quedó desactualizado desde que W9-B entrega más de 5 clips por defecto. Subir el tope a 15 (fila `13/15`) suma un clip más en `podcast_general_01` a un costo marginal (+US$0,007/job) y no cambia el resto — es opcional, no imprescindible.
+
+**Lo que ningún umbral de este rango arregla:** `user_recommended_01` (108 min) nunca llega a 8 clips/hora en el rango probado (10/1,81h ≈ 5,53/h en el mejor caso, `sin tope` no ayuda porque a umbral 13 el video no tiene más de 10 candidatos que pasen y sean diversos) — no es un problema de umbral sino de oferta: `candidate_count()` tope en 30 candidatos independientemente de la duración (`min(30, max(6, minutos // 2))`), así que un video de 108 min recibe los mismos 30 candidatos que uno de 60 min, con menos candidatos por hora de contenido de entrada. Subir el tope de `candidate_count()` para videos >90 min es un cambio de código, no de calibración — queda para otra tarea si a Agustín le importa ese caso.
+
 ---
 
 ## 10. W9 — Muchos clips, ranking relativo, preview + HD a pedido (estado 20-sep-2026)
