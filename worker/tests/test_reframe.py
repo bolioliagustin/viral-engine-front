@@ -224,3 +224,49 @@ class TestBuildReframeFilter:
         layout = LayoutPlan(name="split", crops=[])
         filt = _build_reframe_filter(layout, 720, 1280, 25)
         assert _build_reframe_filter(None, 720, 1280, 25) == filt
+
+
+class TestSplitAlturasPares:
+    """El layout split parte la altura en dos: las dos mitades tienen que ser
+    pares. Con yuv420p (croma 2x2) una altura impar hace que ffmpeg corrompa el
+    heap en vez de fallar limpio — "malloc(): corrupted top size", archivo de 0
+    bytes. Se ve solo en el preview de W9-B (854/2 = 427); en 720x1280 la mitad
+    es 640 y por eso pasó las pruebas de W5. Reproducido en el VPS el
+    21-sep-2026 (job cf9b0f5e: 12 de 12 clips perdidos).
+    """
+
+    def _plan(self):
+        from services.reframe import CropArea, LayoutPlan
+        return LayoutPlan(
+            name="split",
+            crops=[
+                CropArea(0.50, 0.17, 0.48, 0.76, 0.0, 0.0, 1.0, 0.5),
+                CropArea(0.02, 0.21, 0.45, 0.71, 0.0, 0.5, 1.0, 0.5),
+            ],
+        )
+
+    def _alturas(self, filtro: str) -> list[int]:
+        import re
+        return [int(m) for m in re.findall(r"scale=\d+:(\d+)\[", filtro)]
+
+    def test_preview_854_no_genera_mitades_impares(self):
+        from services.clip_generator import _build_reframe_filter
+        f = _build_reframe_filter(self._plan(), 480, 854, 20)
+        alturas = self._alturas(f)
+        assert alturas == [426, 428], alturas
+        assert all(a % 2 == 0 for a in alturas)
+
+    def test_hd_1280_sigue_partiendo_por_la_mitad(self):
+        from services.clip_generator import _build_reframe_filter
+        f = _build_reframe_filter(self._plan(), 720, 1280, 20)
+        assert self._alturas(f) == [640, 640]
+
+    def test_las_mitades_siempre_suman_el_alto_pedido(self):
+        from services.clip_generator import _build_reframe_filter
+        # Solo alturas pares: una salida de video con alto impar no es válida
+        # en yuv420p, así que no hay partición par-par posible ni tiene sentido.
+        for h in (854, 1280, 1920, 640, 966, 1000):
+            f = _build_reframe_filter(self._plan(), 480, h, 20)
+            alturas = self._alturas(f)
+            assert sum(alturas) == h, (h, alturas)
+            assert all(a % 2 == 0 for a in alturas), (h, alturas)

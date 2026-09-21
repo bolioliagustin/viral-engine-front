@@ -2076,7 +2076,19 @@ def _build_reframe_filter(layout: Optional[LayoutPlan], W: int, H: int, B: int, 
 
     if layout.name == "split":
         top, bottom = layout.crops[0], layout.crops[1]
-        half_h = H // 2
+        # Las dos mitades TIENEN que ser pares: yuv420p submuestrea croma 2x2 y
+        # con una altura impar ffmpeg corrompe el heap en vez de fallar limpio
+        # ("malloc(): corrupted top size", archivo de 0 bytes). Se ve solo en
+        # el preview de W9-B: 854/2 = 427 (impar); en 720x1280 la mitad es 640
+        # y por eso el layout pasó las pruebas de W5 sin que apareciera.
+        # Reproducido en el contenedor del VPS el 21-sep-2026: con 427 el
+        # render aborta; con 426+428 sale bien.
+        # Con H par (todas las salidas reales: 854, 1280, 1920) redondear la
+        # mitad de arriba a par deja la de abajo par también. Con H impar no
+        # existe partición par-par; queda la de arriba par, que es la que
+        # alimenta el vstack primero.
+        half_h = (H // 2) & ~1
+        bottom_h = H - half_h
         return (
             f"[{src_label}]split=2[a][b];"
             f"[a]crop=w=iw*{top.src_w_pct:.6f}:h=ih*{top.src_h_pct:.6f}:"
@@ -2084,7 +2096,7 @@ def _build_reframe_filter(layout: Optional[LayoutPlan], W: int, H: int, B: int, 
             f"scale={W}:{half_h}[a2];"
             f"[b]crop=w=iw*{bottom.src_w_pct:.6f}:h=ih*{bottom.src_h_pct:.6f}:"
             f"x=iw*{bottom.src_x_pct:.6f}:y=ih*{bottom.src_y_pct:.6f},"
-            f"scale={W}:{H - half_h}[b2];"
+            f"scale={W}:{bottom_h}[b2];"
             f"[a2][b2]vstack=2,format=yuv420p"
         )
 
