@@ -895,11 +895,11 @@ def generate_moment_copy_full(
     from services.content_validators import (
         clip_text_head_approx,
         derive_overlay_from_text,
-        derive_title_from_text,
         first_sentence,
         hook_is_faithful,
         last_sentence,
         overlay_is_faithful,
+        resolve_title_fallback,
         title_is_valid,
     )
 
@@ -1038,6 +1038,12 @@ Responde SOLO JSON:
             hook_ok = not hook_candidate or hook_is_faithful(hook_candidate, clip_text)
             title_ok, title_problems = title_is_valid(title_candidate, clip_text)
 
+    # Snapshot para la cascada de título (W13-B): tiene que ver el hook TAL
+    # COMO llegó de la Pasada B (fiel o no), antes de que el fallback de
+    # hook de acá abajo lo pise con la primera oración del clip.
+    hook_before_its_own_fallback = hook_candidate
+    hook_ok_before_its_own_fallback = hook_ok
+
     quality_issues: list[str] = []
     if overlay_candidate and not overlay_ok:
         fallback = derive_overlay_from_text(clip_head)
@@ -1049,10 +1055,21 @@ Responde SOLO JSON:
         hook_candidate = clip_start_sentence
         quality_issues.append("hook_no_fiel")
     if not title_ok:
-        fallback_title = derive_title_from_text(clip_text)
-        print(f"   ⚠️ Título inválido tras reintento ({title_problems}) — fallback: {fallback_title!r}")
+        fallback_title, fallback_level = resolve_title_fallback(
+            clip_text=clip_text,
+            hook=hook_before_its_own_fallback,
+            hook_is_faithful_flag=hook_ok_before_its_own_fallback,
+            overlay=overlay_candidate,
+        )
+        print(
+            f"   ⚠️ Título inválido tras reintento ({title_problems}) "
+            f"— fallback nivel={fallback_level}: {fallback_title!r}"
+        )
         title_candidate = fallback_title
-        quality_issues.append("titulo_generico")
+        # W13-B: solo "generico" (no se encontró nada mejor que el molde)
+        # marca titulo_generico — hook/primera oración/oración informativa
+        # son fuentes reales, marcan titulo_de_respaldo.
+        quality_issues.append("titulo_generico" if fallback_level == "generico" else "titulo_de_respaldo")
 
     cp = moment.content_pieces
     if data.get("twitter_thread"):

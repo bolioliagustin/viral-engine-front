@@ -11,7 +11,9 @@ esos títulos reales como entrada.
 Cubre:
   - Los validadores puros (content_validators.title_is_valid y afines).
   - La orquestación en generate_moment_copy_full: título inválido dos
-    veces cae al fallback derivado del texto real + flag `titulo_generico`.
+    veces cae a la cascada de fallback (W13-B, ver
+    test_titulo_fallback_cascada.py para el detalle de la cascada) y marca
+    `titulo_de_respaldo` cuando encuentra una fuente real.
 """
 import json
 import sys
@@ -196,7 +198,12 @@ class TestTituloInvalidoRegeneraYCaeAlFallback:
         assert ok is True
         assert client.chat.completions.create.call_count == 2
         assert moment.title != titulo_malo
-        assert "titulo_generico" in moment.clip_quality_issues
+        # W13-B: con CLIP_TEXT bien formado la cascada de fallback
+        # encuentra una fuente real (hook o primera oración) — solo cae a
+        # "titulo_generico" cuando NADA de la cascada sirve, ver
+        # test_titulo_fallback_cascada.py.
+        assert "titulo_de_respaldo" in moment.clip_quality_issues
+        assert "titulo_generico" not in moment.clip_quality_issues
         assert len(moment.title) <= 60
 
     def test_titulo_malo_en_el_primer_intento_bueno_en_el_reintento_no_hace_falta_fallback(self):
@@ -245,7 +252,7 @@ class TestJobsViejosSinTitulo:
 
         assert ok is True
         assert moment.title  # no rompe, no queda None
-        assert "titulo_generico" in moment.clip_quality_issues
+        assert "titulo_de_respaldo" in moment.clip_quality_issues
 
     def test_copy_report_no_rompe_con_title_none(self):
         from eval.copy_report import analyze_title

@@ -581,20 +581,194 @@ def title_is_valid(
     return (len(reasons) == 0), reasons
 
 
+def _capitalize_first_letter(text: str) -> str:
+    """
+    Mayúscula en la primera LETRA, no en el primer carácter — `.capitalize()`
+    baja la "H" de '¿HAY TRATAMIENTO?' porque el primer carácter es "¿", no
+    una letra (hallazgo real al probar la cascada sobre 10 clips reales,
+    job 9e739c7b m11: el overlay '¿HAY TRATAMIENTO O CURACIÓN' se convertía
+    en '¿hay tratamiento o curación', arrancando en minúscula visualmente).
+    El resto queda en minúscula (el overlay viene en MAYÚSCULAS; un título
+    todo en mayúsculas se lee como grito).
+    """
+    i = 0
+    while i < len(text) and not text[i].isalpha():
+        i += 1
+    if i >= len(text):
+        return text
+    return text[:i] + text[i].upper() + text[i + 1:].lower()
+
+
+def _truncate_at_word(text: str, max_chars: int) -> str:
+    """Recorta a `max_chars` sin partir una palabra a la mitad."""
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars]
+    if " " in truncated:
+        truncated = truncated.rsplit(" ", 1)[0]
+    return truncated.rstrip(" ,;:—-")
+
+
 def derive_title_from_text(text: str, *, max_chars: int = TITLE_MAX_CHARS) -> str:
     """
-    Fallback determinístico cuando el título no pasa la validación (ni en el
-    intento original ni en el reintento con corrección): la primera oración
-    real del clip, recortada a `max_chars` sin partir una palabra a la mitad
-    (mismo criterio que el resto de los fallbacks de esta sección: preferir
-    texto real del clip a una plantilla genérica).
+    Primera oración real del clip, recortada a `max_chars` sin partir una
+    palabra. Sigue existiendo como bloque de construcción básico (lo usan
+    los tests y, indirectamente, `resolve_title_fallback` en el nivel (b)),
+    pero YA NO es el fallback final de `generate_moment_copy_full` — ver
+    `resolve_title_fallback` (W13-B): la primera oración a secas podía ser
+    un fragmento de diálogo a mitad de conversación ("si es un poco
+    exagerado, me cuentes un poquito."), peor que el título genérico que
+    reemplazaba.
     """
     sentence = first_sentence(text).strip()
     if not sentence:
         return "Momento destacado"
-    if len(sentence) <= max_chars:
-        return sentence
-    truncated = sentence[:max_chars]
-    if " " in truncated:
-        truncated = truncated.rsplit(" ", 1)[0]
-    return truncated.rstrip(" ,;:—-")
+    return _truncate_at_word(sentence, max_chars)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W13-B — Cascada de fallback: nunca peor que el título que reemplaza
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Hallazgo tras revisar 5 clips reales (docs/PLAN_CALIDAD.md §9 W10): en 4
+# el fallback (primera oración) funcionó bien, pero en uno el clip arrancaba
+# a mitad de diálogo y el resultado fue un fragmento en minúscula con coma
+# ("si es un poco exagerado, me cuentes un poquito.") — peor que el título
+# genérico "Tema: ¡...!" que se supone que reemplaza. `parece_titulo` filtra
+# eso antes de usarlo; si ni la primera oración ni la más informativa de
+# las primeras 5 pasan el filtro, se cae al hook (si es fiel) o al overlay.
+
+# Conectores/muletillas de arranque de frase — señal de fragmento de mitad
+# de diálogo, no de una oración que funcione sola como título (aunque
+# Whisper le haya puesto mayúscula por casualidad de puntuación).
+_SENTENCE_START_CONNECTORS = frozenset({
+    "si", "y", "pero", "porque", "entonces", "o", "eh", "ah", "que",
+    "cuando", "aunque", "bueno", "este", "esta", "osea", "digo", "tipo",
+    "claro", "bue", "eeh", "ehh", "pues", "ademas", "encima", "vamos",
+})
+_SENTENCE_START_CONNECTOR_PHRASES = frozenset({
+    "o sea",
+    # Muletillas de dos palabras que abren una duda/hedge hablado ("He
+    # escuchado, creo que es ribavirina, no sé si..."), no una afirmación —
+    # hallazgo real al probar la cascada sobre 10 clips reales (job
+    # 9e739c7b m11): "he escuchado" pasaba las 4 reglas simples (mayúscula,
+    # ≥4 palabras, sin conector de una palabra) pero es tan poco un título
+    # como "si es un poco exagerado...".
+    "he escuchado", "he oido", "creo que", "me parece",
+    "no se", "puede ser",
+})
+
+# Mínimo de palabras para que un fragmento pueda funcionar como título solo
+# (por debajo de esto, "y bueno, claro" pasaría el resto de los chequeos).
+TITLE_MIN_WORDS = 4
+
+
+def parece_titulo(texto: str) -> bool:
+    """
+    True si `texto` tiene forma de título/afirmación usable como fallback —
+    False si es un fragmento de diálogo a mitad de conversación.
+
+    Reglas: arranca en mayúscula, al menos `TITLE_MIN_WORDS` palabras, no
+    arranca con un conector/muletilla suelto, y no es una pregunta cortada
+    (termina en "?" siendo demasiado corta para ser una pregunta completa).
+    """
+    t = (texto or "").strip()
+    if not t:
+        return False
+    words = t.split()
+    if len(words) < TITLE_MIN_WORDS:
+        return False
+    if not t[0].isupper():
+        return False
+    first = normalize_token(words[0])
+    if first in _SENTENCE_START_CONNECTORS:
+        return False
+    if len(words) >= 2 and f"{first} {normalize_token(words[1])}" in _SENTENCE_START_CONNECTOR_PHRASES:
+        return False
+    if t.endswith("?") and len(words) < TITLE_MIN_WORDS + 1:
+        return False
+    return True
+
+
+_NUMBER_RE = re.compile(r"\d+")
+
+
+def _informativeness_score(sentence: str) -> int:
+    """
+    Proxy de "cuántos sustantivos/números tiene" sin POS tagger (mismo
+    criterio de todo este archivo: sin spaCy/nltk, ver el docstring del
+    módulo). Cuenta números y palabras con carga semántica de más de 3
+    letras — en español las palabras funcionales cortas (que, más, con...)
+    ya las saca `content_words` vía `SPANISH_STOPWORDS`, así que lo que
+    queda de más de 3 letras tiende a ser sustantivo, verbo o adjetivo con
+    peso informativo real.
+    """
+    score = len(_NUMBER_RE.findall(sentence))
+    score += sum(1 for w in content_words(sentence) if len(w) > 3)
+    return score
+
+
+def _best_informative_sentence(text: str, *, max_candidates: int = 5) -> str | None:
+    """La oración, entre las primeras `max_candidates`, con más carga
+    informativa que además pase `parece_titulo` — None si ninguna de esas
+    candidatas pasa el filtro."""
+    sentences = split_sentences(text)[:max_candidates]
+    candidates = [s for s in sentences if parece_titulo(s)]
+    if not candidates:
+        return None
+    return max(candidates, key=_informativeness_score)
+
+
+def resolve_title_fallback(
+    *,
+    clip_text: str,
+    hook: str | None,
+    hook_is_faithful_flag: bool,
+    overlay: str | None,
+    max_chars: int = TITLE_MAX_CHARS,
+) -> tuple[str, str]:
+    """
+    Cascada de fallback cuando el título generado no pasa `title_is_valid`,
+    ni en el intento original ni en el reintento. Se queda con el primer
+    nivel usable, en este orden:
+
+      a. "hook"                — el hook de la Pasada B, si pasó la
+         fidelidad de W6 (`hook_is_faithful_flag`), entra en `max_chars` Y
+         `parece_titulo` (hallazgo real: hooks cortos tipo "esto." pasan
+         la fidelidad de W6 —una sola palabra común alcanza para cubrir la
+         bolsa de palabras— pero son un fragmento tan malo como el que
+         `parece_titulo` ya filtra en (b)/(c), así que se le aplica el
+         mismo chequeo antes de aceptarlo como título).
+      b. "primera_oracion"     — la primera oración del clip, solo si
+         `parece_titulo`.
+      c. "oracion_informativa" — la oración más informativa entre las
+         primeras 5 (`_best_informative_sentence`), mismo filtro que (b).
+      d. "overlay" / "generico" — el overlay capitalizado como título si
+         entra en `max_chars`, o "Momento destacado" como último recurso.
+
+    Devuelve (titulo, nivel). El caller decide el flag de
+    `clip_quality_issues` según el nivel: solo "generico" es
+    `titulo_generico` (no se encontró nada mejor); a/b/c son
+    `titulo_de_respaldo` (se usó una fuente real, no es lo mismo "no
+    encontré título" que "usé el hook").
+    """
+    hook = (hook or "").strip()
+    if hook and hook_is_faithful_flag and len(hook) <= max_chars and parece_titulo(hook):
+        return hook, "hook"
+
+    first = first_sentence(clip_text)
+    if parece_titulo(first):
+        return _truncate_at_word(first, max_chars), "primera_oracion"
+
+    informative = _best_informative_sentence(clip_text)
+    if informative:
+        return _truncate_at_word(informative, max_chars), "oracion_informativa"
+
+    overlay = (overlay or "").strip()
+    if overlay:
+        titled = _capitalize_first_letter(overlay)
+        if len(titled) <= max_chars:
+            return titled, "overlay"
+
+    return "Momento destacado", "generico"

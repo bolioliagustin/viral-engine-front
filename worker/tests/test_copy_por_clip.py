@@ -76,9 +76,12 @@ class TestCopyPorClip:
     def test_title_muy_largo_no_se_trunca_se_rechaza_y_cae_al_fallback(self):
         # W13: un título >60 chars ya no se trunca en silencio — es una de
         # las 4 razones de rechazo (services/content_validators.title_is_valid);
-        # se reintenta y, si persiste, cae al fallback derivado del texto
-        # real (que sí respeta el tope). El resultado final sigue siendo
-        # ≤60 chars, pero por el camino nuevo, no por slicing ciego.
+        # se reintenta y, si persiste, cae a la cascada de fallback (W13-B,
+        # resolve_title_fallback), que sí respeta el tope. El resultado
+        # final sigue siendo ≤60 chars, pero por el camino nuevo, no por
+        # slicing ciego. Con CLIP_TEXT bien formado, la cascada encuentra
+        # algo real (hook o primera oración) — titulo_de_respaldo, no
+        # titulo_generico (eso es solo cuando NADA de la cascada sirve).
         moment = _moment()
         payload = {**_FULL_PAYLOAD, "title": "T" * 80}
         client = MagicMock()
@@ -88,14 +91,16 @@ class TestCopyPorClip:
 
         assert len(moment.title) <= 60
         assert moment.title != "T" * 60  # no es el truncado ciego de antes
-        assert "titulo_generico" in moment.clip_quality_issues
+        assert "titulo_de_respaldo" in moment.clip_quality_issues
+        assert "titulo_generico" not in moment.clip_quality_issues
 
     def test_sin_title_description_hashtags_no_rompe(self):
         # Modelo viejo / respuesta parcial: description y hashtags quedan
         # None, como antes de W10 (esos dos no tienen validación ni
-        # fallback, W13 solo toca título). El título SÍ cae al fallback
-        # derivado del texto real en vez de quedar None — mejor un título
-        # derivado que ninguno, ver services/content_validators.derive_title_from_text.
+        # fallback, W13 solo toca título). El título SÍ cae a la cascada
+        # de fallback en vez de quedar None — mejor un título real
+        # (hook/primera oración/oración informativa) que ninguno, ver
+        # services/content_validators.resolve_title_fallback.
         moment = _moment()
         payload = {k: v for k, v in _FULL_PAYLOAD.items() if k not in ("title", "description", "hashtags")}
         client = MagicMock()
@@ -105,7 +110,7 @@ class TestCopyPorClip:
 
         assert ok is True
         assert moment.title  # no rompe: cae al fallback, no queda None
-        assert "titulo_generico" in moment.clip_quality_issues
+        assert "titulo_de_respaldo" in moment.clip_quality_issues
         assert moment.description is None
         assert moment.hashtags is None
 
