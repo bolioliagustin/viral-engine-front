@@ -25,7 +25,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from eval_metrics import E2E_METRIC_DIRECTIONS  # noqa: E402
 
 # Orden de impresión (las que no están acá van después, en orden alfabético)
+# W12 (docs/PLAN_CALIDAD.md §2/§5): posteable_rate arriba de todo — es la
+# métrica PRINCIPAL a partir de ahora, el juez queda secundario.
 _METRIC_ORDER = [
+    "posteable_labeled_n",
+    "posteable_rate",
+    "judge_posteable_avg",
+    "judge_no_posteable_avg",
+    "judge_gap",
+    "judge_humano_corr",
+    "precision_at_3",
+    "precision_at_5",
+    "precision_at_10",
     "videos_ok",
     "clips_total",
     "clips_judged",
@@ -48,6 +59,16 @@ _METRIC_ORDER = [
 
 _RATE_METRICS = {m for m in E2E_METRIC_DIRECTIONS if m.endswith("_rate")}
 
+# W12: métricas que solo existen sobre clips ETIQUETADOS. Si ninguna de las
+# dos corridas tiene etiquetas, un `None` acá no es "sin cambio" ni "0%" —
+# es que no hay con qué calcularlo. `_fmt` lo distingue de "n/a" (que sigue
+# usándose para huecos por otras razones, ej. una corrida vieja sin la
+# métrica todavía) para que no se confunda "no medido" con "no hay datos".
+_POSTEABLE_METRICS = {
+    "posteable_rate", "judge_posteable_avg", "judge_no_posteable_avg",
+    "judge_gap", "judge_humano_corr", "precision_at_3", "precision_at_5", "precision_at_10",
+}
+
 
 def _load(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
@@ -56,7 +77,7 @@ def _load(path: str) -> dict:
 
 def _fmt(metric: str, value) -> str:
     if value is None:
-        return "n/a"
+        return "sin datos" if metric in _POSTEABLE_METRICS else "n/a"
     if metric in _RATE_METRICS:
         return f"{value:.0%}"
     if metric == "total_cost_usd":
@@ -68,7 +89,7 @@ def _fmt(metric: str, value) -> str:
 
 def _fmt_delta(metric: str, delta) -> str:
     if delta is None:
-        return "n/a"
+        return "sin datos" if metric in _POSTEABLE_METRICS else "n/a"
     sign = "+" if delta > 0 else ""
     if metric in _RATE_METRICS:
         return f"{sign}{delta * 100:.0f} pp"
@@ -156,6 +177,25 @@ def compare_clips(a: dict, b: dict) -> list[dict]:
     return rows
 
 
+def compare_motivos(a: dict, b: dict) -> list[dict]:
+    """
+    W12: `motivos_rechazo` es un dict (motivo → conteo), no un número — no
+    entra en `compare_metrics` (que solo compara claves numéricas). Menos
+    rechazos por el mismo motivo es una mejora ("motivos ↓"); un motivo
+    nuevo que no existía antes se muestra con `a=0` explícito (no "sin
+    datos" — 0 rechazos de ESE motivo es un valor real, a diferencia de
+    "no hay etiquetas" que se distingue por `posteable_labeled_n`).
+    """
+    ma, mb = a.get("motivos_rechazo") or {}, b.get("motivos_rechazo") or {}
+    rows = []
+    for motivo in sorted(set(ma) | set(mb)):
+        va, vb = ma.get(motivo, 0), mb.get(motivo, 0)
+        delta = vb - va
+        verdict = "same" if delta == 0 else ("better" if delta < 0 else "worse")
+        rows.append({"motivo": motivo, "a": va, "b": vb, "delta": delta, "verdict": verdict})
+    return rows
+
+
 def _header(summary: dict, label: str) -> str:
     return (
         f"{label}: {summary.get('run_at', '?')} | PROMPT_VERSION={summary.get('prompt_version', '?')} "
@@ -163,7 +203,10 @@ def _header(summary: dict, label: str) -> str:
     )
 
 
-def render_text(a: dict, b: dict, metric_rows: list[dict], clip_rows: list[dict]) -> str:
+def render_text(
+    a: dict, b: dict, metric_rows: list[dict], clip_rows: list[dict],
+    motivo_rows: list[dict] | None = None,
+) -> str:
     lines = [_header(a, "A"), _header(b, "B"), ""]
     lines.append(f"{'métrica':<28} {'A':>10} {'B':>10} {'delta':>12}  ")
     lines.append("─" * 66)
@@ -177,6 +220,16 @@ def render_text(a: dict, b: dict, metric_rows: list[dict], clip_rows: list[dict]
     worse = sum(1 for r in metric_rows if r["verdict"] == "worse")
     lines.append("")
     lines.append(f"▲ {better} mejoran · ▼ {worse} empeoran")
+
+    if motivo_rows:
+        lines.append("")
+        lines.append("Motivos de rechazo (W12 — menos es mejor):")
+        lines.append(f"{'motivo':<20} {'A':>6} {'B':>6} {'delta':>7}")
+        lines.append("─" * 43)
+        for r in motivo_rows:
+            lines.append(
+                f"{r['motivo']:<20} {r['a']:>6} {r['b']:>6} {r['delta']:>+7} {_ARROW[r['verdict']]}"
+            )
 
     if clip_rows:
         lines.append("")
@@ -206,17 +259,19 @@ def main(argv: list[str] | None = None) -> int:
     a, b = _load(args.baseline), _load(args.candidate)
     metric_rows = compare_metrics(a, b)
     clip_rows = compare_clips(a, b)
+    motivo_rows = compare_motivos(a, b)
 
     if args.json:
         out = {
             "a": {k: a.get(k) for k in ("run_at", "prompt_version", "git_commit", "models")},
             "b": {k: b.get(k) for k in ("run_at", "prompt_version", "git_commit", "models")},
             "metrics": metric_rows,
+            "motivos_rechazo": motivo_rows,
             "clips": clip_rows,
         }
         print(json.dumps(out, ensure_ascii=False, indent=2))
     else:
-        print(render_text(a, b, metric_rows, clip_rows))
+        print(render_text(a, b, metric_rows, clip_rows, motivo_rows))
     return 0
 
 

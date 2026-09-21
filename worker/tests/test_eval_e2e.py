@@ -489,6 +489,65 @@ class TestCompareRuns:
         assert {r["metric"] for r in out["metrics"]} >= {"judge_avg", "total_cost_usd"}
         assert len(out["clips"]) == 5
 
+    def test_sin_etiquetas_en_ninguna_corrida_marca_sin_datos(self):
+        """W12: posteable_rate y compañía distinguen 'sin datos' de 0/n.a."""
+        from compare_runs import _fmt, _fmt_delta, compare_metrics
+        a, b = _summary_a(), self._summary_b()  # ninguna de las dos tiene clips etiquetados
+        by = {r["metric"]: r for r in compare_metrics(a, b)}
+        assert by["posteable_rate"]["a"] is None and by["posteable_rate"]["b"] is None
+        assert by["posteable_rate"]["delta"] is None
+        assert _fmt("posteable_rate", None) == "sin datos"
+        assert _fmt_delta("posteable_rate", None) == "sin datos"
+        assert _fmt("judge_avg", None) == "n/a"  # una métrica NO ligada a etiquetas sigue en n/a
+
+    def test_con_etiquetas_posteable_rate_se_compara_como_porcentaje(self):
+        from eval_metrics import aggregate_e2e_results
+        from compare_runs import compare_metrics, _fmt
+
+        def _labeled(mi, judge_sum, posteable):
+            per = judge_sum / 3
+            return {
+                "moment_index": mi, "score_judge": {"hook": per, "retention": per, "shareability": per},
+                "posteable": posteable, "posteable_motivo": None if posteable else "momento_flojo",
+                "clip_rendered": True, "starts_capitalized": True, "density_out_of_range": False,
+            }
+
+        a = aggregate_e2e_results([{
+            "id": "v1", "ok": True, "cost_usd": 0, "elapsed_sec": 0,
+            "clips": [_labeled(1, 15, True), _labeled(2, 15, False)],
+        }])
+        b = aggregate_e2e_results([{
+            "id": "v1", "ok": True, "cost_usd": 0, "elapsed_sec": 0,
+            "clips": [_labeled(1, 15, True), _labeled(2, 15, True), _labeled(3, 15, True)],
+        }])
+        by = {r["metric"]: r for r in compare_metrics(a, b)}
+        assert by["posteable_rate"]["a"] == 0.5
+        assert by["posteable_rate"]["b"] == 1.0
+        assert by["posteable_rate"]["verdict"] == "better"
+        assert _fmt("posteable_rate", 0.5) == "50%"
+
+    def test_compare_motivos_menos_rechazos_es_mejora(self):
+        from compare_runs import compare_motivos
+        a = {"motivos_rechazo": {"termina_mal": 3, "copy_malo": 1}}
+        b = {"motivos_rechazo": {"termina_mal": 1, "copy_malo": 1, "arranca_mal": 2}}
+        rows = {r["motivo"]: r for r in compare_motivos(a, b)}
+        assert rows["termina_mal"]["delta"] == -2 and rows["termina_mal"]["verdict"] == "better"
+        assert rows["copy_malo"]["verdict"] == "same"
+        assert rows["arranca_mal"]["a"] == 0 and rows["arranca_mal"]["verdict"] == "worse"
+
+    def test_compare_motivos_sin_datos_en_ninguna_corrida(self):
+        from compare_runs import compare_motivos
+        assert compare_motivos({}, {}) == []
+
+    def test_render_text_incluye_motivos_cuando_hay(self):
+        from compare_runs import compare_motivos, render_text
+        a, b = _summary_a(), self._summary_b()
+        motivo_rows = compare_motivos(
+            {"motivos_rechazo": {"termina_mal": 3}}, {"motivos_rechazo": {"termina_mal": 1}},
+        )
+        text = render_text(a, b, [], [], motivo_rows)
+        assert "Motivos de rechazo" in text and "termina_mal" in text
+
 
 class TestThresholdsBlocking:
     def test_e2e_no_bloquea_por_defecto_en_golden_set(self):
@@ -496,3 +555,196 @@ class TestThresholdsBlocking:
         golden = json.loads((WORKER_DIR / "eval" / "golden_set.json").read_text(encoding="utf-8"))
         assert resolve_tier_config(golden, "e2e")["thresholds_blocking"] is False
         assert resolve_tier_config(golden, "smoke")["thresholds_blocking"] is True
+
+    def test_e2e_tiene_posteable_rate_min_en_golden_set(self):
+        """W12: posteable_rate_min es el umbral que importa a partir de ahora."""
+        from eval_metrics import resolve_tier_config
+        golden = json.loads((WORKER_DIR / "eval" / "golden_set.json").read_text(encoding="utf-8"))
+        assert resolve_tier_config(golden, "e2e")["thresholds"]["posteable_rate_min"] == 0.7
+
+
+class _Etiqueta:
+    """Doble liviano de eval.etiquetas.Etiqueta — solo los dos campos que usa
+    build_e2e_clip_record, para no depender de I/O en estos tests."""
+
+    def __init__(self, posteable, motivo=None):
+        self.posteable = posteable
+        self.motivo = motivo
+
+
+class TestPosteableEnClipRecord:
+    """W12 (docs/PLAN_CALIDAD.md §2/§5): posteable pasa a ser la métrica
+    principal del tier e2e; el juez queda secundario."""
+
+    def test_sin_etiqueta_queda_en_none(self):
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(VIDEO, [_row(1)])
+        assert c["posteable"] is None
+        assert c["posteable_motivo"] is None
+
+    def test_con_etiqueta_positiva(self):
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(VIDEO, [_row(1)], etiqueta=_Etiqueta(True))
+        assert c["posteable"] is True
+        assert c["posteable_motivo"] is None
+
+    def test_con_etiqueta_negativa_y_motivo(self):
+        from eval_metrics import build_e2e_clip_record
+
+        c = build_e2e_clip_record(VIDEO, [_row(1)], etiqueta=_Etiqueta(False, "termina_mal"))
+        assert c["posteable"] is False
+        assert c["posteable_motivo"] == "termina_mal"
+
+
+def _clip_posteable(mi, judge_sum, posteable, motivo=None):
+    per = judge_sum / 3
+    return {
+        "moment_index": mi,
+        "score_judge": {"hook": per, "retention": per, "shareability": per},
+        "posteable": posteable,
+        "posteable_motivo": motivo,
+        "clip_rendered": True,
+        "starts_capitalized": True,
+        "density_out_of_range": False,
+    }
+
+
+class TestAgregadosPosteable:
+    """W12: posteable_rate, motivos_rechazo, judge_gap, judge_humano_corr,
+    precision_at_k — con datos sintéticos, incluido el caso sin etiquetas."""
+
+    def test_sin_ninguna_etiqueta_no_rompe(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [
+            {"moment_index": i, "score_judge": {"hook": 5, "retention": 5, "shareability": 5},
+             "posteable": None, "posteable_motivo": None, "clip_rendered": True,
+             "starts_capitalized": True, "density_out_of_range": False}
+            for i in range(1, 4)
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["posteable_labeled_n"] == 0
+        assert agg["posteable_rate"] is None
+        assert agg["motivos_rechazo"] == {}
+        assert agg["judge_posteable_avg"] is None
+        assert agg["judge_no_posteable_avg"] is None
+        assert agg["judge_gap"] is None
+        assert agg["judge_humano_corr"] is None
+        assert agg["precision_at_3"] is None
+
+    def test_posteable_rate_solo_sobre_los_etiquetados(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [
+            _clip_posteable(1, 24, True),
+            _clip_posteable(2, 21, False, "momento_flojo"),
+            _clip_posteable(3, 18, None),  # sin etiqueta: no cuenta ni en el denominador
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["posteable_labeled_n"] == 2
+        assert agg["posteable_rate"] == 0.5
+
+    def test_motivos_rechazo_cuenta_por_motivo(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [
+            _clip_posteable(1, 24, False, "termina_mal"),
+            _clip_posteable(2, 21, False, "termina_mal"),
+            _clip_posteable(3, 18, False, "copy_malo"),
+            _clip_posteable(4, 15, False, None),  # sin motivo -> "sin_motivo"
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["motivos_rechazo"] == {"termina_mal": 2, "copy_malo": 1, "sin_motivo": 1}
+
+    def test_judge_gap_positivo_cuando_el_juez_discrimina(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [
+            _clip_posteable(1, 27, True), _clip_posteable(2, 24, True),
+            _clip_posteable(3, 9, False), _clip_posteable(4, 6, False),
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["judge_posteable_avg"] == 8.5  # (9+8)/2
+        assert agg["judge_no_posteable_avg"] == 2.5  # (3+2)/2
+        assert agg["judge_gap"] == 6.0
+
+    def test_judge_gap_chico_cuando_el_juez_no_discrimina(self):
+        """El caso real que motiva W12: juez casi ciego al criterio humano."""
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [
+            _clip_posteable(1, 17, True), _clip_posteable(2, 16, True),
+            _clip_posteable(3, 17, False), _clip_posteable(4, 16, False),
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert abs(agg["judge_gap"]) < 0.5
+
+    def test_precision_at_k_con_rankeador_perfecto(self):
+        from eval_metrics import aggregate_e2e_results
+
+        # Orden por score: todos los True primero, todos los False después.
+        clips = [
+            _clip_posteable(1, 30, True), _clip_posteable(2, 27, True), _clip_posteable(3, 24, True),
+            _clip_posteable(4, 9, False), _clip_posteable(5, 6, False),
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["precision_at_3"] == 1.0
+
+    def test_precision_at_k_con_rankeador_al_azar(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [
+            _clip_posteable(1, 30, False), _clip_posteable(2, 27, True), _clip_posteable(3, 24, False),
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["precision_at_3"] == round(1 / 3, 3)
+
+    def test_precision_at_k_none_con_menos_clips_que_k(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [_clip_posteable(1, 24, True)]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["precision_at_3"] is None
+
+    def test_judge_humano_corr_alto_con_separacion_clara(self):
+        from eval_metrics import aggregate_e2e_results
+
+        clips = [
+            _clip_posteable(i, 30 - i, i < 5)  # scores 29..20, True para los primeros 5
+            for i in range(10)
+        ]
+        results = [{"id": "va", "ok": True, "clips": clips, "cost_usd": 0, "elapsed_sec": 0}]
+        agg = aggregate_e2e_results(results)
+        assert agg["judge_humano_corr"] is not None
+        assert agg["judge_humano_corr"] > 0.8
+
+
+class TestPointBiserialYPrecisionAtK:
+    """Los helpers en aislamiento (eval_metrics.point_biserial / precision_at_k)."""
+
+    def test_point_biserial_pocos_pares(self):
+        from eval_metrics import point_biserial
+        assert point_biserial([(1.0, True), (2.0, False)]) is None
+
+    def test_point_biserial_sin_varianza_en_el_score(self):
+        from eval_metrics import point_biserial
+        assert point_biserial([(5.0, True), (5.0, False), (5.0, True)]) is None
+
+    def test_point_biserial_sin_varianza_en_la_etiqueta(self):
+        from eval_metrics import point_biserial
+        assert point_biserial([(1.0, True), (2.0, True), (3.0, True)]) is None
+
+    def test_precision_at_k_k_cero_o_negativo(self):
+        from eval_metrics import precision_at_k
+        assert precision_at_k([True, False, True], 0) is None
+        assert precision_at_k([True, False, True], -1) is None
