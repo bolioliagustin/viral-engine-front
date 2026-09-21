@@ -203,6 +203,43 @@ def _rate(count: int, total: int) -> float | None:
     return round(count / total, 4) if total else None
 
 
+# ─── Posteable — la fuente de verdad de calidad (W12, PLAN_CALIDAD.md §2/§5) ─
+def point_biserial(pairs: list[tuple[float, bool]]) -> float | None:
+    """
+    Correlación punto-biserial entre un score continuo (juez, Jev, o
+    cualquier rankeador) y una etiqueta binaria (`posteable`) — caso
+    particular de Pearson con una variable 0/1, que es justo lo que
+    `statistics.correlation` calcula. None con <3 pares o sin varianza en
+    alguna de las dos variables (score constante, o todas las etiquetas
+    iguales) — ahí la correlación no está definida, no es cero.
+    """
+    if len(pairs) <= 2:
+        return None
+    xs = [float(s) for s, _ in pairs]
+    ys = [1.0 if b else 0.0 for _, b in pairs]
+    if len(set(xs)) <= 1 or len(set(ys)) <= 1:
+        return None
+    try:
+        return round(statistics.correlation(xs, ys), 3)
+    except statistics.StatisticsError:
+        return None
+
+
+def precision_at_k(ranked_labels: list[bool], k: int) -> float | None:
+    """
+    De los `k` mejores según el ranking (la lista ya viene ordenada,
+    mejor primero), qué fracción son `posteable=True`. Mide si el
+    RANKEADOR sirve (aplica igual al Juez, a Jev, o a cualquier otro):
+    un rankeador que no discrimina da precision@k parecida para cualquier
+    k, uno que sí discrimina la sube al bajar k. None con menos de `k`
+    clips etiquetados (no hay top-k que calcular).
+    """
+    if k <= 0 or len(ranked_labels) < k:
+        return None
+    top = ranked_labels[:k]
+    return round(sum(1 for v in top if v) / k, 3)
+
+
 def clip_starts_capitalized(first_words: list[str]) -> bool | None:
     """True si la primera palabra Whisper empieza con mayúscula (inicio de oración)."""
     for w in first_words or []:
@@ -382,6 +419,44 @@ def aggregate_e2e_results(results: list[dict]) -> dict[str, Any]:
     clips_with_duration = sum(len(r.get("clips") or []) for r in videos_with_duration)
     clips_per_hour = round(clips_with_duration / total_hours, 3) if total_hours > 0 else None
 
+    # W12 (docs/PLAN_CALIDAD.md §2/§5): posteable pasa a ser la métrica
+    # PRINCIPAL del tier — el juez es secundario, calibrado contra esto.
+    # Todo se calcula solo sobre los clips que TIENEN etiqueta (`posteable`
+    # no es None); con 0 etiquetados (el caso normal del tier e2e hoy, que
+    # corre en dry-run y nunca llega a un usuario real) todo queda en None
+    # y `posteable_labeled_n=0` — nunca 0.0 disfrazado de "0% posteable".
+    labeled = [c for c in clips if c.get("posteable") is not None]
+    posteable_si = [c for c in labeled if c.get("posteable")]
+    posteable_no = [c for c in labeled if not c.get("posteable")]
+
+    motivos_rechazo: dict[str, int] = {}
+    for c in posteable_no:
+        motivo = c.get("posteable_motivo") or "sin_motivo"
+        motivos_rechazo[motivo] = motivos_rechazo.get(motivo, 0) + 1
+
+    def _judge_avg_de(cs: list[dict]) -> float | None:
+        vals = [_jsum(c) / 3 for c in cs if c.get("score_judge")]
+        return round(statistics.fmean(vals), 3) if vals else None
+
+    judge_posteable_avg = _judge_avg_de(posteable_si)
+    judge_no_posteable_avg = _judge_avg_de(posteable_no)
+    judge_gap = (
+        round(judge_posteable_avg - judge_no_posteable_avg, 3)
+        if judge_posteable_avg is not None and judge_no_posteable_avg is not None
+        else None
+    )
+
+    corr_pairs = [
+        (_jsum(c), bool(c.get("posteable"))) for c in labeled if c.get("score_judge")
+    ]
+    judge_humano_corr = point_biserial(corr_pairs)
+
+    ranked_labeled = [c for c in sorted(labeled, key=_jsum, reverse=True)]
+    ranked_labels = [bool(c.get("posteable")) for c in ranked_labeled]
+    precision_at_3 = precision_at_k(ranked_labels, 3)
+    precision_at_5 = precision_at_k(ranked_labels, 5)
+    precision_at_10 = precision_at_k(ranked_labels, 10)
+
     return {
         "videos_evaluated": len(results),
         "videos_ok": len(ok_results),
@@ -406,6 +481,17 @@ def aggregate_e2e_results(results: list[dict]) -> dict[str, Any]:
         "duration_final_avg": _mean([c.get("duration_final_sec") for c in clips]),
         "total_cost_usd": total_cost,
         "total_seconds": total_seconds,
+        # W12 — posteable, la métrica principal a partir de ahora (PLAN_CALIDAD §2/§5).
+        "posteable_labeled_n": len(labeled),
+        "posteable_rate": _rate(len(posteable_si), len(labeled)),
+        "motivos_rechazo": motivos_rechazo,
+        "judge_posteable_avg": judge_posteable_avg,
+        "judge_no_posteable_avg": judge_no_posteable_avg,
+        "judge_gap": judge_gap,
+        "judge_humano_corr": judge_humano_corr,
+        "precision_at_3": precision_at_3,
+        "precision_at_5": precision_at_5,
+        "precision_at_10": precision_at_10,
         "results": results,
     }
 
@@ -436,9 +522,24 @@ E2E_METRIC_DIRECTIONS: dict[str, str] = {
     "clips_per_hour": "higher",
     "videos_ok": "higher",
     "videos_evaluated": "neutral",
+    # W12 (docs/PLAN_CALIDAD.md §2/§5): posteable es la métrica PRINCIPAL
+    # a partir de ahora — el juez queda secundario.
+    "posteable_rate": "higher",
+    "posteable_labeled_n": "neutral",  # tamaño de muestra, no una mejora en sí
+    "judge_posteable_avg": "neutral",  # informativo: no es una meta subir esto solo
+    "judge_no_posteable_avg": "neutral",
+    "judge_gap": "higher",  # separación del juez entre unos y otros — si no crece, el juez no sirve
+    "judge_humano_corr": "higher",
+    "precision_at_3": "higher",
+    "precision_at_5": "higher",
+    "precision_at_10": "higher",
 }
 
 E2E_THRESHOLD_KEYS: dict[str, tuple[str, str]] = {
+    # W12: posteable_rate es el umbral que importa a partir de ahora
+    # (objetivo 0.70, PLAN_CALIDAD §3); los del juez quedan informativos
+    # (siguen acá, thresholds_blocking los sigue mandando a informativo).
+    "posteable_rate": ("posteable_rate_min", "min"),
     "judge_avg": ("judge_avg_min", "min"),
     "judge_all_ge7_rate": ("judge_all_ge7_rate_min", "min"),
     "verification_failed_rate": ("verification_failed_rate_max", "max"),
@@ -481,6 +582,7 @@ def build_e2e_clip_record(
     first_n: int = 10,
     last_n: int = 8,
     lines: list[dict] | None = None,
+    etiqueta: Any = None,
 ) -> dict[str, Any]:
     """
     Construye el registro por clip del tier e2e a partir de las filas que
@@ -493,6 +595,13 @@ def build_e2e_clip_record(
     Línea en vez de por la re-transcripción aislada del clip — ver
     `resolve_capitalization`. None si el job corrió con `supadata` o no se
     pudo obtener el transcript cacheado (degrada a la métrica vieja).
+
+    `etiqueta` (W12, `eval.etiquetas.Etiqueta`): la etiqueta humana
+    "posteable" de este Momento, si alguna corrida REAL (no el dry-run del
+    tier e2e, que nunca llega a un usuario) la etiquetó — ver
+    `eval.etiquetas`. None en el caso normal de hoy (el golden set corre en
+    dry-run); cuando un video del golden set trae `real_job_id` (§ eval/README.md),
+    el caller la resuelve y la pasa acá.
     """
     row = rows[0]
     ww = row.get("whisper_words") or {}
@@ -551,4 +660,6 @@ def build_e2e_clip_record(
         "clip_url": clip_url or None,
         "clip_generation_error": row.get("clip_generation_error"),
         "copy_types": sorted({r.get("type") for r in rows if r.get("type")}),
+        "posteable": etiqueta.posteable if etiqueta is not None else None,
+        "posteable_motivo": etiqueta.motivo if etiqueta is not None else None,
     }

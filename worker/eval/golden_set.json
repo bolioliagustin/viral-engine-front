@@ -48,9 +48,10 @@
       }
     },
     "e2e": {
-      "_doc": "~10-25 min. Pipeline real por clip (main.process_job con EVAL_DRY_RUN=1): descarga, Whisper, snap, Pasada B, juez, render; nada se persiste ni se sube. Umbrales = objetivos de PLAN_CALIDAD §3; thresholds_blocking=false hasta que las líneas W1-W3 del PLAN_CALIDAD entren. Corre los videos habilitados con 'e2e' en tiers, en el orden del array (el largo, user_recommended_01, va último).",
+      "_doc": "~10-25 min. Pipeline real por clip (main.process_job con EVAL_DRY_RUN=1): descarga, Whisper, snap, Pasada B, juez, render; nada se persiste ni se sube. Umbrales = objetivos de PLAN_CALIDAD §3; thresholds_blocking=false hasta que las líneas W1-W3 del PLAN_CALIDAD entren. Corre los videos habilitados con 'e2e' en tiers, en el orden del array (el largo, user_recommended_01, va último). W12 (PLAN_CALIDAD §2/§5): posteable_rate es la métrica PRINCIPAL, el juez queda secundario — pero como esto corre en dry-run, nunca hay etiquetas humanas reales (nadie ve estos clips). Un video con 'real_job_id' (uuid de un job real, ya etiquetado en clip_feedback) hace que build_e2e_clip_record adjunte esa etiqueta por moment_index — hoy ningún video del golden set lo tiene, así que posteable_rate sale null con posteable_labeled_n=0 hasta que se agregue uno.",
       "include_copy": true,
       "thresholds": {
+        "posteable_rate_min": 0.7,
         "judge_avg_min": 7.0,
         "judge_all_ge7_rate_min": 0.6,
         "verification_failed_rate_max": 0.15,
