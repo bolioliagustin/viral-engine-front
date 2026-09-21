@@ -36,6 +36,31 @@ class ClipDownloadResult:
 CLIP_MARGIN_BEFORE_DEFAULT_SEC = 15.0
 CLIP_MARGIN_AFTER_DEFAULT_SEC = 20.0
 
+# W14 (docs/PLAN_CALIDAD.md): abandonar un proxy lento en vez de esperar
+# media hora. Medido el 21-sep-2026: 52 KB/s en un job real (job 4c6e4410).
+AUDIO_SPEED_PROBE_SEC = float(os.getenv("AUDIO_SPEED_PROBE_SEC", "25"))
+AUDIO_MIN_SPEED_KBPS = float(os.getenv("AUDIO_MIN_SPEED_KBPS", "200"))
+AUDIO_DOWNLOAD_ATTEMPTS = int(os.getenv("AUDIO_DOWNLOAD_ATTEMPTS", "3"))
+AUDIO_MIN_BITRATE_BPS = 48_000  # piso de calidad para Whisper (W14, RapidAPI)
+# W14-B: si TODOS los intentos de AUDIO_DOWNLOAD_ATTEMPTS resultan lentos
+# (medido el 21-sep-2026: 5/5 proxies de Webshare a ~30 KB/s contra este
+# video — el pool entero, no uno aislado), un último intento paciente sin
+# guarda con el proxy que midió el mejor caudal, pero solo si la proyección
+# (bytes totales / ese caudal) entra en este presupuesto. Si no entra, mejor
+# caer a captions que insistir con una descarga que no va a terminar a tiempo.
+# 30 min: el caso medido (50 MB a 30 KB/s ≈ 28,5 min) tiene que entrar; un
+# video de 54 min tiene 47 min de timeout, así que sobran ~18 min para el resto.
+AUDIO_MAX_DOWNLOAD_SEC = float(os.getenv("AUDIO_MAX_DOWNLOAD_SEC", str(30 * 60)))
+
+
+class SlowProxyError(RuntimeError):
+    """El proxy está por debajo de AUDIO_MIN_SPEED_KBPS y se abandonó a tiempo."""
+
+    def __init__(self, message: str, *, speed_kbps: float = 0.0, want_bytes: int = 0):
+        super().__init__(message)
+        self.speed_kbps = speed_kbps
+        self.want_bytes = want_bytes
+
 
 def _env_float(name: str) -> float | None:
     raw = os.getenv(name)
@@ -305,16 +330,21 @@ def _pick_rapidapi_formats(
     if not vid:
         vid = vid_fallback
 
+    # W14: para transcribir no hace falta el audio de mayor bitrate — de las
+    # opciones disponibles, la de MENOR bitrate que supere el piso (menos MB,
+    # misma calidad útil para Whisper). Si solo hay una, se usa esa.
+    audio_formats = [
+        f for f in formats
+        if "audio/mp4" in f.get("mimeType", "") and f.get("url")
+    ]
     aud = None
-    aud_bitrate = 0
-    for f in formats:
-        mime = f.get("mimeType", "")
-        if "audio/mp4" not in mime or not f.get("url"):
-            continue
-        br = f.get("bitrate", 0)
-        if br > aud_bitrate:
-            aud = f
-            aud_bitrate = br
+    if len(audio_formats) == 1:
+        aud = audio_formats[0]
+        print(f"   ℹ️ YT-API: una sola opción de audio ({aud.get('bitrate', 0) // 1000}kbps)")
+    elif audio_formats:
+        above_floor = [f for f in audio_formats if f.get("bitrate", 0) >= AUDIO_MIN_BITRATE_BPS]
+        pool = above_floor or audio_formats
+        aud = min(pool, key=lambda f: f.get("bitrate", 0))
 
     if not vid or not aud:
         raise RuntimeError(f"YT-API no devolvió formatos utilizables (vid={bool(vid)}, aud={bool(aud)})")
@@ -455,6 +485,72 @@ def _probe_stream_info_for_proxy(
     raise RuntimeError(f"{label}: probe falló con resolve_proxy")
 
 
+def _read_with_speed_guard(
+    resp,
+    out_path: Path,
+    want_bytes: int,
+    *,
+    label: str,
+    progress_step: str | None = None,
+    enforce_speed_guard: bool = True,
+) -> None:
+    """
+    Vuelca `resp` a `out_path` en bloques de 1 MB, midiendo el caudal.
+
+    Si después de `AUDIO_SPEED_PROBE_SEC` el promedio queda por debajo de
+    `AUDIO_MIN_SPEED_KBPS`, aborta con `SlowProxyError` (con el caudal y los
+    bytes totales en la excepción, para que quien reintente sepa cuál fue el
+    proxy más rápido) — salvo que ya se haya bajado más del 80%, donde
+    conviene terminar en vez de reintentar desde cero. `enforce_speed_guard
+    =False` (W14-B, el intento paciente final) desactiva el abort: se baja
+    igual, por lento que sea. `progress_step`, si se pasa, reporta avance
+    cada ~2 s o cada 5% (lo que ocurra primero) vía `services.progress.report`.
+    """
+    from services.progress import report as _report_progress
+
+    chunk_size = 1 << 20
+    t0 = time.time()
+    downloaded = 0
+    checked_speed = False
+    last_report_t = t0
+    last_report_pct = -1
+
+    with open(out_path, "wb") as f:
+        while True:
+            chunk = resp.read(chunk_size)
+            if not chunk:
+                break
+            f.write(chunk)
+            downloaded += len(chunk)
+            now = time.time()
+            elapsed = now - t0
+
+            if enforce_speed_guard and not checked_speed and elapsed >= AUDIO_SPEED_PROBE_SEC:
+                checked_speed = True
+                speed_kbps = (downloaded / 1024) / max(elapsed, 0.01)
+                pct_done = downloaded / max(want_bytes, 1)
+                if speed_kbps < AUDIO_MIN_SPEED_KBPS and pct_done < 0.8:
+                    raise SlowProxyError(
+                        f"{label}: {speed_kbps:.0f} KB/s tras {elapsed:.0f}s "
+                        f"(< {AUDIO_MIN_SPEED_KBPS:.0f} KB/s piso, {pct_done*100:.0f}% bajado)",
+                        speed_kbps=speed_kbps, want_bytes=want_bytes,
+                    )
+                print(f"   🚦 {label}: caudal OK ({speed_kbps:.0f} KB/s tras {elapsed:.0f}s)")
+
+            if progress_step:
+                pct_now = round((downloaded / max(want_bytes, 1)) * 100)
+                if now - last_report_t >= 2.0 or pct_now >= last_report_pct + 5:
+                    _report_progress(
+                        progress_step, downloaded, want_bytes,
+                        f"Descargando audio: {downloaded // (1 << 20)} de {want_bytes // (1 << 20)} MB",
+                    )
+                    last_report_t = now
+                    last_report_pct = pct_now
+
+    if downloaded < want_bytes:
+        raise RuntimeError(f"{label}: descarga incompleta ({downloaded} de {want_bytes} bytes)")
+
+
 def _download_bytes_sequential(
     url: str,
     out_path: Path,
@@ -464,12 +560,18 @@ def _download_bytes_sequential(
     label: str = "stream",
     sticky_proxy: str | None = None,
     sticky_via: str = "",
+    progress_step: str | None = None,
+    enforce_speed_guard: bool = True,
 ) -> None:
     """
     Descarga secuencial (1 conexión) vía proxy sticky.
 
     googlevideo rechaza chunks paralelos en URLs de RapidAPI; una sola conexión
     Range bytes=0-N por la misma IP que resolvió/probeó funciona de forma fiable.
+    Aborta temprano con `SlowProxyError` si el proxy está lento (W14, ver
+    `_read_with_speed_guard`; `enforce_speed_guard=False` lo desactiva para el
+    intento paciente de W14-B); `progress_step` reporta avance sin conocer
+    Supabase (`services.progress`).
     """
     if known_total and known_total > 0 and sticky_proxy:
         total = known_total
@@ -492,8 +594,10 @@ def _download_bytes_sequential(
     hdrs = {**_YT_MEDIA_HEADERS, "Range": f"bytes=0-{effective_end}"}
     t0 = time.time()
     with opener.open(Request(url, headers=hdrs), timeout=600) as resp:
-        with open(out_path, "wb") as f:
-            shutil.copyfileobj(resp, f, 1 << 20)
+        _read_with_speed_guard(
+            resp, out_path, want, label=label, progress_step=progress_step,
+            enforce_speed_guard=enforce_speed_guard,
+        )
     elapsed = time.time() - t0
     got = out_path.stat().st_size
     if got <= 0:
@@ -767,10 +871,19 @@ def download_audio_only(video_url: str, video_id: str) -> str:
     Si ya existe un archivo local con el audio completo
     (`find_local_full_media`), lo devuelve sin descargar. Tres estrategias:
 
-    A. yt-dlp `bestaudio` (audio DASH, ~70 MB/h) con cookies, cascada de
-       player_client y proxy de `_build_ydl_opts`.
+    A. yt-dlp `bestaudio` ≤64 kbps (W14: para Whisper no hace falta más, y
+       pesa la mitad) con cookies, cascada de player_client y proxy de
+       `_build_ydl_opts`.
     B. Stream URLs (`get_stream_urls`: yt-dlp+proxy o RapidAPI) → descarga
-       secuencial del `audio_url` por el proxy sticky. Es el camino del VPS.
+       secuencial del `audio_url` por el proxy sticky, con guarda de
+       velocidad (`SlowProxyError`/`AUDIO_MIN_SPEED_KBPS`) y hasta
+       `AUDIO_DOWNLOAD_ATTEMPTS` reintentos re-resolviendo con OTRO proxy si
+       el primero está lento. Es el camino del VPS. Si TODOS los intentos
+       son lentos (W14-B), un último intento paciente sin guarda con el
+       proxy que midió mejor caudal, solo si `bytes_totales / ese_caudal`
+       entra en `AUDIO_MAX_DOWNLOAD_SEC`; si no entra, `RuntimeError`
+       directo (sin pasar por C) para que `get_youtube_transcript` caiga a
+       captions en vez de insistir con una descarga que no va a terminar.
     C. yt-dlp progresivo más chico con audio (`worst[acodec!=none]`). Es lo
        único que YouTube ofrece sin cookies ni PO token (formato 18, 360p,
        ~5 MB/min); el audio se extrae al partir en tramos. Camino de la Mac.
@@ -809,25 +922,93 @@ def download_audio_only(video_url: str, video_id: str) -> str:
             print(f"⚠️ {label} falló ({type(e).__name__}: {str(e)[:120]})")
             return None
 
-    # A. audio DASH
-    found = _ytdlp('bestaudio[ext=m4a]/bestaudio', 'bestaudio')
+    # A. audio DASH — para Whisper no hace falta más de 64 kbps (W14):
+    # menos MB, mismo texto (medido, ver docs/PLAN_CALIDAD.md).
+    found = _ytdlp(
+        'bestaudio[abr<=64][ext=m4a]/bestaudio[abr<=64]/bestaudio[ext=m4a]/bestaudio',
+        'bestaudio ≤64kbps',
+    )
     if found:
         return found
 
-    # B. stream URL de audio por proxy sticky (VPS: yt-dlp+proxy o RapidAPI)
-    if _get_proxy_list() or os.getenv("RAPIDAPI_KEY"):
-        try:
-            print(f"⬇️ Audio completo de {video_id} vía stream URL + proxy sticky...")
-            urls = get_stream_urls(video_url, video_id)
-            out = DOWNLOADS_DIR / f"{video_id}_audio_only.m4a"
-            _download_bytes_sequential(
-                urls["audio_url"], out, label="audio completo",
-                sticky_proxy=urls.get("resolve_proxy"),
-            )
-            return str(out)
-        except Exception as e:
-            errors.append(f"stream: {type(e).__name__}: {str(e)[:120]}")
-            print(f"⚠️ stream URL de audio falló ({type(e).__name__}: {str(e)[:120]})")
+    # B. stream URL de audio por proxy sticky (VPS: yt-dlp+proxy o RapidAPI).
+    # W14: hasta AUDIO_DOWNLOAD_ATTEMPTS intentos, cada uno con un proxy
+    # distinto (re-resolviendo — la URL de googlevideo queda atada a la IP
+    # que la resolvió); un proxy lento (SlowProxyError) no cuenta como
+    # "funcionó", se pasa al siguiente.
+    proxy_pool = _get_proxy_list()
+    if proxy_pool or os.getenv("RAPIDAPI_KEY"):
+        proxies_to_try = proxy_pool or [None]
+        all_slow = True  # se apaga ante cualquier error que NO sea de caudal
+        fastest: tuple[str | None, float, int] | None = None  # (proxy, speed_kbps, want_bytes)
+        for attempt in range(1, AUDIO_DOWNLOAD_ATTEMPTS + 1):
+            proxy = proxies_to_try[(attempt - 1) % len(proxies_to_try)]
+            try:
+                print(
+                    f"⬇️ Audio completo de {video_id} vía stream URL + proxy sticky "
+                    f"(intento {attempt}/{AUDIO_DOWNLOAD_ATTEMPTS})..."
+                )
+                urls = get_stream_urls(video_url, video_id, only_proxy=proxy)
+                out = DOWNLOADS_DIR / f"{video_id}_audio_only.m4a"
+                _download_bytes_sequential(
+                    urls["audio_url"], out, label="audio completo",
+                    sticky_proxy=urls.get("resolve_proxy"),
+                    progress_step="download_audio",
+                )
+                return str(out)
+            except SlowProxyError as e:
+                errors.append(f"stream intento {attempt}: {e}")
+                print(f"⚠️ Proxy lento en intento {attempt}/{AUDIO_DOWNLOAD_ATTEMPTS} ({e}) — pruebo otro proxy")
+                if fastest is None or e.speed_kbps > fastest[1]:
+                    fastest = (proxy, e.speed_kbps, e.want_bytes)
+                continue
+            except Exception as e:
+                all_slow = False
+                errors.append(f"stream intento {attempt}: {type(e).__name__}: {str(e)[:120]}")
+                print(
+                    f"⚠️ stream URL de audio falló en intento {attempt}/{AUDIO_DOWNLOAD_ATTEMPTS} "
+                    f"({type(e).__name__}: {str(e)[:120]})"
+                )
+                continue
+        print(f"⚠️ Los {AUDIO_DOWNLOAD_ATTEMPTS} intentos de stream URL fallaron o fueron lentos")
+
+        # W14-B: todos los intentos fueron lentos (ningún error "duro") — un
+        # último intento paciente sin guarda con el proxy que midió mejor
+        # caudal, solo si la proyección entra en AUDIO_MAX_DOWNLOAD_SEC. Si
+        # no entra, insistir con la Estrategia C (yt-dlp, mismo proxy lento
+        # en la práctica) tampoco serviría: mejor caer a captions ya mismo.
+        if all_slow and fastest is not None and fastest[1] > 0:
+            fastest_proxy, fastest_kbps, want_bytes = fastest
+            projected_sec = (want_bytes / 1024) / fastest_kbps
+            if projected_sec <= AUDIO_MAX_DOWNLOAD_SEC:
+                try:
+                    print(
+                        f"⏳ Ningún proxy superó el piso, pero el mejor midió {fastest_kbps:.0f} KB/s "
+                        f"— proyección {projected_sec:.0f}s (≤{AUDIO_MAX_DOWNLOAD_SEC:.0f}s): "
+                        f"intento paciente sin guarda"
+                    )
+                    urls = get_stream_urls(video_url, video_id, only_proxy=fastest_proxy)
+                    out = DOWNLOADS_DIR / f"{video_id}_audio_only.m4a"
+                    _download_bytes_sequential(
+                        urls["audio_url"], out, label="audio completo (paciente)",
+                        sticky_proxy=urls.get("resolve_proxy"),
+                        progress_step="download_audio",
+                        enforce_speed_guard=False,
+                    )
+                    return str(out)
+                except Exception as e:
+                    errors.append(f"intento paciente: {type(e).__name__}: {str(e)[:120]}")
+                    print(f"⚠️ Intento paciente también falló ({type(e).__name__}: {str(e)[:120]})")
+            else:
+                want_mb = want_bytes / (1 << 20)
+                msg = (
+                    f"audio de {want_mb:.0f}MB a {fastest_kbps:.0f} KB/s no entra en "
+                    f"{AUDIO_MAX_DOWNLOAD_SEC / 60:.0f} min → captions"
+                )
+                print(f"⚠️ {msg}")
+                raise RuntimeError(
+                    f"No se pudo descargar el audio de {video_id}: {msg} ({' | '.join(errors)})"
+                )
 
     # C. progresivo más chico con audio (Mac sin cookies: formato 18)
     found = _ytdlp('worst[acodec!=none][vcodec!=none]/worst', 'progresivo mínimo')
@@ -1342,12 +1523,21 @@ def download_clip_via_stream_urls(
     return str(seg)
 
 
-def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: int = 720) -> dict:
+def get_stream_urls_rapidapi(
+    video_url: str,
+    video_id: str = None,
+    max_height: int = 720,
+    *,
+    only_proxy: str | None = None,
+) -> dict:
     """
     Obtiene URLs de stream vía RapidAPI SIN descargar.
 
     Las URLs de googlevideo quedan atadas a la IP que llama a yt-api.
     Por eso resolvemos vía proxy residencial (misma IP que usará la descarga).
+    `only_proxy` (W14): resolver con UN proxy específico en vez de probar
+    toda la lista — lo usa `download_audio_only` para reintentar con otro
+    proxy tras un `SlowProxyError`.
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
@@ -1363,7 +1553,7 @@ def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: i
         "x-rapidapi-host": "yt-api.p.rapidapi.com",
     })
 
-    proxies = _get_proxy_list()
+    proxies = [only_proxy] if only_proxy else _get_proxy_list()
     proxies_to_try: list[str | None] = proxies if proxies else [None]
     last_err: Exception | None = None
 
@@ -1406,10 +1596,12 @@ def get_stream_urls_rapidapi(video_url: str, video_id: str = None, max_height: i
     raise RuntimeError(f"RapidAPI no pudo resolver streams para {video_id}: {last_err}")
 
 
-def _get_stream_urls_ytdlp(video_url: str, video_id: str = None) -> dict:
+def _get_stream_urls_ytdlp(video_url: str, video_id: str = None, *, only_proxy: str | None = None) -> dict:
     """
     Extrae URLs de stream vía yt-dlp sin descargar (download=False).
     Rota player_client y proxy hasta encontrar una combinación que funcione.
+    `only_proxy` (W14): resolver con UN proxy específico en vez de probar
+    toda la lista.
     """
     client_cascades = [
         ['tv', 'ios', 'web'],
@@ -1417,7 +1609,7 @@ def _get_stream_urls_ytdlp(video_url: str, video_id: str = None) -> dict:
         ['mweb', 'web'],
         ['web'],
     ]
-    proxies = _get_proxy_list()
+    proxies = [only_proxy] if only_proxy else _get_proxy_list()
     proxies_to_try = proxies if proxies else [None]
 
     last_err: Exception | None = None
@@ -1477,18 +1669,28 @@ def _get_stream_urls_ytdlp(video_url: str, video_id: str = None) -> dict:
     raise last_err or RuntimeError("yt-dlp no pudo resolver stream URLs")
 
 
-def get_stream_urls(video_url: str, video_id: str = None, *, force_rapidapi: bool = False) -> dict:
+def get_stream_urls(
+    video_url: str,
+    video_id: str = None,
+    *,
+    force_rapidapi: bool = False,
+    only_proxy: str | None = None,
+) -> dict:
     """
     Obtiene URLs de stream de video+audio sin descargar el archivo completo.
 
     Con proxies residenciales: yt-dlp primero (misma IP resuelve+descarga).
     RapidAPI como fallback cuando yt-dlp falla o force_rapidapi=True.
+    `only_proxy` (W14): resolver con UN proxy específico en vez de rotar toda
+    la lista — lo usa `download_audio_only` para reintentar tras un proxy
+    lento con OTRO proxy, re-resolviendo (la URL de googlevideo queda atada a
+    la IP que la resolvió).
 
     Retorna {"video_url": str, "audio_url": str, "video_id": str}.
     """
     env = os.getenv("ENVIRONMENT", "development").lower()
     rapidapi_key = os.getenv("RAPIDAPI_KEY")
-    has_proxies = bool(_get_proxy_list())
+    has_proxies = bool(only_proxy or _get_proxy_list())
     use_rapidapi_first = (
         force_rapidapi
         or (
@@ -1503,7 +1705,7 @@ def get_stream_urls(video_url: str, video_id: str = None, *, force_rapidapi: boo
     if not force_rapidapi and has_proxies:
         try:
             print("ℹ️ Resolviendo stream URLs vía yt-dlp + proxy (misma IP para descarga)")
-            return _get_stream_urls_ytdlp(video_url, video_id)
+            return _get_stream_urls_ytdlp(video_url, video_id, only_proxy=only_proxy)
         except Exception as e:
             if is_ytdlp_drm_error(e):
                 print(f"⚠️ yt-dlp stream URLs bloqueado (DRM/PO Token) — fallback RapidAPI")
@@ -1516,10 +1718,10 @@ def get_stream_urls(video_url: str, video_id: str = None, *, force_rapidapi: boo
                 "RAPIDAPI_KEY no configurada — requerida en producción para bypass DRM"
             )
         print("ℹ️ Usando RapidAPI para stream URLs")
-        return get_stream_urls_rapidapi(video_url, video_id)
+        return get_stream_urls_rapidapi(video_url, video_id, only_proxy=only_proxy)
 
     try:
-        return _get_stream_urls_ytdlp(video_url, video_id)
+        return _get_stream_urls_ytdlp(video_url, video_id, only_proxy=only_proxy)
     except Exception as e:
         if is_ytdlp_drm_error(e):
             print(f"⚠️ yt-dlp bloqueado (DRM/PO Token) — saltando a RapidAPI")
@@ -1529,7 +1731,7 @@ def get_stream_urls(video_url: str, video_id: str = None, *, force_rapidapi: boo
             raise RuntimeError(
                 "RAPIDAPI_KEY no configurada — no hay fallback cuando yt-dlp falla"
             ) from e
-        return get_stream_urls_rapidapi(video_url, video_id)
+        return get_stream_urls_rapidapi(video_url, video_id, only_proxy=only_proxy)
 
 
 def cleanup_all(video_id: str) -> None:

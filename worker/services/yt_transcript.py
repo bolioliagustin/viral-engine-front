@@ -38,6 +38,33 @@ def get_video_id(video_url: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+_LENGTH_SECONDS_RE = re.compile(r'"lengthSeconds":"(\d+)"')
+_DURATION_FETCH_TIMEOUT_SEC = 4
+
+
+def _fetch_length_seconds(video_id: str) -> int:
+    """
+    Duración real sin API key (W14-B; mismo campo que
+    `backend/src/lib/youtube-duration.js`): `lengthSeconds` del JSON embebido
+    en el HTML público de la watch page. oEmbed no trae duración, y sin esto
+    `main.py` no puede armar el timeout dinámico del job (`JOB_TIMEOUT_*`)
+    antes de bajar nada. Fail-open a 0 (duración desconocida): un problema de
+    scraping no debe romper el job, solo deja el timeout en el piso.
+    """
+    try:
+        resp = requests.get(
+            f"https://www.youtube.com/watch?v={video_id}",
+            headers={"User-Agent": "Mozilla/5.0 (compatible; viral-engine/1.0)"},
+            timeout=_DURATION_FETCH_TIMEOUT_SEC,
+        )
+        if not resp.ok:
+            return 0
+        m = _LENGTH_SECONDS_RE.search(resp.text)
+        return int(m.group(1)) if m else 0
+    except Exception:
+        return 0
+
+
 def get_video_metadata(video_id: str) -> dict:
     """
     Fetch video title and duration via YouTube oEmbed API (public, no auth needed).
@@ -56,7 +83,7 @@ def get_video_metadata(video_id: str) -> dict:
             return {
                 "id": video_id,
                 "title": title,
-                "duration": 0,  # oEmbed doesn't return duration
+                "duration": _fetch_length_seconds(video_id),  # oEmbed no trae duración (W14-B)
                 "uploader": data.get("author_name", "Unknown"),
                 "view_count": 0,
             }
