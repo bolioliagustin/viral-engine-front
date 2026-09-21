@@ -2203,12 +2203,12 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         video_id = video_info["id"]
 
         # Refinamiento (addendum W14): la duración post-transcript puede ser
-        # más precisa que la del HTML (p. ej. la mide el propio Whisper).
-        _rearm_timeout(
-            compute_job_timeout_sec(video_info.get("duration")),
-            (video_info.get("duration") or 0) / 60,
-            "refinado post-transcript",
-        )
+        # más precisa que la del HTML (p. ej. la mide el propio Whisper). Si
+        # esta vez no se pudo determinar (0/None), no tocar el timer — sería
+        # peor perder la estimación temprana que ya se armó que no refinar.
+        refined_duration = video_info.get("duration")
+        if refined_duration:
+            _rearm_timeout(compute_job_timeout_sec(refined_duration), refined_duration / 60, "refinado post-transcript")
 
         update_job_status(job_id, "processing", video_info["title"])
         update_job_progress(job_id, current_step="classifying", progress_percentage=compute_progress_percentage("classifying"))
