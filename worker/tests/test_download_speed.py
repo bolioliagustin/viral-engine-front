@@ -111,6 +111,82 @@ class TestDownloadAudioOnlyReintenta:
         assert resolved_with == ["http://proxy1", "http://proxy2"]
         assert Path(result).name == "xyz12345678_audio_only.m4a"
 
+    def test_todos_lentos_pero_el_mas_rapido_entra_en_presupuesto_hace_intento_paciente(self, tmp_path, monkeypatch):
+        """W14-B: 3 intentos lentos con distinto caudal medido; el que midió
+        más rápido se reintenta una última vez sin guarda, y esta vez
+        termina — sin pasar por la Estrategia C."""
+        monkeypatch.setattr(downloader, "DOWNLOADS_DIR", tmp_path)
+        monkeypatch.setattr(downloader, "AUDIO_DOWNLOAD_ATTEMPTS", 3)
+        monkeypatch.setattr(downloader, "AUDIO_MAX_DOWNLOAD_SEC", 1500.0)
+        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid: None)
+        monkeypatch.setattr(downloader, "_get_proxy_list", lambda: ["http://p1", "http://p2", "http://p3"])
+
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__.return_value.extract_info.side_effect = RuntimeError("sin formato")
+        monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", lambda opts: mock_ydl)
+
+        def _fake_get_stream_urls(video_url, video_id=None, *, only_proxy=None, force_rapidapi=False):
+            return {"audio_url": "http://googlevideo.fake/audio", "resolve_proxy": only_proxy}
+
+        monkeypatch.setattr(downloader, "get_stream_urls", _fake_get_stream_urls)
+
+        # want_bytes = 45_000 KB; a 45 KB/s (el más rápido, p2) proyecta 1000s (<=1500s).
+        want_bytes = 45_000 * 1024
+        speeds = {"http://p1": 30.0, "http://p2": 45.0, "http://p3": 20.0}
+        calls = []
+
+        def _fake_download(url, out_path, *args, **kwargs):
+            calls.append(kwargs)
+            proxy = kwargs.get("sticky_proxy")
+            if len(calls) <= 3:
+                raise downloader.SlowProxyError(
+                    f"{proxy}: lento", speed_kbps=speeds[proxy], want_bytes=want_bytes,
+                )
+            assert kwargs.get("enforce_speed_guard") is False
+            assert proxy == "http://p2"  # el más rápido de los tres
+            Path(out_path).write_bytes(b"audio-ok")
+
+        monkeypatch.setattr(downloader, "_download_bytes_sequential", _fake_download)
+
+        result = downloader.download_audio_only("https://youtu.be/xyz12345678", "xyz12345678")
+
+        assert len(calls) == 4  # 3 lentos + 1 paciente
+        assert Path(result).name == "xyz12345678_audio_only.m4a"
+        mock_ydl.__enter__.return_value.extract_info.assert_called_once()  # solo Estrategia A, nunca C
+
+    def test_todos_lentos_y_el_mas_rapido_no_entra_en_presupuesto_no_pasa_a_estrategia_c(self, tmp_path, monkeypatch):
+        """W14-B: si ni el proxy más rápido entra en AUDIO_MAX_DOWNLOAD_SEC,
+        RuntimeError directo con log claro — no vale la pena insistir con la
+        Estrategia C si el cuello de botella es la red del proxy."""
+        monkeypatch.setattr(downloader, "DOWNLOADS_DIR", tmp_path)
+        monkeypatch.setattr(downloader, "AUDIO_DOWNLOAD_ATTEMPTS", 3)
+        monkeypatch.setattr(downloader, "AUDIO_MAX_DOWNLOAD_SEC", 1500.0)
+        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid: None)
+        monkeypatch.setattr(downloader, "_get_proxy_list", lambda: ["http://p1", "http://p2", "http://p3"])
+
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__.return_value.extract_info.side_effect = RuntimeError("sin formato")
+        monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", lambda opts: mock_ydl)
+
+        def _fake_get_stream_urls(video_url, video_id=None, *, only_proxy=None, force_rapidapi=False):
+            return {"audio_url": "http://googlevideo.fake/audio", "resolve_proxy": only_proxy}
+
+        monkeypatch.setattr(downloader, "get_stream_urls", _fake_get_stream_urls)
+
+        # 50 MB a 30 KB/s (el más rápido) proyecta ~1748s > 1500s de presupuesto.
+        want_bytes = 50 * (1 << 20)
+
+        def _always_slow(url, out_path, *args, **kwargs):
+            raise downloader.SlowProxyError("lento", speed_kbps=30.0, want_bytes=want_bytes)
+
+        monkeypatch.setattr(downloader, "_download_bytes_sequential", _always_slow)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            downloader.download_audio_only("https://youtu.be/xyz12345678", "xyz12345678")
+
+        assert "captions" in str(exc_info.value)
+        mock_ydl.__enter__.return_value.extract_info.assert_called_once()  # nunca llegó a la Estrategia C
+
     def test_todos_los_proxies_lentos_agota_los_intentos_sin_romper_antes_de_tiempo(self, tmp_path, monkeypatch):
         """Si ni re-resolviendo con otro proxy se supera el piso, cae
         prolijamente a la estrategia C (y si esa también falla, el error

@@ -2132,6 +2132,24 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
     timeout_timer.daemon = True
     timeout_timer.start()
 
+    # W14-B: re-arma el timer con un timeout nuevo (cancela el viejo, calcula
+    # lo que resta desde el arranque REAL del job). No hace nada si el nuevo
+    # valor es igual al vigente, para no resetear el timer al pedo.
+    def _rearm_timeout(new_timeout_sec: float, video_minutes: float, source: str) -> None:
+        nonlocal job_timeout_sec, timeout_timer
+        if new_timeout_sec == job_timeout_sec:
+            return
+        job_timeout_sec = new_timeout_sec
+        remaining = max(1.0, job_timeout_sec - (time.time() - job_start_time))
+        timeout_timer.cancel()
+        timeout_timer = threading.Timer(remaining, _on_timeout)
+        timeout_timer.daemon = True
+        timeout_timer.start()
+        print(
+            f"⏱️ Timeout del job: {job_timeout_sec / 60:.0f} min "
+            f"(video de {video_minutes:.0f} min, {source})"
+        )
+
     # W14: seam de progreso (services/progress.py) — downloader.py y
     # transcriber.py reportan avance sin conocer Supabase; acá es el único
     # lugar que sabe job_id y cómo escribir en la base.
@@ -2169,21 +2187,27 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         from services.supabase_client import update_job_progress
         update_job_progress(job_id, current_step="transcribing", progress_percentage=0)
 
-        from services.yt_transcript import get_youtube_transcript
+        # W14-B: la duración importa para el timeout del job, y antes recién
+        # se conocía DESPUÉS de bajar y transcribir el audio completo — para
+        # entonces ya era tarde para un video largo. Se pide temprano (HTML
+        # público de la watch page, `get_video_metadata` — W14-B) ANTES de
+        # bajar nada; si falla (fail-open a 0) el timer sigue en el piso y se
+        # refina más abajo con la duración real post-transcript.
+        from services.yt_transcript import get_video_id, get_video_metadata, get_youtube_transcript
+        early_video_id = get_video_id(video_url)
+        early_duration = get_video_metadata(early_video_id).get("duration") if early_video_id else 0
+        if early_duration:
+            _rearm_timeout(compute_job_timeout_sec(early_duration), early_duration / 60, "HTML, antes de la descarga")
+
         transcript, video_info = get_youtube_transcript(video_url)
         video_id = video_info["id"]
 
-        # Addendum W14: recién acá se conoce la duración real del video —
-        # re-armamos el timeout dinámico (hasta ahora corría con el piso).
-        job_timeout_sec = compute_job_timeout_sec(video_info.get("duration"))
-        remaining = max(1.0, job_timeout_sec - (time.time() - job_start_time))
-        timeout_timer.cancel()
-        timeout_timer = threading.Timer(remaining, _on_timeout)
-        timeout_timer.daemon = True
-        timeout_timer.start()
-        print(
-            f"⏱️ Timeout del job: {job_timeout_sec / 60:.0f} min "
-            f"(video de {(video_info.get('duration') or 0) / 60:.0f} min)"
+        # Refinamiento (addendum W14): la duración post-transcript puede ser
+        # más precisa que la del HTML (p. ej. la mide el propio Whisper).
+        _rearm_timeout(
+            compute_job_timeout_sec(video_info.get("duration")),
+            (video_info.get("duration") or 0) / 60,
+            "refinado post-transcript",
         )
 
         update_job_status(job_id, "processing", video_info["title"])
