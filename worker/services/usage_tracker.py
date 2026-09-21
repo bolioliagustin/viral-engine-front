@@ -212,6 +212,40 @@ def record_llm_usage(
     _insert_event(event)
 
 
+def record_jev_usage(
+    *,
+    model: str,
+    input_tokens: int,
+    output_tokens: int = 0,
+    moment_index: int | None = None,
+    latency_ms: int | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Registra una llamada al rankeador Jev (TypeSafe System One).
+
+    No usa `record_llm_usage` porque Jev no devuelve un objeto de respuesta
+    estilo OpenAI: se le pasan los tokens directo. El output no se factura
+    (`jev-latest` tiene precio de salida 0 en config/pricing.py), pero se
+    guarda igual para poder auditar el consumo.
+    """
+    cost = estimate_llm_cost_usd(model, input_tokens, output_tokens)
+    event = _base_event(
+        task="rank_jev",
+        provider="typesafe",
+        model=model,
+        moment_index=moment_index,
+        metadata=metadata,
+    )
+    if not event:
+        return
+    event["input_tokens"] = input_tokens
+    event["output_tokens"] = output_tokens
+    event["estimated_cost_usd"] = cost
+    if latency_ms is not None:
+        event["latency_ms"] = latency_ms
+    _insert_event(event)
+
+
 def record_whisper_usage(
     provider: str,
     model: str,
