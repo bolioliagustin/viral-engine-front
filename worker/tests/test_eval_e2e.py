@@ -489,6 +489,65 @@ class TestCompareRuns:
         assert {r["metric"] for r in out["metrics"]} >= {"judge_avg", "total_cost_usd"}
         assert len(out["clips"]) == 5
 
+    def test_sin_etiquetas_en_ninguna_corrida_marca_sin_datos(self):
+        """W12: posteable_rate y compañía distinguen 'sin datos' de 0/n.a."""
+        from compare_runs import _fmt, _fmt_delta, compare_metrics
+        a, b = _summary_a(), self._summary_b()  # ninguna de las dos tiene clips etiquetados
+        by = {r["metric"]: r for r in compare_metrics(a, b)}
+        assert by["posteable_rate"]["a"] is None and by["posteable_rate"]["b"] is None
+        assert by["posteable_rate"]["delta"] is None
+        assert _fmt("posteable_rate", None) == "sin datos"
+        assert _fmt_delta("posteable_rate", None) == "sin datos"
+        assert _fmt("judge_avg", None) == "n/a"  # una métrica NO ligada a etiquetas sigue en n/a
+
+    def test_con_etiquetas_posteable_rate_se_compara_como_porcentaje(self):
+        from eval_metrics import aggregate_e2e_results
+        from compare_runs import compare_metrics, _fmt
+
+        def _labeled(mi, judge_sum, posteable):
+            per = judge_sum / 3
+            return {
+                "moment_index": mi, "score_judge": {"hook": per, "retention": per, "shareability": per},
+                "posteable": posteable, "posteable_motivo": None if posteable else "momento_flojo",
+                "clip_rendered": True, "starts_capitalized": True, "density_out_of_range": False,
+            }
+
+        a = aggregate_e2e_results([{
+            "id": "v1", "ok": True, "cost_usd": 0, "elapsed_sec": 0,
+            "clips": [_labeled(1, 15, True), _labeled(2, 15, False)],
+        }])
+        b = aggregate_e2e_results([{
+            "id": "v1", "ok": True, "cost_usd": 0, "elapsed_sec": 0,
+            "clips": [_labeled(1, 15, True), _labeled(2, 15, True), _labeled(3, 15, True)],
+        }])
+        by = {r["metric"]: r for r in compare_metrics(a, b)}
+        assert by["posteable_rate"]["a"] == 0.5
+        assert by["posteable_rate"]["b"] == 1.0
+        assert by["posteable_rate"]["verdict"] == "better"
+        assert _fmt("posteable_rate", 0.5) == "50%"
+
+    def test_compare_motivos_menos_rechazos_es_mejora(self):
+        from compare_runs import compare_motivos
+        a = {"motivos_rechazo": {"termina_mal": 3, "copy_malo": 1}}
+        b = {"motivos_rechazo": {"termina_mal": 1, "copy_malo": 1, "arranca_mal": 2}}
+        rows = {r["motivo"]: r for r in compare_motivos(a, b)}
+        assert rows["termina_mal"]["delta"] == -2 and rows["termina_mal"]["verdict"] == "better"
+        assert rows["copy_malo"]["verdict"] == "same"
+        assert rows["arranca_mal"]["a"] == 0 and rows["arranca_mal"]["verdict"] == "worse"
+
+    def test_compare_motivos_sin_datos_en_ninguna_corrida(self):
+        from compare_runs import compare_motivos
+        assert compare_motivos({}, {}) == []
+
+    def test_render_text_incluye_motivos_cuando_hay(self):
+        from compare_runs import compare_motivos, render_text
+        a, b = _summary_a(), self._summary_b()
+        motivo_rows = compare_motivos(
+            {"motivos_rechazo": {"termina_mal": 3}}, {"motivos_rechazo": {"termina_mal": 1}},
+        )
+        text = render_text(a, b, [], [], motivo_rows)
+        assert "Motivos de rechazo" in text and "termina_mal" in text
+
 
 class TestThresholdsBlocking:
     def test_e2e_no_bloquea_por_defecto_en_golden_set(self):
