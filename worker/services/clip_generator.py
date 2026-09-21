@@ -1425,6 +1425,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 # Presets de estilo para subtitulos (formato ASS force_style)
 # Colores en formato ASS: &HAABBGGRR  (AA=alpha 00=opaco, BB=blue, GG=green, RR=red)
 # Ejemplos: &H00FFFFFF=blanco, &H0000FFFF=amarillo, &H000080FF=naranja, &H0000FF00=verde
+# ── Resolución canónica de los subtítulos y el overlay ────────────────────────
+# Los MarginV/FontSize de SUBTITLE_STYLES y OVERLAY_STYLES están en píxeles
+# absolutos calibrados sobre un frame de 720×1280. Si se los interpreta en la
+# escala del video de salida, un preview de 480×854 (W9-B) sube los subtítulos
+# del 61 % al 41 % del alto — chocan con el cartel del hook — y agranda la
+# fuente en proporción. Fijando PlayResX/Y a esta resolución, libass escala
+# todo proporcionalmente y cualquier salida (480×854, 720×1280, 1080×1920) se
+# ve igual que la calibrada.
+ASS_PLAY_RES_X = 720
+ASS_PLAY_RES_Y = 1280
+
+
 SUBTITLE_STYLES = {
     # ── TikTok viral 2024/2025: blanco bold con borde negro grueso ─────────────
     # El estilo más usado en clips virales — máximo contraste, legible sobre
@@ -1993,8 +2005,8 @@ def burn_overlay_text(
         style=OVERLAY_STYLES[style],
         alignment=alignment,
         margin_v=margin_v,
-        play_res_x=video_meta.width,
-        play_res_y=video_meta.height,
+        play_res_x=ASS_PLAY_RES_X,
+        play_res_y=ASS_PLAY_RES_Y,
         output_path=ass_path,
     )
 
@@ -2360,8 +2372,8 @@ def generate_clip(
                         words=words,
                         output_path=ass_path,
                         base_style=subtitle_base_style,
-                        play_res_x=W,
-                        play_res_y=H,
+                        play_res_x=ASS_PLAY_RES_X,
+                        play_res_y=ASS_PLAY_RES_Y,
                         clip_duration_sec=duration_sec,
                         max_words_per_line=4,
                         word_styles=word_styles,
@@ -2376,8 +2388,8 @@ def generate_clip(
                         words=words,
                         output_path=ass_path,
                         base_style=subtitle_base_style,
-                        play_res_x=W,
-                        play_res_y=H,
+                        play_res_x=ASS_PLAY_RES_X,
+                        play_res_y=ASS_PLAY_RES_Y,
                         clip_duration_sec=duration_sec,
                         start_offset_sec=offset,
                         moment_keywords=keywords,
@@ -2395,7 +2407,10 @@ def generate_clip(
                         words=words,
                     )
                     intermediates.append(srt_path)
-                    _srt_to_ass(srt_path, ass_path, SUBTITLE_STYLES[subtitle_style], W, H)
+                    _srt_to_ass(
+                        srt_path, ass_path, SUBTITLE_STYLES[subtitle_style],
+                        ASS_PLAY_RES_X, ASS_PLAY_RES_Y,
+                    )
                     subs_ass_path = ass_path
                     intermediates.append(ass_path)
             except ClipGenerationError as e:
@@ -2417,8 +2432,8 @@ def generate_clip(
                 style=OVERLAY_STYLES[overlay_style],
                 alignment=alignment,
                 margin_v=margin_v,
-                play_res_x=W,
-                play_res_y=H,
+                play_res_x=ASS_PLAY_RES_X,
+                play_res_y=ASS_PLAY_RES_Y,
                 output_path=overlay_ass_path,
             )
             intermediates.append(overlay_ass_path)

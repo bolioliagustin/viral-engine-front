@@ -420,3 +420,61 @@ class TestPasadaBKeywords:
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+class TestResolucionCanonicaASS:
+    """Los subtítulos y el cartel se posicionan igual en cualquier resolución.
+
+    Los MarginV/FontSize están calibrados en píxeles sobre 720×1280. Cuando
+    W9-B agregó el preview de 480×854, interpretarlos en la escala de salida
+    subía los subtítulos del 61 % al 41 % del alto y agrandaba la fuente: el
+    cartel del hook y el subtítulo se superponían (medido en un render real
+    el 21-sep-2026). Fijar PlayResX/Y a la resolución canónica hace que
+    libass escale todo proporcionalmente.
+    """
+
+    def test_play_res_canonico_es_720x1280(self):
+        from services.clip_generator import ASS_PLAY_RES_X, ASS_PLAY_RES_Y
+        assert (ASS_PLAY_RES_X, ASS_PLAY_RES_Y) == (720, 1280)
+
+    def test_generate_clip_usa_el_play_res_canonico_en_todas_las_resoluciones(self):
+        """generate_clip no puede pasar el tamaño de salida como PlayRes."""
+        import re
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "services" / "clip_generator.py"
+        cuerpo = src.read_text(encoding="utf-8")
+        # Ninguna llamada a los constructores de ASS puede usar W/H ni el
+        # tamaño del video: todas van por la constante.
+        assert "play_res_x=W," not in cuerpo
+        assert "play_res_y=H," not in cuerpo
+        assert "play_res_x=video_meta.width," not in cuerpo
+        assert re.search(r"_srt_to_ass\(\s*srt_path, ass_path, SUBTITLE_STYLES\[subtitle_style\],\s*ASS_PLAY_RES_X, ASS_PLAY_RES_Y", cuerpo)
+
+    def test_subtitulo_y_cartel_no_se_superponen_en_preview(self, tmp_path):
+        """El bloque del subtítulo arranca bien por debajo del cartel."""
+        from services.clip_generator import (
+            _srt_to_ass, _build_overlay_ass, SUBTITLE_STYLES, OVERLAY_STYLES,
+            ASS_PLAY_RES_X, ASS_PLAY_RES_Y,
+        )
+        srt = tmp_path / "s.srt"
+        srt.write_text("1\n00:00:00,000 --> 00:00:06,000\nSUBTITULO ABAJO\n\n", encoding="utf-8")
+        sub_ass = tmp_path / "sub.ass"
+        ov_ass = tmp_path / "ov.ass"
+        _srt_to_ass(str(srt), str(sub_ass), SUBTITLE_STYLES["tiktok_viral_v2"],
+                    ASS_PLAY_RES_X, ASS_PLAY_RES_Y)
+        _build_overlay_ass(
+            text="CARTEL DEL HOOK", start_sec=0.0, duration_sec=5.0,
+            style=OVERLAY_STYLES["tiktok_viral"], alignment=8, margin_v=100,
+            play_res_x=ASS_PLAY_RES_X, play_res_y=ASS_PLAY_RES_Y,
+            output_path=str(ov_ass),
+        )
+        # El subtítulo está anclado abajo (Alignment 2) y el cartel arriba
+        # (Alignment 8); con el mismo PlayRes la separación es estable.
+        sub_txt = sub_ass.read_text(encoding="utf-8")
+        ov_txt = ov_ass.read_text(encoding="utf-8")
+        assert f"PlayResY: {ASS_PLAY_RES_Y}" in sub_txt
+        assert f"PlayResY: {ASS_PLAY_RES_Y}" in ov_txt
+        margen_sub = int([l for l in sub_txt.splitlines() if l.startswith("Style:")][0].split(",")[21])
+        margen_ov = int([l for l in ov_txt.splitlines() if l.startswith("Style:")][0].split(",")[21])
+        # subtítulo: desde abajo; cartel: desde arriba. Suma < alto ⇒ no chocan.
+        assert margen_sub + margen_ov < ASS_PLAY_RES_Y
