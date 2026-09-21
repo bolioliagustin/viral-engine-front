@@ -48,7 +48,9 @@ AUDIO_MIN_BITRATE_BPS = 48_000  # piso de calidad para Whisper (W14, RapidAPI)
 # guarda con el proxy que midió el mejor caudal, pero solo si la proyección
 # (bytes totales / ese caudal) entra en este presupuesto. Si no entra, mejor
 # caer a captions que insistir con una descarga que no va a terminar a tiempo.
-AUDIO_MAX_DOWNLOAD_SEC = float(os.getenv("AUDIO_MAX_DOWNLOAD_SEC", str(25 * 60)))
+# 30 min: el caso medido (50 MB a 30 KB/s ≈ 28,5 min) tiene que entrar; un
+# video de 54 min tiene 47 min de timeout, así que sobran ~18 min para el resto.
+AUDIO_MAX_DOWNLOAD_SEC = float(os.getenv("AUDIO_MAX_DOWNLOAD_SEC", str(30 * 60)))
 
 
 class SlowProxyError(RuntimeError):
