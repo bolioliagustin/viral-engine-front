@@ -1,0 +1,101 @@
+{
+  "score_field": "score_judge_sum",
+  "n_clips_con_etiqueta": 20,
+  "n_con_score": 20,
+  "n_sin_score": 0,
+  "posteable_rate": 0.6,
+  "avg_posteable": 16.667,
+  "avg_no_posteable": 16.375,
+  "gap": 0.292,
+  "correlacion_punto_biserial": 0.063,
+  "precision_at_k": {
+    "3": 1.0,
+    "5": 1.0,
+    "6": 0.833,
+    "10": 0.7
+  },
+  "peores_falsos_negativos": [
+    {
+      "job_id": "c7ea4108-2409-4e51-af40-f6c3c6137dbe",
+      "moment_index": 1,
+      "score": 9.0,
+      "posteable": true,
+      "motivo": null,
+      "texto": "¿Cómo pasaban? Pues hay varias maneras posibles. Lo más probable es que se queden en heces, en orina, en saliva de estos animalitos. Y si hay un almacén en tu casa, en un comercio donde se han quedado esas heces, tú al barrer el polvo para limpiar, organizas un aerosol seco, o sea, no hay humedad en el ambiente, Al barrer se hace un aerosol e inhalas ese polvito que estás barriendo en parte y ahí "
+    },
+    {
+      "job_id": "9e739c7b-f07b-4a5a-a9b3-54569372fd39",
+      "moment_index": 2,
+      "score": 15.0,
+      "posteable": true,
+      "motivo": null,
+      "texto": "¿Por qué te digo la estrella? Porque mira, la forma habitual de contagio es la que te he dicho: restos de un ratoncito en el bosque. Porque esto puede suceder silvestre en el bosque, o si lo tienes en un almacén, restos de heces, restos de orina, restos de saliva. Pues eso, tú los barres, o en el bosque te los llevas por delante, o te muerde el ratón y se contagia. Pero habitualmente ahí se acaba "
+    },
+    {
+      "job_id": "9e739c7b-f07b-4a5a-a9b3-54569372fd39",
+      "moment_index": 3,
+      "score": 15.0,
+      "posteable": true,
+      "motivo": null,
+      "texto": "La primera, compartes un espacio pequeño muchas horas. Por ejemplo, un camarote de barco, pero por ejemplo una casa, un apartamento. Segundo, duermes en la misma cama que alguien contagiado, con independencia de que no le toques. Te hablando de dormir, porque esa persona al respirar, el virus donde va a salir del cuerpo es fundamentalmente al exhalar aire. Como yo estoy hablando ahora, estoy exhal"
+    },
+    {
+      "job_id": "9e739c7b-f07b-4a5a-a9b3-54569372fd39",
+      "moment_index": 9,
+      "score": 16.0,
+      "posteable": true,
+      "motivo": null,
+      "texto": "Ese caso hubiera sido el de la azafata. ¿Qué pasa con la azafata? La señora holandesa se monta en el avión donde se lleva en el cadáver de su marido para ir a Holanda de vuelta y está tan malita, tan malita, tan malita, que los propios miembros de la tripulación dicen, \"Usted no puede estar en condiciones de volar\". Pero claro, esta azafata habla con ella, probablemente la ayude a ponerme el cintu"
+    },
+    {
+      "job_id": "c7ea4108-2409-4e51-af40-f6c3c6137dbe",
+      "moment_index": 2,
+      "score": 16.0,
+      "posteable": true,
+      "motivo": null,
+      "texto": "¿Y cuál es la diferencia fundamental de los virus americanos con respecto a los europeos? Pues que su evolución es distinta. En vez de evolucionar ese cuadro de hemorragia y problema renal, evolucionan a un cuadro de problema respiratorio y cardiovascular. Lo decía que el virus, a donde va es a las células que bordean los vasos sanguíneos, acaba dejando que el líquido de los vasos se salga y ensan"
+    }
+  ],
+  "peores_falsos_positivos": [
+    {
+      "job_id": "9e739c7b-f07b-4a5a-a9b3-54569372fd39",
+      "moment_index": 5,
+      "score": 18.0,
+      "posteable": false,
+      "motivo": "termina_mal",
+      "texto": "Esto no pasa aquí. La potencialidad de y ahí vamos a la potencialidad de originar una pandemia de un virus de estas características, este tiene potencialidad nula. O sea, no una posible, no. Potencialidad nula de pandemia. ¿Por qué lo digo tan convencido? Porque el cero en la ciencia muchas veces no existe. Pero en este caso de pandemia sí, podemos decir que tiene potencialidad cero. Porque esto s"
+    },
+    {
+      "job_id": "9e739c7b-f07b-4a5a-a9b3-54569372fd39",
+      "moment_index": 7,
+      "score": 18.0,
+      "posteable": false,
+      "motivo": "subtitulos_mal",
+      "texto": "Y dos, ¿cuánto tiempo de incubación tiene? Es decir, ¿cuánto tiempo pasa desde que una persona se encuentra fantásticamente bien hasta que se empieza a encontrar mal? Porque he escuchado varias semanas, ¿no? Entonces, no sé si esto es así, si es un poco exagerado, me cuentes un poquito. Sí, mira, la primera parte, que además es mi terreno, el terreno de la inmunología. Todos los virus pasan unos d"
+    },
+    {
+      "job_id": "c7ea4108-2409-4e51-af40-f6c3c6137dbe",
+      "moment_index": 7,
+      "score": 17.0,
+      "posteable": false,
+      "motivo": "termina_mal",
+      "texto": "Todos estos brotes que pronto llaman y llaman tanto la atención se deben, en definitiva, al deterioro del planeta. Entre otras cosas. Esto ha existido toda la vida. Los saltos de las especies al hombre han existido toda la vida de Dios. De hecho, el 80% de las enfermedades infecciosas que tenemos se sabe que son de origen inanimal. Pero lo que está pasando últimamente es que esto se está acelerand"
+    },
+    {
+      "job_id": "9e739c7b-f07b-4a5a-a9b3-54569372fd39",
+      "moment_index": 1,
+      "score": 16.0,
+      "posteable": false,
+      "motivo": "momento_flojo",
+      "texto": "¿Y cuál es la diferencia fundamental de los virus americanos con respecto a los europeos? Pues que su evolución es distinta. En vez de evolucionar ese cuadro de hemorragia y problema renal, evolucionan a un cuadro de problema respiratorio y cardiovascular. Lo decía que el virus, a donde va es a las células que bordean los vasos sanguíneos, acaba dejando que el líquido de los vasos se salga y ensan"
+    },
+    {
+      "job_id": "9e739c7b-f07b-4a5a-a9b3-54569372fd39",
+      "moment_index": 11,
+      "score": 16.0,
+      "posteable": false,
+      "motivo": "otro",
+      "texto": "¿Hay tratamiento, curación o es simplemente esperar que el propio cuerpo se deshaga, digamos, de esto. He escuchado, creo que es ribavirina, no sé si esto es algo que se está probando, ya funciona. ¿Qué se puede hacer una vez ya tienes la enfermedad? Pues si se está probando algún fármaco actual, no te voy a engañar, lo desconozco, pero a priori no hay ninguna cosa específica, ni siquiera preventi"
+    }
+  ]
+}
