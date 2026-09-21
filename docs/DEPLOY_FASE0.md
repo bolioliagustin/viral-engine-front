@@ -111,6 +111,15 @@ Esta es la migración más delicada porque **redefine una función que el worker
 
 ## 3. Worker en el VPS
 
+> **Proxies (hallazgo del despliegue del 21-sep-2026).** El `docker-compose.yml`
+> monta `./proxies.txt` en `/app/proxies.txt` y setea `WEBSHARE_PROXY_FILE`.
+> Sin eso el worker descarga por RapidAPI, que devuelve URLs de googlevideo
+> **atadas a la IP que las resolvió**: desde el VPS dan `403 Forbidden` y el job
+> termina en "sin clips viables". Verificalo después del deploy con
+> `docker compose exec worker sh -c 'wc -l /app/proxies.txt'`. El archivo vive
+> fuera de git (lo pone Agustín, viene de Webshare).
+
+
 ### 3.1 Pasos (siguiendo `deploy/deploy-worker.sh`, ya existente — no se modifica)
 
 ```bash

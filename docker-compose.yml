@@ -33,9 +33,13 @@ services:
     environment:
       - ENVIRONMENT=production
       - MAX_WORKERS=${MAX_WORKERS:-3}
+      # Sin proxies, RapidAPI devuelve URLs de googlevideo atadas a SU IP y la
+      # descarga desde el VPS da 403 (medido el 21-sep-2026 en producción).
+      - WEBSHARE_PROXY_FILE=/app/proxies.txt
     volumes:
       - worker_downloads:/app/downloads
       - worker_clips:/app/clips
+      - ./proxies.txt:/app/proxies.txt:ro
     restart: unless-stopped
     depends_on:
       backend:
