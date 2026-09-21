@@ -1,0 +1,1123 @@
+[
+ {
+  "video": "business_spanish_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.27,
+   "retencion": 2.0,
+   "compartir": 2.24
+  },
+  "jev_suma": 5.51,
+  "jev_confianza_media": 0.423,
+  "nuestro": {
+   "hook": 6,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 17,
+  "latencia_ms": 743
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.05,
+   "retencion": 2.55,
+   "compartir": 2.04
+  },
+  "jev_suma": 6.64,
+  "jev_confianza_media": 0.453,
+  "nuestro": {
+   "hook": 6,
+   "retention": 3,
+   "shareability": 5
+  },
+  "nuestro_suma": 14,
+  "latencia_ms": 704
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.87,
+   "retencion": 2.11,
+   "compartir": 2.85
+  },
+  "jev_suma": 6.83,
+  "jev_confianza_media": 0.48,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 693
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.29,
+   "retencion": 0.88,
+   "compartir": 1.55
+  },
+  "jev_suma": 3.72,
+  "jev_confianza_media": 0.557,
+  "nuestro": {
+   "hook": 4,
+   "retention": 6,
+   "shareability": 5
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 701
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.12,
+   "retencion": 1.61,
+   "compartir": 1.12
+  },
+  "jev_suma": 4.85,
+  "jev_confianza_media": 0.51,
+  "nuestro": {
+   "hook": 5,
+   "retention": 4,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 696
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 6,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.1,
+   "retencion": 1.16,
+   "compartir": 1.9
+  },
+  "jev_suma": 5.16,
+  "jev_confianza_media": 0.543,
+  "nuestro": {
+   "hook": 4,
+   "retention": 4,
+   "shareability": 5
+  },
+  "nuestro_suma": 13,
+  "latencia_ms": 734
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 7,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.91,
+   "retencion": 2.2,
+   "compartir": 2.08
+  },
+  "jev_suma": 7.19,
+  "jev_confianza_media": 0.64,
+  "nuestro": {
+   "hook": 4,
+   "retention": 6,
+   "shareability": 5
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 824
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 8,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.72,
+   "retencion": 2.34,
+   "compartir": 2.33
+  },
+  "jev_suma": 7.39,
+  "jev_confianza_media": 0.567,
+  "nuestro": {
+   "hook": 4,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 743
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.81,
+   "retencion": 1.87,
+   "compartir": 1.03
+  },
+  "jev_suma": 5.71,
+  "jev_confianza_media": 0.75,
+  "nuestro": {
+   "hook": 6,
+   "retention": 4,
+   "shareability": 5
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 717
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.52,
+   "retencion": 2.7,
+   "compartir": 2.82
+  },
+  "jev_suma": 8.04,
+  "jev_confianza_media": 0.697,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 713
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.92,
+   "retencion": 2.2,
+   "compartir": 2.24
+  },
+  "jev_suma": 6.36,
+  "jev_confianza_media": 0.503,
+  "nuestro": {
+   "hook": 6,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 17,
+  "latencia_ms": 764
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 0.92,
+   "retencion": 1.71,
+   "compartir": 1.61
+  },
+  "jev_suma": 4.24,
+  "jev_confianza_media": 0.347,
+  "nuestro": {
+   "hook": 6,
+   "retention": 4,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 747
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.66,
+   "retencion": 2.81,
+   "compartir": 2.53
+  },
+  "jev_suma": 8.0,
+  "jev_confianza_media": 0.703,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 686
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 6,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.03,
+   "retencion": 1.9,
+   "compartir": 2.46
+  },
+  "jev_suma": 5.39,
+  "jev_confianza_media": 0.353,
+  "nuestro": {
+   "hook": 3,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 884
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 7,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.17,
+   "retencion": 2.19,
+   "compartir": 2.58
+  },
+  "jev_suma": 6.94,
+  "jev_confianza_media": 0.483,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 718
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 8,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.55,
+   "retencion": 1.72,
+   "compartir": 1.62
+  },
+  "jev_suma": 4.89,
+  "jev_confianza_media": 0.313,
+  "nuestro": {
+   "hook": 3,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 695
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 9,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 0.95,
+   "retencion": 1.28,
+   "compartir": 1.32
+  },
+  "jev_suma": 3.55,
+  "jev_confianza_media": 0.407,
+  "nuestro": {
+   "hook": 7,
+   "retention": 4,
+   "shareability": 5
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 731
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 10,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.32,
+   "retencion": 1.65,
+   "compartir": 2.71
+  },
+  "jev_suma": 6.68,
+  "jev_confianza_media": 0.563,
+  "nuestro": {
+   "hook": 7,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 19,
+  "latencia_ms": 821
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 11,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.83,
+   "retencion": 1.33,
+   "compartir": 2.25
+  },
+  "jev_suma": 5.41,
+  "jev_confianza_media": 0.22,
+  "nuestro": {
+   "hook": 6,
+   "retention": 3,
+   "shareability": 3
+  },
+  "nuestro_suma": 12,
+  "latencia_ms": 724
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 12,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.6,
+   "retencion": 1.98,
+   "compartir": 2.4
+  },
+  "jev_suma": 5.98,
+  "jev_confianza_media": 0.473,
+  "nuestro": {
+   "hook": 4,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 721
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.87,
+   "retencion": 1.96,
+   "compartir": 2.18
+  },
+  "jev_suma": 6.01,
+  "jev_confianza_media": 0.45,
+  "nuestro": {
+   "hook": 5,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 17,
+  "latencia_ms": 755
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.87,
+   "retencion": 2.09,
+   "compartir": 2.35
+  },
+  "jev_suma": 6.31,
+  "jev_confianza_media": 0.55,
+  "nuestro": {
+   "hook": 4,
+   "retention": 7,
+   "shareability": 6
+  },
+  "nuestro_suma": 17,
+  "latencia_ms": 730
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.36,
+   "retencion": 2.61,
+   "compartir": 2.26
+  },
+  "jev_suma": 7.23,
+  "jev_confianza_media": 0.593,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 731
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.68,
+   "retencion": 1.38,
+   "compartir": 2.44
+  },
+  "jev_suma": 5.5,
+  "jev_confianza_media": 0.48,
+  "nuestro": {
+   "hook": 4,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 733
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.1,
+   "retencion": 2.8,
+   "compartir": 2.69
+  },
+  "jev_suma": 7.59,
+  "jev_confianza_media": 0.583,
+  "nuestro": {
+   "hook": 5,
+   "retention": 4,
+   "shareability": 5
+  },
+  "nuestro_suma": 14,
+  "latencia_ms": 706
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.68,
+   "retencion": 0.61,
+   "compartir": 0.71
+  },
+  "jev_suma": 4.0,
+  "jev_confianza_media": 0.6,
+  "nuestro": {
+   "hook": 4,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 714
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.11,
+   "retencion": 1.32,
+   "compartir": 1.83
+  },
+  "jev_suma": 5.26,
+  "jev_confianza_media": 0.293,
+  "nuestro": {
+   "hook": 2,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 13,
+  "latencia_ms": 701
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.4,
+   "retencion": 1.53,
+   "compartir": 1.34
+  },
+  "jev_suma": 4.27,
+  "jev_confianza_media": 0.283,
+  "nuestro": {
+   "hook": 3,
+   "retention": 4,
+   "shareability": 3
+  },
+  "nuestro_suma": 10,
+  "latencia_ms": 735
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 3.02,
+   "retencion": 1.25,
+   "compartir": 2.02
+  },
+  "jev_suma": 6.29,
+  "jev_confianza_media": 0.367,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 682
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.48,
+   "retencion": 1.05,
+   "compartir": 1.86
+  },
+  "jev_suma": 5.39,
+  "jev_confianza_media": 0.473,
+  "nuestro": {
+   "hook": 6,
+   "retention": 4,
+   "shareability": 5
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 720
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.32,
+   "retencion": 1.95,
+   "compartir": 2.1
+  },
+  "jev_suma": 5.37,
+  "jev_confianza_media": 0.547,
+  "nuestro": {
+   "hook": 4,
+   "retention": 6,
+   "shareability": 5
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 766
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.87,
+   "retencion": 2.45,
+   "compartir": 1.94
+  },
+  "jev_suma": 6.26,
+  "jev_confianza_media": 0.373,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 715
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.98,
+   "retencion": 2.15,
+   "compartir": 2.47
+  },
+  "jev_suma": 7.6,
+  "jev_confianza_media": 0.643,
+  "nuestro": {
+   "hook": 4,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 746
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.37,
+   "retencion": 1.28,
+   "compartir": 1.83
+  },
+  "jev_suma": 5.48,
+  "jev_confianza_media": 0.577,
+  "nuestro": {
+   "hook": 6,
+   "retention": 4,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 721
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.13,
+   "retencion": 1.33,
+   "compartir": 1.1
+  },
+  "jev_suma": 3.56,
+  "jev_confianza_media": 0.623,
+  "nuestro": {
+   "hook": 4,
+   "retention": 5,
+   "shareability": 3
+  },
+  "nuestro_suma": 12,
+  "latencia_ms": 697
+ },
+ {
+  "video": "business_spanish_01",
+  "momento": 6,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.64,
+   "retencion": 1.53,
+   "compartir": 2.31
+  },
+  "jev_suma": 6.48,
+  "jev_confianza_media": 0.527,
+  "nuestro": {
+   "hook": 5,
+   "retention": 6,
+   "shareability": 4
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 754
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 0.77,
+   "retencion": 2.06,
+   "compartir": 2.2
+  },
+  "jev_suma": 5.03,
+  "jev_confianza_media": 0.507,
+  "nuestro": {
+   "hook": 2,
+   "retention": 5,
+   "shareability": 4
+  },
+  "nuestro_suma": 11,
+  "latencia_ms": 764
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.89,
+   "retencion": 1.87,
+   "compartir": 1.88
+  },
+  "jev_suma": 5.64,
+  "jev_confianza_media": 0.177,
+  "nuestro": {
+   "hook": 4,
+   "retention": 5,
+   "shareability": 4
+  },
+  "nuestro_suma": 13,
+  "latencia_ms": 769
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.56,
+   "retencion": 2.58,
+   "compartir": 2.56
+  },
+  "jev_suma": 7.7,
+  "jev_confianza_media": 0.613,
+  "nuestro": {
+   "hook": 6,
+   "retention": 4,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 735
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.56,
+   "retencion": 2.84,
+   "compartir": 2.97
+  },
+  "jev_suma": 7.37,
+  "jev_confianza_media": 0.563,
+  "nuestro": {
+   "hook": 4,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 751
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.47,
+   "retencion": 1.71,
+   "compartir": 2.6
+  },
+  "jev_suma": 5.78,
+  "jev_confianza_media": 0.393,
+  "nuestro": {
+   "hook": 5,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 17,
+  "latencia_ms": 754
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 6,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 0.87,
+   "retencion": 1.55,
+   "compartir": 2.02
+  },
+  "jev_suma": 4.44,
+  "jev_confianza_media": 0.387,
+  "nuestro": {
+   "hook": 6,
+   "retention": 7,
+   "shareability": 6
+  },
+  "nuestro_suma": 19,
+  "latencia_ms": 762
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 7,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.57,
+   "retencion": 1.83,
+   "compartir": 2.32
+  },
+  "jev_suma": 6.72,
+  "jev_confianza_media": 0.513,
+  "nuestro": {
+   "hook": 4,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 774
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 8,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.41,
+   "retencion": 2.07,
+   "compartir": 2.85
+  },
+  "jev_suma": 6.33,
+  "jev_confianza_media": 0.453,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 738
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 9,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.4,
+   "retencion": 1.87,
+   "compartir": 2.31
+  },
+  "jev_suma": 6.58,
+  "jev_confianza_media": 0.453,
+  "nuestro": {
+   "hook": 6,
+   "retention": 7,
+   "shareability": 6
+  },
+  "nuestro_suma": 19,
+  "latencia_ms": 711
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 10,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.35,
+   "retencion": 2.58,
+   "compartir": 2.71
+  },
+  "jev_suma": 7.64,
+  "jev_confianza_media": 0.573,
+  "nuestro": {
+   "hook": 4,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 724
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 11,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.73,
+   "retencion": 1.85,
+   "compartir": 1.97
+  },
+  "jev_suma": 6.55,
+  "jev_confianza_media": 0.617,
+  "nuestro": {
+   "hook": 7,
+   "retention": 5,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 726
+ },
+ {
+  "video": "podcast_general_01",
+  "momento": 12,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.21,
+   "retencion": 1.75,
+   "compartir": 2.75
+  },
+  "jev_suma": 6.71,
+  "jev_confianza_media": 0.603,
+  "nuestro": {
+   "hook": 7,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 19,
+  "latencia_ms": 733
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.31,
+   "retencion": 3.13,
+   "compartir": 2.45
+  },
+  "jev_suma": 7.89,
+  "jev_confianza_media": 0.56,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 746
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.94,
+   "retencion": 2.18,
+   "compartir": 1.38
+  },
+  "jev_suma": 5.5,
+  "jev_confianza_media": 0.687,
+  "nuestro": {
+   "hook": 5,
+   "retention": 4,
+   "shareability": 5
+  },
+  "nuestro_suma": 14,
+  "latencia_ms": 700
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.62,
+   "retencion": 2.18,
+   "compartir": 2.58
+  },
+  "jev_suma": 7.38,
+  "jev_confianza_media": 0.66,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 18,
+  "latencia_ms": 693
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.34,
+   "retencion": 1.79,
+   "compartir": 2.02
+  },
+  "jev_suma": 6.15,
+  "jev_confianza_media": 0.49,
+  "nuestro": {
+   "hook": 5,
+   "retention": 6,
+   "shareability": 4
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 715
+ },
+ {
+  "video": "claude_hacks_regression_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.36,
+   "retencion": 1.55,
+   "compartir": 1.89
+  },
+  "jev_suma": 4.8,
+  "jev_confianza_media": 0.57,
+  "nuestro": {
+   "hook": 6,
+   "retention": 6,
+   "shareability": 5
+  },
+  "nuestro_suma": 17,
+  "latencia_ms": 723
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 1,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.58,
+   "retencion": 0.9,
+   "compartir": 0.76
+  },
+  "jev_suma": 4.24,
+  "jev_confianza_media": 0.557,
+  "nuestro": {
+   "hook": 5,
+   "retention": 6,
+   "shareability": 6
+  },
+  "nuestro_suma": 17,
+  "latencia_ms": 697
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 2,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.27,
+   "retencion": 1.56,
+   "compartir": 2.63
+  },
+  "jev_suma": 6.46,
+  "jev_confianza_media": 0.457,
+  "nuestro": {
+   "hook": 6,
+   "retention": 4,
+   "shareability": 6
+  },
+  "nuestro_suma": 16,
+  "latencia_ms": 721
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 3,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 1.91,
+   "retencion": 1.13,
+   "compartir": 1.15
+  },
+  "jev_suma": 4.19,
+  "jev_confianza_media": 0.387,
+  "nuestro": {
+   "hook": 4,
+   "retention": 3,
+   "shareability": 3
+  },
+  "nuestro_suma": 10,
+  "latencia_ms": 693
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 4,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 0.98,
+   "retencion": 0.87,
+   "compartir": 1.01
+  },
+  "jev_suma": 2.86,
+  "jev_confianza_media": 0.487,
+  "nuestro": {
+   "hook": 6,
+   "retention": 3,
+   "shareability": 4
+  },
+  "nuestro_suma": 13,
+  "latencia_ms": 716
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 5,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 3.52,
+   "retencion": 1.14,
+   "compartir": 1.89
+  },
+  "jev_suma": 6.55,
+  "jev_confianza_media": 0.267,
+  "nuestro": {
+   "hook": 6,
+   "retention": 3,
+   "shareability": 6
+  },
+  "nuestro_suma": 15,
+  "latencia_ms": 691
+ },
+ {
+  "video": "user_recommended_01",
+  "momento": 6,
+  "fuente_texto": "full",
+  "jev": {
+   "gancho": 2.0,
+   "retencion": 0.9,
+   "compartir": 1.12
+  },
+  "jev_suma": 4.02,
+  "jev_confianza_media": 0.48,
+  "nuestro": {
+   "hook": 5,
+   "retention": 4,
+   "shareability": 5
+  },
+  "nuestro_suma": 14,
+  "latencia_ms": 715
+ }
+]

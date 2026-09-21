@@ -150,9 +150,23 @@ class CandidateEval:
     incomplete_tail: bool = False
     min_duration_reverted: bool = False
     discard_reason: str | None = None
+    # Rankeo con Jev (RANKER=jev): nota ya normalizada a la escala 0..30 del
+    # Juez, o None si Jev no corrió o falló (entonces manda `judge_scores`).
+    jev_rank_score: float | None = None
+    jev_confidence: float | None = None
 
 
 def _judge_sum(c: "CandidateEval") -> float:
+    """Nota base del candidato, en la escala 0..30 del Juez.
+
+    Con `RANKER=jev`, `jev_rank_score` ya viene normalizado a esa escala y
+    manda sobre la nota del Juez: ordena sin empates (el Juez empata el 13,9 %
+    de los pares, ver services/ranker_jev.py). Si Jev no corrió o falló, el
+    campo queda en None y sigue mandando el Juez — el fallback es el
+    comportamiento de siempre.
+    """
+    if c.jev_rank_score is not None:
+        return float(c.jev_rank_score)
     if c.judge_scores:
         try:
             return (

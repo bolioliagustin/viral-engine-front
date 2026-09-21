@@ -33,6 +33,8 @@ _DEFAULT_LLM_PRICING: dict[str, ModelPricing] = {
     "google/gemini-2.5-flash": ModelPricing(0.30, 2.50),
     "google/gemini-2.5-pro": ModelPricing(1.25, 10.00),
     "openai/gpt-5.4-mini": ModelPricing(0.75, 4.50),
+    # TypeSafe System One (Jev): el output no se factura ("too cheap to meter").
+    "jev-latest": ModelPricing(0.042, 0.0),
 }
 
 # Whisper — valores especiales (no token-based)

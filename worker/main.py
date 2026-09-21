@@ -2390,6 +2390,28 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                         f"share={judge_scores['shareability']}"
                     )
 
+            # Rankeo con Jev (RANKER=jev): decide el ORDEN de los candidatos;
+            # el score que se persiste sigue siendo el del Juez. Si falla,
+            # jev_rank queda en None y manda el Juez (services/ranker_jev.py).
+            jev_rank = None
+            if prepared.ok and prepared.clip_text_final and prepared.clip_text_final.strip():
+                from services.ranker_jev import ranker_is_jev, jev_rank_scores
+                if ranker_is_jev():
+                    jev_rank = jev_rank_scores(
+                        prepared.clip_text_final,
+                        hook=moment.hook or "",
+                        viral_overlay=getattr(moment, 'viral_overlay', None) or "",
+                        clip_duration_sec=prepared.clip_duration or 0.0,
+                        moment_index=cand_index,
+                    )
+                    if jev_rank:
+                        print(
+                            f"   🎯 Jev (ranking): {jev_rank['sum_0_12']:.2f}/12 "
+                            f"→ {jev_rank['rank_score']:.1f}/30 "
+                            f"(confianza {jev_rank['confidence_avg']:.2f}, "
+                            f"{jev_rank['latency_ms']} ms)"
+                        )
+
             scores = getattr(moment, 'scores', None)
             self_score = 0.0
             if scores:
@@ -2424,6 +2446,8 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 late_hook=prepared.late_hook,
                 incomplete_tail=prepared.incomplete_tail,
                 min_duration_reverted=prepared.min_duration_reverted,
+                jev_rank_score=(jev_rank or {}).get("rank_score"),
+                jev_confidence=(jev_rank or {}).get("confidence_avg"),
             ))
 
             # W9-B: progreso fino por candidato evaluado (contrato con P1).
