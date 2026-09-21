@@ -720,6 +720,59 @@ def _best_informative_sentence(text: str, *, max_candidates: int = 5) -> str | N
     return max(candidates, key=_informativeness_score)
 
 
+def limpiar_titulo_generado(
+    title: str | None, clip_text: str, *, max_chars: int = TITLE_MAX_CHARS
+) -> str | None:
+    """
+    Intenta RESCATAR el título que generó el modelo antes de ir a buscar una
+    oración del transcript.
+
+    Por qué: el título del modelo, aunque use una fórmula prohibida, está
+    escrito COMO un título y habla del tema del clip. Una oración del
+    transcript es texto hablado: gramatical pero pobre como título
+    ("¿Hay tratamiento o curación", "Pinta situación, un trabajador del
+    barco que tiene que"). Medido sobre 10 clips reales el 21-sep-2026: la
+    cascada producía títulos peores que el genérico que reemplazaba.
+
+    Qué hace, en orden:
+      1. Saca la fórmula prohibida y la puntuación suelta que queda.
+         "Tratamiento de virus: ¡La verdad sobre vacunas y fármacos!"
+         → "Tratamiento de virus: vacunas y fármacos"
+      2. Saca los signos de exclamación sobrantes.
+      3. Recorta a `max_chars` sin partir una palabra.
+
+    Devuelve el título limpio solo si queda usable (pasa `title_is_valid`
+    y `parece_titulo`); si no, None y sigue la cascada.
+    """
+    if not title or not title.strip():
+        return None
+
+    limpio = _TITLE_FORBIDDEN_RE.sub("", title)
+    # La fórmula suele dejar basura: "Tema: ¡ vacunas!" o " de las 6 semanas".
+    limpio = re.sub(r"[¡!]+", "", limpio)
+    limpio = re.sub(r"\s{2,}", " ", limpio).strip()
+    limpio = re.sub(r"^[\s:;,\-—]+", "", limpio)
+    limpio = re.sub(r"[\s:;,\-—]+$", "", limpio)
+    # "Tema:  vacunas y fármacos" → "Tema: vacunas y fármacos"
+    limpio = re.sub(r"\s+:", ":", limpio)
+    limpio = re.sub(r":\s*", ": ", limpio).strip()
+    if not limpio:
+        return None
+
+    if len(limpio) > max_chars:
+        recortado = limpio[:max_chars]
+        if " " in recortado:
+            recortado = recortado.rsplit(" ", 1)[0]
+        limpio = recortado.rstrip(" ,;:—-")
+
+    limpio = _capitalize_first_letter(limpio) if limpio[:1].islower() else limpio
+
+    ok, _ = title_is_valid(limpio, clip_text, max_chars=max_chars)
+    if ok and parece_titulo(limpio):
+        return limpio
+    return None
+
+
 def resolve_title_fallback(
     *,
     clip_text: str,
@@ -727,6 +780,7 @@ def resolve_title_fallback(
     hook_is_faithful_flag: bool,
     overlay: str | None,
     max_chars: int = TITLE_MAX_CHARS,
+    titulo_generado: str | None = None,
 ) -> tuple[str, str]:
     """
     Cascada de fallback cuando el título generado no pasa `title_is_valid`,
@@ -740,6 +794,14 @@ def resolve_title_fallback(
          bolsa de palabras— pero son un fragmento tan malo como el que
          `parece_titulo` ya filtra en (b)/(c), así que se le aplica el
          mismo chequeo antes de aceptarlo como título).
+      a-bis. "limpiado"        — el título del modelo sin la fórmula
+         prohibida, si así queda usable. Va DESPUÉS del hook (el hook dice
+         el hecho: "No hay tratamiento antiviral"; el título limpiado dice
+         el tema: "El tratamiento de este virus") pero ANTES del
+         transcript, porque está escrito como título y una oración hablada
+         se lee peor (medido sobre 10 clips reales el 21-sep-2026:
+         "¿Hay tratamiento o curación", "Pinta situación, un trabajador
+         del barco que tiene que").
       b. "primera_oracion"     — la primera oración del clip, solo si
          `parece_titulo`.
       c. "oracion_informativa" — la oración más informativa entre las
@@ -756,6 +818,10 @@ def resolve_title_fallback(
     hook = (hook or "").strip()
     if hook and hook_is_faithful_flag and len(hook) <= max_chars and parece_titulo(hook):
         return hook, "hook"
+
+    rescatado = limpiar_titulo_generado(titulo_generado, clip_text, max_chars=max_chars)
+    if rescatado:
+        return rescatado, "limpiado"
 
     first = first_sentence(clip_text)
     if parece_titulo(first):

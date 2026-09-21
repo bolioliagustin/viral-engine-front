@@ -279,3 +279,74 @@ class TestOrquestacionConClipQueRompiaElFallbackViejo:
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+class TestRescatarTituloDelModelo:
+    """Antes de ir al transcript, intentar limpiar el título del modelo.
+
+    El título del modelo, aunque use una fórmula prohibida, está escrito COMO
+    un título y habla del tema del clip; una oración del transcript es texto
+    hablado y se lee peor. Medido sobre 10 clips reales el 21-sep-2026: la
+    cascada sin este nivel producía títulos peores que el genérico que
+    reemplazaba ("¿Hay tratamiento o curación", "Pinta situación, un
+    trabajador del barco que tiene que").
+    """
+
+    def test_saca_la_formula_y_conserva_lo_que_informa(self):
+        from services.content_validators import limpiar_titulo_generado
+        texto = ("No hay vacuna contra este virus ni tratamiento antiviral, "
+                 "lo único que se hace son cuidados intensivos.")
+        r = limpiar_titulo_generado(
+            "Tratamiento de virus: ¡La verdad sobre vacunas y fármacos!", texto
+        )
+        assert r == "Tratamiento de virus: vacunas y fármacos"
+
+    def test_saca_el_peligro_de(self):
+        from services.content_validators import limpiar_titulo_generado
+        texto = "Los virus americanos inundan los pulmones con el suero de la sangre."
+        r = limpiar_titulo_generado(
+            "Virus americanos: ¡El peligro de la inundación pulmonar!", texto
+        )
+        assert r == "Virus americanos: la inundación pulmonar"
+
+    def test_si_no_queda_nada_util_devuelve_none(self):
+        from services.content_validators import limpiar_titulo_generado
+        assert limpiar_titulo_generado("Lo que nadie te dice", "Texto del clip.") is None
+
+    def test_si_el_titulo_no_habla_del_clip_no_se_rescata(self):
+        """La limpieza no puede saltearse la validación de fidelidad."""
+        from services.content_validators import limpiar_titulo_generado
+        assert limpiar_titulo_generado(
+            "Recetas de cocina: ¡La verdad sobre el pan casero!",
+            "Hablamos del periodo de incubación de un virus y su transmisión.",
+        ) is None
+
+    def test_vacio_o_none_devuelve_none(self):
+        from services.content_validators import limpiar_titulo_generado
+        assert limpiar_titulo_generado(None, "texto") is None
+        assert limpiar_titulo_generado("   ", "texto") is None
+
+    def test_el_titulo_limpiado_gana_al_transcript(self):
+        from services.content_validators import resolve_title_fallback
+        texto = ("Durante el periodo de incubación la persona no transmite el virus, "
+                 "se va a transmitir sobre todo cuando tenemos síntomas.")
+        # Sin hook usable, el título limpiado gana a cualquier oración del
+        # transcript (con hook fiel, el hook va primero: dice el hecho).
+        titulo, nivel = resolve_title_fallback(
+            clip_text=texto,
+            hook="",
+            hook_is_faithful_flag=False,
+            overlay="PERIODO DE INCUBACIÓN",
+            titulo_generado="Transmisión: ¡La verdad sobre el periodo de incubación!",
+        )
+        assert nivel == "limpiado"
+        assert titulo == "Transmisión: el periodo de incubación"
+
+    def test_sin_titulo_generado_la_cascada_es_la_de_antes(self):
+        """Compatibilidad: el parámetro es opcional."""
+        from services.content_validators import resolve_title_fallback
+        texto = "Una azafata sin mascarilla se expone al contagio durante el vuelo."
+        titulo, nivel = resolve_title_fallback(
+            clip_text=texto, hook="", hook_is_faithful_flag=False, overlay=None,
+        )
+        assert nivel in ("primera_oracion", "oracion_informativa", "generico")

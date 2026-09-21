@@ -1060,6 +1060,7 @@ Responde SOLO JSON:
             hook=hook_before_its_own_fallback,
             hook_is_faithful_flag=hook_ok_before_its_own_fallback,
             overlay=overlay_candidate,
+            titulo_generado=title_candidate,
         )
         print(
             f"   ⚠️ Título inválido tras reintento ({title_problems}) "
@@ -1067,8 +1068,9 @@ Responde SOLO JSON:
         )
         title_candidate = fallback_title
         # W13-B: solo "generico" (no se encontró nada mejor que el molde)
-        # marca titulo_generico — hook/primera oración/oración informativa
-        # son fuentes reales, marcan titulo_de_respaldo.
+        # marca titulo_generico — el título limpiado, el hook, la primera
+        # oración y la oración informativa son fuentes reales y marcan
+        # titulo_de_respaldo.
         quality_issues.append("titulo_generico" if fallback_level == "generico" else "titulo_de_respaldo")
 
     cp = moment.content_pieces
