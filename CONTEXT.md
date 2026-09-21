@@ -44,11 +44,19 @@ _Avoid_: contenido, content result, copy (a secas, cuando se refiere a una pieza
 
 **Hook**:
 Frase gancho de 1–2 líneas que explica por qué el momento frena el scroll; alimenta las piezas de copy.
-_Avoid_: título, headline
+_Avoid_: headline
 
 **Overlay**:
 Texto de máximo 4 palabras en mayúsculas que se quema sobre el clip durante sus primeros segundos.
 _Avoid_: título del clip, hook corto, viral_overlay
+
+**Título**:
+Texto corto (≤60 caracteres, `content_results.title`, W10) para publicar el Clip: tiene que decir la afirmación concreta del Momento — el dato, el número o la conclusión — no el tema en abstracto (W13, `docs/PLAN_CALIDAD.md` §9 W10). Distinto del Hook (más largo, vive en las piezas de copy) y del Overlay (se quema en el video).
+_Avoid_: hook, headline (para el Título en sí)
+
+**Descripción**:
+Dos oraciones que acompañan al Título al publicar: la primera dice de qué habla el Momento con el dato concreto, la segunda invita a mirar o reaccionar. Se guarda en `content_results.description` (W10).
+_Avoid_: description (en inglés), resumen
 
 **Encuadre**:
 Cómo se lleva el video 16:9 original al Clip vertical 9:16: Fit (el video completo centrado sobre fondo desenfocado, el de siempre), Fill (recorte a pantalla completa centrado en una cara) o Split (dos caras, cada una recortada y apilada a pantalla completa). Se elige automáticamente por escena cuando `REFRAME_MODE=auto`.

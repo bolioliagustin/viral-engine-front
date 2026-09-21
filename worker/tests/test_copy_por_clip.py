@@ -42,7 +42,11 @@ _FULL_PAYLOAD = {
     "tiktok_caption": "El dato que nadie te cuenta sobre contagios #salud",
     "hook": "El sarampión es más contagioso que el COVID, y la ciencia lo explica con el R0.",
     "viral_overlay": "MÁS CONTAGIOSO QUE COVID",
-    "title": "Sarampión vs COVID: ¡La verdad de la inmunidad de grupo!",
+    # W13: título válido (afirmación concreta, sin fórmula prohibida, un
+    # solo "!", ≤60 chars, comparte palabras con CLIP_TEXT) — el ejemplo
+    # viejo ("Sarampión vs COVID: ¡La verdad de la inmunidad de grupo!")
+    # usaba justamente la fórmula que W13 prohíbe, ver test_titulo_informa.py.
+    "title": "El sarampión es más contagioso que el COVID por su R0",
     "description": "Comparamos la contagiosidad del sarampión y el COVID con el número R0. Mirá el clip para entender por qué la inmunidad de grupo cambia según la enfermedad.",
     "hashtags": [
         "#Sarampion", "#Covid", "#InmunidadDeGrupo", "#Salud", "#Virus",
@@ -62,14 +66,22 @@ class TestCopyPorClip:
         ok = generate_moment_copy_full(moment, CLIP_TEXT, client=client)
 
         assert ok is True
-        assert moment.title == "Sarampión vs COVID: ¡La verdad de la inmunidad de grupo!"
+        assert moment.title == "El sarampión es más contagioso que el COVID por su R0"
         assert moment.description.startswith("Comparamos la contagiosidad")
         assert moment.hashtags == [
             "#Sarampion", "#Covid", "#InmunidadDeGrupo", "#Salud", "#Virus",
             "#Contagio", "#Ciencia", "#Epidemiologia", "#Vacunas", "#Divulgacion",
         ]
 
-    def test_title_se_trunca_a_60_caracteres(self):
+    def test_title_muy_largo_no_se_trunca_se_rechaza_y_cae_al_fallback(self):
+        # W13: un título >60 chars ya no se trunca en silencio — es una de
+        # las 4 razones de rechazo (services/content_validators.title_is_valid);
+        # se reintenta y, si persiste, cae a la cascada de fallback (W13-B,
+        # resolve_title_fallback), que sí respeta el tope. El resultado
+        # final sigue siendo ≤60 chars, pero por el camino nuevo, no por
+        # slicing ciego. Con CLIP_TEXT bien formado, la cascada encuentra
+        # algo real (hook o primera oración) — titulo_de_respaldo, no
+        # titulo_generico (eso es solo cuando NADA de la cascada sirve).
         moment = _moment()
         payload = {**_FULL_PAYLOAD, "title": "T" * 80}
         client = MagicMock()
@@ -77,11 +89,18 @@ class TestCopyPorClip:
 
         generate_moment_copy_full(moment, CLIP_TEXT, client=client)
 
-        assert len(moment.title) == 60
+        assert len(moment.title) <= 60
+        assert moment.title != "T" * 60  # no es el truncado ciego de antes
+        assert "titulo_de_respaldo" in moment.clip_quality_issues
+        assert "titulo_generico" not in moment.clip_quality_issues
 
     def test_sin_title_description_hashtags_no_rompe(self):
-        # Modelo viejo / respuesta parcial: el moment no se rompe, solo no
-        # se llenan esos campos (quedan None, como antes de W10).
+        # Modelo viejo / respuesta parcial: description y hashtags quedan
+        # None, como antes de W10 (esos dos no tienen validación ni
+        # fallback, W13 solo toca título). El título SÍ cae a la cascada
+        # de fallback en vez de quedar None — mejor un título real
+        # (hook/primera oración/oración informativa) que ninguno, ver
+        # services/content_validators.resolve_title_fallback.
         moment = _moment()
         payload = {k: v for k, v in _FULL_PAYLOAD.items() if k not in ("title", "description", "hashtags")}
         client = MagicMock()
@@ -90,7 +109,8 @@ class TestCopyPorClip:
         ok = generate_moment_copy_full(moment, CLIP_TEXT, client=client)
 
         assert ok is True
-        assert moment.title is None
+        assert moment.title  # no rompe: cae al fallback, no queda None
+        assert "titulo_de_respaldo" in moment.clip_quality_issues
         assert moment.description is None
         assert moment.hashtags is None
 

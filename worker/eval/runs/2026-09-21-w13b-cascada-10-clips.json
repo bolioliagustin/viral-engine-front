@@ -1,0 +1,72 @@
+[
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 1,
+    "old_title": "Virus americanos: ¡El peligro de la inundación pulmonar!",
+    "cascade_title": "En vez de evolucionar ese cuadro de hemorragia y problema",
+    "level": "oracion_informativa"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 2,
+    "old_title": "Hantavirus Andes: ¡El peligro del contagio entre humanos!",
+    "cascade_title": "Probablemente esté un poquito sobreestimada por esto.",
+    "level": "oracion_informativa"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 7,
+    "old_title": "Periodo de incubación: ¡El peligro de las 6 semanas!",
+    "cascade_title": "Te encuentras muy bien, pero no se puede matar.",
+    "level": "hook"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 9,
+    "old_title": "Azafata aislada: ¡La verdad sobre el riesgo de contagio!",
+    "cascade_title": "Ese caso hubiera sido el de la azafata.",
+    "level": "hook"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 10,
+    "old_title": "Transmisión: ¡La verdad sobre el periodo de incubación!",
+    "cascade_title": "Se va a transmitir sobre todo cuando tenemos síntomas.",
+    "level": "oracion_informativa"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 11,
+    "old_title": "Tratamiento de virus: ¡La verdad sobre vacunas y fármacos!",
+    "cascade_title": "¿Hay tratamiento o curación",
+    "level": "overlay"
+  },
+  {
+    "job_id": "c7ea4108",
+    "moment_index": 7,
+    "old_title": "Brotes de virus: ¡La verdad sobre el deterioro del planeta!",
+    "cascade_title": "Todos estos brotes que pronto llaman y llaman tanto la",
+    "level": "primera_oracion"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 3,
+    "old_title": "Contagios: ¡Las situaciones cotidianas de máximo riesgo!",
+    "cascade_title": "Estoy hablando de dormir, porque esa persona al respirar el",
+    "level": "oracion_informativa"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 4,
+    "old_title": "Contacto estrecho: ¡El peligro invisible de proyectar la voz",
+    "cascade_title": "Pinta situación, un trabajador del barco que tiene que",
+    "level": "oracion_informativa"
+  },
+  {
+    "job_id": "9e739c7b",
+    "moment_index": 5,
+    "old_title": "Pandemias: ¡La ciencia demuestra el potencial cero!",
+    "cascade_title": "Escuchando ancianos, jóvenes, que hay que estar muy",
+    "level": "primera_oracion"
+  }
+]
