@@ -492,3 +492,109 @@ def derive_overlay_from_text(text: str, *, max_words: int = 4) -> str:
     # Presentar en el orden en que aparecen en el clip, no por longitud.
     ranked.sort(key=lambda w: seen[w])
     return " ".join(ranked).upper() if ranked else "MOMENTO DESTACADO"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W13 — Título que informa, no "Tema: ¡La verdad sobre X!"
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# docs/PLAN_CALIDAD.md §9 W10, etiquetas del 21-sep-2026: Agustín rechazó dos
+# clips publicables porque "los títulos y la descripción no explican de qué
+# hablan" (A-m11) / "las redacciones no son buenas" (A-m8). El patrón que se
+# ve en la salida real es "Tema: ¡La verdad sobre X!" — dice el TEMA, no la
+# afirmación concreta que el clip entrega. Mismo enfoque que W6 con
+# hook/overlay: reglas duras + una fidelidad difusa contra el texto real,
+# reintento único en generate_moment_copy_full, fallback determinístico acá.
+TITLE_MAX_CHARS = 60
+TITLE_MAX_EXCLAMATIONS = 1
+
+# Fórmulas que describen el TEMA en vez de la afirmación concreta. Frases
+# completas (no palabras sueltas) para no marcar falsos positivos como
+# "peligro" o "verdad" usadas de otra forma.
+_TITLE_FORBIDDEN_PHRASES = [
+    "la verdad sobre",
+    "la verdad de",
+    "la verdad detrás",
+    "el peligro de",
+    "los peligros de",
+    "lo que nadie te dice",
+    "lo que nadie te cuenta",
+    "nadie te dice esto",
+    "esto es lo que",
+    "no vas a creer",
+    "el secreto de",
+    "los secretos de",
+    "lo que no sabias",
+    "lo que no sabías",
+    "lo que no te dijeron",
+    "por que nadie habla de",
+    "por qué nadie habla de",
+]
+_TITLE_FORBIDDEN_RE = re.compile(
+    "|".join(re.escape(p) for p in _TITLE_FORBIDDEN_PHRASES), re.IGNORECASE
+)
+
+
+def title_has_forbidden_pattern(title: str) -> bool:
+    """True si el título usa una fórmula de "tema" en vez de una afirmación
+    concreta ("La verdad sobre...", "El peligro de...", etc.)."""
+    return bool(_TITLE_FORBIDDEN_RE.search(title or ""))
+
+
+def count_exclamations(title: str) -> int:
+    """Cuenta signos de cierre "!" — un "¡...!" cuenta como 1 (lo normal en
+    español), dos frases exclamativas separadas cuentan como 2."""
+    return (title or "").count("!")
+
+
+def title_is_faithful(title: str, clip_text: str) -> bool:
+    """True si al menos una palabra con carga semántica del título aparece
+    en el texto real del clip (misma lógica que `overlay_is_faithful`, pero
+    contra el clip completo en vez de solo los primeros segundos: un título
+    puede legítimamente citar el remate, no solo la apertura)."""
+    title_words = set(content_words(title))
+    if not title_words:
+        return False
+    clip_words = set(tokenize(clip_text))
+    return bool(title_words & clip_words)
+
+
+def title_is_valid(
+    title: str | None, clip_text: str, *, max_chars: int = TITLE_MAX_CHARS
+) -> tuple[bool, list[str]]:
+    """
+    Valida un título contra las 4 reglas de W13. Devuelve (ok, motivos) —
+    motivos en {"vacio", "formula_prohibida", "demasiados_signos_exclamacion",
+    "supera_60_caracteres", "no_fiel_al_texto"}.
+    """
+    if not title or not title.strip():
+        return False, ["vacio"]
+    reasons: list[str] = []
+    if title_has_forbidden_pattern(title):
+        reasons.append("formula_prohibida")
+    if count_exclamations(title) > TITLE_MAX_EXCLAMATIONS:
+        reasons.append("demasiados_signos_exclamacion")
+    if len(title) > max_chars:
+        reasons.append("supera_60_caracteres")
+    if not title_is_faithful(title, clip_text):
+        reasons.append("no_fiel_al_texto")
+    return (len(reasons) == 0), reasons
+
+
+def derive_title_from_text(text: str, *, max_chars: int = TITLE_MAX_CHARS) -> str:
+    """
+    Fallback determinístico cuando el título no pasa la validación (ni en el
+    intento original ni en el reintento con corrección): la primera oración
+    real del clip, recortada a `max_chars` sin partir una palabra a la mitad
+    (mismo criterio que el resto de los fallbacks de esta sección: preferir
+    texto real del clip a una plantilla genérica).
+    """
+    sentence = first_sentence(text).strip()
+    if not sentence:
+        return "Momento destacado"
+    if len(sentence) <= max_chars:
+        return sentence
+    truncated = sentence[:max_chars]
+    if " " in truncated:
+        truncated = truncated.rsplit(" ", 1)[0]
+    return truncated.rstrip(" ,;:—-")

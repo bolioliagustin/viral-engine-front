@@ -895,10 +895,12 @@ def generate_moment_copy_full(
     from services.content_validators import (
         clip_text_head_approx,
         derive_overlay_from_text,
+        derive_title_from_text,
         first_sentence,
         hook_is_faithful,
         last_sentence,
         overlay_is_faithful,
+        title_is_valid,
     )
 
     model = get_model("copy")
@@ -947,8 +949,11 @@ REGLAS POR PIEZA:
 3. tiktok_caption: 1-2 líneas coloquiales + 3-4 hashtags relevantes al tema.
 4. hook: una afirmación que la persona REALMENTE DICE en el clip (parafraseo leve permitido, inventar una promesa que el transcript no cumple NO). Ancla al INICIO REAL de arriba.
 5. viral_overlay: MÁXIMO 4 PALABRAS EN MAYÚSCULAS. Al menos una palabra tiene que salir del INICIO REAL del clip (arriba). Cartel TikTok que frena el scroll en <1s (ej: "NADIE TE DICE ESTO"). NO resume el tema del clip con palabras que la persona no dijo.
-6. title: título del clip para publicar, MÁXIMO 60 caracteres, con gancho. Patrón "Tema: ¡afirmación o pregunta!" (ej: "Sarampión vs COVID: ¡La verdad de la inmunidad de grupo!").
-7. description: EXACTAMENTE 2 oraciones — la primera dice qué se ve/de qué trata, la segunda invita a mirar/reaccionar. Sin hashtags acá (van en su propio campo).
+6. title: título del clip para publicar, MÁXIMO 60 caracteres. Tiene que decir la AFIRMACIÓN CONCRETA que el clip entrega — el dato, el número o la conclusión real — NO el tema en abstracto. PROHIBIDO usar "La verdad sobre", "La verdad de", "El peligro de", "Los peligros de", "Lo que nadie te dice/cuenta", "El secreto de", "Por qué nadie habla de" o fórmulas equivalentes que describan el tema en vez de la afirmación. Como máximo UN signo de exclamación (mejor ninguno — una afirmación fuerte no necesita "¡!"). Tiene que compartir al menos una palabra con el texto real del clip de arriba.
+   MAL: "Tratamiento de virus: ¡La verdad sobre vacunas y fármacos!" (fórmula prohibida, no dice el dato) → BIEN: "No hay vacuna: el tratamiento es solo cuidados intensivos"
+   MAL: "Virus americanos: ¡El peligro de la inundación pulmonar!" → BIEN: "El virus americano inunda los pulmones de líquido"
+   MAL: "Contagios: ¡Las situaciones cotidianas de máximo riesgo!" (vago, no dice cuáles) → BIEN: "Un apretón de manos puede contagiarte una zoonosis"
+7. description: EXACTAMENTE 2 oraciones. La primera responde "¿de qué habla el clip?" con el dato concreto (no el tema genérico). La segunda responde "¿por qué me interesa esto?" e invita a mirar/reaccionar. PROHIBIDO repetir el título casi textual. Sin hashtags acá (van en su propio campo).
 8. hashtags: EXACTAMENTE 10, en español, SIN acentos, en CamelCase con "#" (ej: "#InmunidadDeGrupo"), específicos del tema del clip — PROHIBIDO usar genéricos vacíos tipo "#Viral", "#Fyp", "#ParaTi", "#Trending".
 9. keywords: 6-12 palabras EXACTAS del CLIP TRANSCRIPT de arriba (cítalas tal cual aparecen, sin inventar ni parafrasear) que convenga resaltar en color en los subtítulos: números, nombres propios, verbos fuertes, negaciones — las palabras que un editor humano marcaría a mano para que salten al ojo.
 
@@ -990,32 +995,48 @@ Responde SOLO JSON:
         return False
 
     # ── W6: fidelidad de hook y overlay contra el texto real ────────────────
+    # W13: título validado con la misma lógica (reglas duras + fidelidad),
+    # en el mismo gate de reintento — un solo _request_copy extra cubre las
+    # tres cosas a la vez en vez de reintentos separados.
     overlay_candidate = data.get("viral_overlay") or overlay_draft
     hook_candidate = data.get("hook") or hook_draft
+    title_candidate = data.get("title")
 
     overlay_ok = not overlay_candidate or overlay_is_faithful(overlay_candidate, clip_head)
     hook_ok = not hook_candidate or hook_is_faithful(hook_candidate, clip_text)
+    title_ok, title_problems = title_is_valid(title_candidate, clip_text)
 
-    if not overlay_ok or not hook_ok:
+    if not overlay_ok or not hook_ok or not title_ok:
         print(
-            f"   🔄 Copy fidelity retry (overlay_ok={overlay_ok}, hook_ok={hook_ok}) "
+            f"   🔄 Copy fidelity retry (overlay_ok={overlay_ok}, hook_ok={hook_ok}, "
+            f"title_ok={title_ok} {title_problems if not title_ok else ''}) "
             f"— regenerando con corrección de fidelidad"
         )
-        retry_data = _request_copy(
-            fidelity_correction=(
-                "\n\nCORRECCIÓN OBLIGATORIA: el intento anterior usó un hook o un "
-                "overlay que NO aparece dicho en el clip — prometían el TEMA, no una "
-                f"frase real. El hook tiene que ser una afirmación cercana al INICIO "
-                f'REAL ("{clip_start_sentence}"). El overlay tiene que usar al menos '
-                f'una palabra de los primeros segundos del clip: "{clip_head}".'
-            )
+        correction = (
+            "\n\nCORRECCIÓN OBLIGATORIA: el intento anterior usó un hook o un "
+            "overlay que NO aparece dicho en el clip — prometían el TEMA, no una "
+            f"frase real. El hook tiene que ser una afirmación cercana al INICIO "
+            f'REAL ("{clip_start_sentence}"). El overlay tiene que usar al menos '
+            f'una palabra de los primeros segundos del clip: "{clip_head}".'
         )
+        if not title_ok:
+            correction += (
+                f"\n\nEl título anterior no sirve ({', '.join(title_problems)}): "
+                "tiene que ser la AFIRMACIÓN CONCRETA del clip (el dato/número/"
+                "conclusión real), sin 'La verdad sobre'/'El peligro de'/'Lo que "
+                f"nadie te dice' ni fórmulas equivalentes, máximo 60 caracteres, "
+                'como máximo un "¡...!" y con al menos una palabra del texto real '
+                f'del clip: "{clip_text[:200]}".'
+            )
+        retry_data = _request_copy(fidelity_correction=correction)
         if retry_data is not None:
             data = retry_data
             overlay_candidate = data.get("viral_overlay") or overlay_candidate
             hook_candidate = data.get("hook") or hook_candidate
+            title_candidate = data.get("title") or title_candidate
             overlay_ok = not overlay_candidate or overlay_is_faithful(overlay_candidate, clip_head)
             hook_ok = not hook_candidate or hook_is_faithful(hook_candidate, clip_text)
+            title_ok, title_problems = title_is_valid(title_candidate, clip_text)
 
     quality_issues: list[str] = []
     if overlay_candidate and not overlay_ok:
@@ -1027,6 +1048,11 @@ Responde SOLO JSON:
         print("   ⚠️ Hook no fiel tras reintento — fallback a la primera oración del clip")
         hook_candidate = clip_start_sentence
         quality_issues.append("hook_no_fiel")
+    if not title_ok:
+        fallback_title = derive_title_from_text(clip_text)
+        print(f"   ⚠️ Título inválido tras reintento ({title_problems}) — fallback: {fallback_title!r}")
+        title_candidate = fallback_title
+        quality_issues.append("titulo_generico")
 
     cp = moment.content_pieces
     if data.get("twitter_thread"):
@@ -1048,8 +1074,8 @@ Responde SOLO JSON:
         moment.clip_quality_issues = existing
 
     # W10: copy por clip (título, descripción, hashtags)
-    if data.get("title"):
-        moment.title = str(data["title"]).strip()[:60]
+    if title_candidate:
+        moment.title = str(title_candidate).strip()[:60]
     if data.get("description"):
         moment.description = str(data["description"]).strip()
     hashtags = _clean_hashtags(data.get("hashtags"))

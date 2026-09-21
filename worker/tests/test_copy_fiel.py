@@ -62,6 +62,11 @@ _BASE_COPY = {
     "twitter_thread": "\n\n".join([f"Tweet número {i} sobre el error del Ferrari." * 6 for i in range(7)]),
     "linkedin_post": "Un error de pit stop le costó la carrera al equipo. " * 20,
     "tiktok_caption": "El error que le costó la carrera #f1 #ferrari",
+    # W13: título válido por defecto — sin esto, cada test de este archivo
+    # (que solo le importa hook/overlay) dispararía TAMBIÉN el reintento de
+    # título y rompería los asserts de call_count. La validación de título
+    # en sí tiene su propia clase de tests más abajo.
+    "title": FIRST_SENTENCE,
 }
 
 
