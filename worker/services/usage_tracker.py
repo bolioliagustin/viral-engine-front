@@ -28,6 +28,17 @@ def _should_persist() -> bool:
 # Rollup en memoria durante el job (evita re-query al finalizar)
 _job_rollups: dict[str, dict[str, Any]] = {}
 
+# Modo dry-run (EVAL_DRY_RUN=1, ver services/supabase_client.is_dry_run):
+# los eventos no se insertan en job_usage_events pero el rollup sí se
+# acumula, y finalize_job_usage lo deja acá (por job_id) en vez de escribir
+# jobs.usage_summary, para que el tier e2e del golden set lea el costo.
+DRY_RUN_ROLLUPS: dict[str, dict[str, Any]] = {}
+
+
+def _is_dry_run() -> bool:
+    from services.supabase_client import is_dry_run
+    return is_dry_run()
+
 
 def _get_rollup(job_id: str) -> dict[str, Any]:
     if job_id not in _job_rollups:
@@ -76,7 +87,7 @@ def _update_rollup(job_id: str, event: dict[str, Any]) -> None:
             r["by_provider"].get(provider, 0.0) + cost, 6
         )
 
-    if task == "whisper" and event.get("audio_seconds"):
+    if task in ("whisper", "transcript_full") and event.get("audio_seconds"):
         secs = float(event["audio_seconds"])
         r["whisper_seconds"] = round(r["whisper_seconds"] + secs, 3)
         if provider and not event.get("cache_hit"):
@@ -91,6 +102,9 @@ def _insert_event(event: dict[str, Any]) -> None:
         return
 
     _update_rollup(job_id, event)
+
+    if _is_dry_run():
+        return
 
     try:
         from services.supabase_client import get_supabase
@@ -125,7 +139,10 @@ def _base_event(
     return {
         "job_id": job_id,
         "user_id": ctx.get("user_id"),
-        "event_type": "llm_chat" if task not in ("whisper", "download") else task,
+        "event_type": (
+            "llm_chat" if task not in ("whisper", "transcript_full", "download")
+            else ("whisper" if task == "transcript_full" else task)
+        ),
         "provider": provider,
         "task": task,
         "model": model,
@@ -203,12 +220,15 @@ def record_whisper_usage(
     moment_index: int | None = None,
     cache_hit: bool = False,
     metadata: dict[str, Any] | None = None,
+    task: str = "whisper",
 ) -> None:
-    """Registra transcripción Whisper con duración y costo estimado."""
+    """Registra transcripción Whisper con duración y costo estimado.
+    `task="transcript_full"` para los tramos del Transcript completo de W4
+    (mismo precio por segundo de audio; distinto rubro en el rollup)."""
     cost = 0.0 if cache_hit else estimate_whisper_cost_usd(provider, audio_seconds)
 
     event = _base_event(
-        task="whisper",
+        task=task,
         provider=provider,
         model=model,
         moment_index=moment_index,
@@ -281,19 +301,31 @@ def record_cache_hit(
     _insert_event(event)
 
 
-def finalize_job_usage(job_id: str) -> None:
-    """Escribe rollup en jobs.usage_summary y limpia acumulador en memoria."""
+def finalize_job_usage(job_id: str) -> Optional[dict[str, Any]]:
+    """
+    Escribe rollup en jobs.usage_summary y limpia acumulador en memoria.
+    Devuelve el rollup (None si no hubo eventos). En dry-run no escribe:
+    lo deja en DRY_RUN_ROLLUPS[job_id] y lo devuelve.
+    """
     if not job_id:
-        return
+        return None
 
     rollup = _job_rollups.pop(job_id, None)
     if not rollup or rollup.get("event_count", 0) == 0:
-        return
+        return None
 
     rollup["total_cost_usd"] = round(rollup["total_cost_usd"], 6)
 
+    if _is_dry_run():
+        DRY_RUN_ROLLUPS[job_id] = rollup
+        print(
+            f"   📊 usage_summary (dry-run, no persistido): ${rollup['total_cost_usd']:.4f} "
+            f"({rollup['event_count']} eventos)"
+        )
+        return rollup
+
     if not _should_persist():
-        return
+        return rollup
 
     try:
         from services.supabase_client import get_supabase
@@ -308,3 +340,4 @@ def finalize_job_usage(job_id: str) -> None:
         )
     except Exception as e:
         print(f"⚠️ usage_tracker: no se pudo guardar usage_summary ({e})")
+    return rollup

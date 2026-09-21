@@ -4,8 +4,15 @@ const path = require('path');
 const { supabase } = require('../lib/supabase');
 const rateLimit = require('express-rate-limit');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { curveMomentScores } = require('../lib/score-curve');
+const { getVideoDurationMinutes } = require('../lib/youtube-duration');
+const { notify } = require('../lib/telegram');
+const logger = require('../lib/logger');
 
 const router = express.Router();
+
+// F1 (docs/PROYECTO.md §14/§15): tope de duración en la beta.
+const MAX_VIDEO_MINUTES = Number(process.env.MAX_VIDEO_MINUTES) || 90;
 
 // Rate limiter for /process endpoint
 // Uses IP by default (with proper IPv6 support)
@@ -49,8 +56,8 @@ router.post('/process', requireAuth, processLimiter, async (req, res) => {
         }
 
         const jobId = uuidv4();
+        let creditReserved = false;
 
-        // Check user credits if userId provided
         if (userId) {
             // Check for duplicate job in last 7 days
             const { data: duplicateCheck } = await supabase
@@ -68,29 +75,47 @@ router.post('/process', requireAuth, processLimiter, async (req, res) => {
                 });
             }
 
-            const { data: user, error: userError } = await supabase
-                .from('users')
-                .select('credits')
-                .eq('id', userId)
-                .single();
+            // F1: tope de duración de la beta. "Fail open" — si no se pudo
+            // determinar la duración (red, HTML cambiado), no bloqueamos.
+            const durationMinutes = await getVideoDurationMinutes(videoUrl);
+            if (durationMinutes !== null && durationMinutes > MAX_VIDEO_MINUTES) {
+                return res.status(400).json({
+                    error: 'Video too long',
+                    message: `El video dura ${durationMinutes} min; el máximo en la beta es ${MAX_VIDEO_MINUTES} min.`,
+                });
+            }
 
-            if (userError) {
-                console.error('Error fetching user:', userError);
-                // Decide if we block or allow on error. Blocking is safer for SaaS.
+            // F1 (ADR 0005): reserva atómica del crédito, ANTES de crear el
+            // job — reemplaza el viejo "solo valido credits > 0" que dejaba
+            // encolar N jobs con 1 crédito.
+            const { data: reserved, error: reserveErr } = await supabase
+                .rpc('reserve_credit', { p_user_id: userId });
+
+            if (reserveErr) {
+                console.error('Error reserving credit:', reserveErr);
                 return res.status(500).json({
                     error: 'Server error',
                     message: 'Error al verificar tus créditos. Por favor intenta de nuevo.'
                 });
-            } else if (!user || user.credits <= 0) {
+            }
+            if (!reserved) {
+                // F1: si el usuario ya corrió jobs antes, avisar por Telegram
+                // (señal de que hay que cargarle créditos a mano en la beta).
+                const { count } = await supabase
+                    .from('jobs')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('user_id', userId);
+                if (count && count > 0) {
+                    notify(
+                        `💳 <b>Sin créditos</b>\nUsuario: <code>${userId}</code>\nYa corrió ${count} job(s) — puede necesitar recarga.`
+                    ).catch((e) => logger.error('notify sin créditos falló', { error: e.message }));
+                }
                 return res.status(402).json({
                     error: 'Insufficient credits',
                     message: 'No tienes créditos disponibles. Por favor recarga para continuar.'
                 });
             }
-
-            // IMPORTANT: We do NOT deduct credits here. 
-            // Credits should be deducted by the worker ONLY upon SUCCESSFUL completion.
-            // Here we just validate availability.
+            creditReserved = true;
         }
 
         // Create job in Supabase
@@ -98,7 +123,8 @@ router.post('/process', requireAuth, processLimiter, async (req, res) => {
             id: jobId,
             user_id: userId || null,
             video_url: videoUrl,
-            status: 'pending'
+            status: 'pending',
+            credit_reserved: creditReserved,
         };
         if (jobTone) jobRow.tone = jobTone;
         let { error: jobError } = await supabase.from('jobs').insert(jobRow);
@@ -112,6 +138,17 @@ router.post('/process', requireAuth, processLimiter, async (req, res) => {
 
         if (jobError) {
             console.error('Error creating job:', jobError);
+            // F1: el insert falló DESPUÉS de reservar el crédito — liberarlo,
+            // si no el usuario pierde un crédito por un job que no existe.
+            if (creditReserved) {
+                try {
+                    await supabase.rpc('release_credit', { p_user_id: userId });
+                } catch (releaseErr) {
+                    logger.error('release_credit falló tras insert error', {
+                        error: releaseErr.message, userId, jobId,
+                    });
+                }
+            }
             return res.status(500).json({ error: 'Failed to create job' });
         }
 
@@ -167,17 +204,86 @@ router.get('/status/:jobId', optionalAuth, async (req, res) => {
             .eq('job_id', jobId)
             .order('moment_index', { ascending: true });
 
+        // W10: "Score visible" — curva 60-99 + letras A-D, calculada por
+        // momento DENTRO de este job. Es solo presentación (score-curve.js);
+        // no toca score_judge ni el ranking que usa el pipeline. Una fila
+        // por content_result (3 por momento) trae el mismo score_judge
+        // repetido, así que alcanza con una fila por moment_index.
+        const rows = results || [];
+        const byMoment = new Map();
+        for (const r of rows) {
+            if (!byMoment.has(r.moment_index)) {
+                byMoment.set(r.moment_index, { moment_index: r.moment_index, score_judge: r.score_judge });
+            }
+        }
+        const curved = curveMomentScores(Array.from(byMoment.values()));
+
+        // W9-A (docs/adr/0008): hd_status/hd_url no son columnas — se derivan
+        // en caliente del último clip_edits (edit_type='hd_upgrade') de cada
+        // content_result_id, el mismo mecanismo de W7. preview_url sí es una
+        // columna real (migración galeria_hd), la trae el select('*') de
+        // arriba; NULL hasta que el worker la llene (pendiente, mitad worker
+        // de W9) — la UI cae a clip_url cuando falta.
+        const resultIds = rows.map((r) => r.id);
+        const hdByResultId = new Map();
+        if (resultIds.length > 0) {
+            const { data: hdEdits } = await supabase
+                .from('clip_edits')
+                .select('content_result_id, status, rendered_clip_url, created_at')
+                .in('content_result_id', resultIds)
+                .eq('edit_type', 'hd_upgrade')
+                .order('created_at', { ascending: false });
+            for (const edit of hdEdits || []) {
+                if (!hdByResultId.has(edit.content_result_id)) {
+                    hdByResultId.set(edit.content_result_id, edit);
+                }
+            }
+        }
+
+        const resultsWithDisplay = rows.map((r) => {
+            const hdEdit = hdByResultId.get(r.id);
+            let hd_status = 'none';
+            let hd_url = null;
+            if (hdEdit) {
+                if (hdEdit.status === 'completed' && hdEdit.rendered_clip_url) {
+                    hd_status = 'ready';
+                    hd_url = hdEdit.rendered_clip_url;
+                } else if (hdEdit.status === 'queued' || hdEdit.status === 'processing') {
+                    hd_status = hdEdit.status;
+                } else if (hdEdit.status === 'failed') {
+                    hd_status = 'error';
+                }
+            }
+            return {
+                ...r,
+                ...(curved.get(r.moment_index) || { score_display: null, grades: null }),
+                preview_url: r.preview_url ?? null,
+                hd_url,
+                hd_status,
+            };
+        });
+
         res.json({
             id: job.id,
             videoUrl: job.video_url,
             videoTitle: job.video_title,
             status: job.status,
             current_step: job.current_step,
+            // P1 (docs/PROYECTO.md §7/§8): el worker (W9-B, pendiente) va a
+            // escribir esto en cada paso — {current, total, message,
+            // clips_ready}. NULL en jobs viejos o mientras no lo escriba;
+            // el frontend cae al comportamiento de hoy sin romperse.
+            progress_detail: job.progress_detail ?? null,
             progress_percentage: job.progress_percentage,
             errorMessage: job.error_message,
             createdAt: job.created_at,
             updatedAt: job.updated_at,
-            results: results || []
+            // P1: `results` ya se devolvía completo mientras el job seguía
+            // 'processing' (sin gate por status) — la galería puede pollear
+            // y mostrar clips antes de que termine. `partial` se lo dice
+            // explícito al frontend en vez de inferirlo de `status`.
+            partial: job.status === 'processing',
+            results: resultsWithDisplay
         });
 
     } catch (error) {
@@ -246,8 +352,11 @@ async function getUserCredits(req, res) {
 /**
  * POST /jobs/:jobId/retry
  * Reintenta un job 'failed' o 'completed' reseteandolo a 'pending'.
- * El worker lo va a tomar en el siguiente poll. NO duplica el row, NO
- * descuenta credito (ya se cobro o el job fallo antes de cobrar).
+ * El worker lo va a tomar en el siguiente poll. NO duplica el row.
+ * F1 (ADR 0005): vuelve a reservar 1 crédito — un reintento es un nuevo
+ * procesamiento y cuesta como tal, ya sea que el original haya fallado
+ * (se le devolvió el crédito por el trigger) o haya completado (ese
+ * crédito ya se gastó en ESE resultado).
  */
 router.post('/jobs/:jobId/retry', requireAuth, async (req, res) => {
     try {
@@ -274,6 +383,22 @@ router.post('/jobs/:jobId/retry', requireAuth, async (req, res) => {
             });
         }
 
+        const { data: reserved, error: reserveErr } = await supabase
+            .rpc('reserve_credit', { p_user_id: userId });
+        if (reserveErr) {
+            console.error('Error reserving credit for retry:', reserveErr);
+            return res.status(500).json({
+                error: 'Server error',
+                message: 'Error al verificar tus créditos. Por favor intenta de nuevo.'
+            });
+        }
+        if (!reserved) {
+            return res.status(402).json({
+                error: 'Insufficient credits',
+                message: 'No tienes créditos disponibles. Por favor recarga para continuar.'
+            });
+        }
+
         const { data: updated, error: updateErr } = await supabase
             .from('jobs')
             .update({
@@ -281,12 +406,21 @@ router.post('/jobs/:jobId/retry', requireAuth, async (req, res) => {
                 error_message: null,
                 progress_percentage: 0,
                 current_step: null,
+                credit_reserved: true,
+                failure_alert_sent: false,
             })
             .eq('id', jobId)
             .select()
             .single();
 
-        if (updateErr) throw updateErr;
+        if (updateErr) {
+            // El update falló después de reservar -- liberar para no cobrar
+            // un crédito por un retry que no se pudo encolar.
+            try {
+                await supabase.rpc('release_credit', { p_user_id: userId });
+            } catch { /* best-effort */ }
+            throw updateErr;
+        }
         res.json({ job: updated, message: 'Job re-encolado' });
     } catch (error) {
         console.error('Error retrying job:', error);

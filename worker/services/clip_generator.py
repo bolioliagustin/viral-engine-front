@@ -13,6 +13,7 @@ Funciones (por dia del sprint):
 El pipeline siempre re-encodea para frame accuracy (el corte con -c copy
 solo era exacto en keyframes).
 """
+import re
 import subprocess
 import os
 import shutil
@@ -20,6 +21,11 @@ import json
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
+
+# W5 (docs/PLAN_CALIDAD.md §9 Fase 1, fila D): reencuadre vertical por escena
+# (Split/Fill/Fit). Módulo aislado — clip_generator solo lo CONSUME (arma el
+# filtro FFmpeg a partir de un LayoutPlan); reframe.py no conoce clip_generator.
+from services.reframe import LayoutPlan, plan_reframe_for_clip
 
 
 def _resolve_bin(env_var: str, name: str) -> str:
@@ -42,6 +48,21 @@ FFMPEG_PATH = _resolve_bin('FFMPEG_PATH', 'ffmpeg')
 FFPROBE_PATH = _resolve_bin('FFPROBE_PATH', 'ffprobe')
 
 CLIPS_DIR = Path(__file__).parent.parent / "clips"
+
+# W11 (docs/PLAN_CALIDAD.md §9 Fase 1): fuentes embebidas para el estilo
+# tiktok_viral_v2 (Bangers — ver fonts/README.md, licencia OFL). Se pasan
+# al filtro `ass=` de FFmpeg como `fontsdir` en vez de instalarse a nivel
+# sistema (ni acá ni en el contenedor): libass las resuelve por nombre
+# igual, sin tocar fontconfig.
+FONTS_DIR = Path(__file__).parent.parent / "fonts"
+
+# cut_clip() también corta el "segmento ancho" de W1 (services.validation.
+# CLIP_MIN/MAX_DURATION_SEC), no solo el clip final. Con el tope de Momento
+# en 120 s (docs/PLAN_CALIDAD.md §8-9), el segmento ancho puede llegar a
+# margen_antes(15) + clip(120) + margen_después(20) + extensión de remate
+# W1 (25) = 180 s exactos; el tope viejo de 180 no dejaba margen de
+# redondeo. 240 s da headroom sin abrir la puerta a un corte descontrolado.
+MAX_CUT_CLIP_DURATION_SEC = 240
 
 
 def cleanup_clips(video_id: str) -> None:
@@ -166,8 +187,10 @@ def cut_clip(
     if duration < 3:
         raise ClipGenerationError(f"Clip demasiado corto (<3s): {duration}s")
 
-    if duration > 180:
-        raise ClipGenerationError(f"Clip demasiado largo (>3min): {duration}s")
+    if duration > MAX_CUT_CLIP_DURATION_SEC:
+        raise ClipGenerationError(
+            f"Clip demasiado largo (>{MAX_CUT_CLIP_DURATION_SEC}s): {duration}s"
+        )
 
     # Verificar que el rango este dentro del video
     source_meta = probe_video(video_path)
@@ -187,7 +210,7 @@ def cut_clip(
 
     # FFmpeg con re-encode preciso
     # -ss DESPUES de -i = seek preciso pero mas lento
-    # Para clips <60s no es problema, ganamos precision
+    # Para clips de hasta MAX_CUT_CLIP_DURATION_SEC no es problema, ganamos precision
     # -threads 2: limita uso de memoria (default = all cores → buffers enormes en RAM)
     # -preset veryfast: ~30% menos RAM que 'fast', calidad casi idéntica para clips cortos
     # -loglevel error: evita bufferar cientos de KB de progress output en capture_output
@@ -357,6 +380,18 @@ def fix_ghost_leading_words(
     return fixed
 
 
+# Guarda W3 (PLAN_CALIDAD §1.3 C3): el snap por silencio confía en los timestamps
+# de Whisper. Si vienen corridos (whisper-1 con prompt largo: 73 palabras en 33 s
+# amontonadas en los últimos 9 s), "ver" 24 s de silencio y recortarlos destruye el
+# clip. Señales de timestamps sospechosos: densidad efectiva > 5 palabras/s sobre
+# el tramo con habla, o un hueco inicial > 40 % del clip cuando la densidad global
+# es normal (≥ 1.5 w/s: si hubiera habla real en ese hueco, Whisper la habría visto).
+_SNAP_MAX_EFFECTIVE_DENSITY = 5.0
+_SNAP_MAX_LEADING_TRIM_RATIO = 0.40
+_SNAP_NORMAL_DENSITY = 1.5
+_SNAP_MIN_SPEECH_SPAN_SEC = 1.0
+
+
 def snap_trim_bounds(
     words: list[dict],
     clip_duration: float,
@@ -364,9 +399,15 @@ def snap_trim_bounds(
     start_pad: float = 0.3,
     end_pad: float = 0.5,
     min_words_after_trim: int = 5,
+    max_leading_trim_ratio: float = _SNAP_MAX_LEADING_TRIM_RATIO,
 ) -> tuple[float, float]:
     """
     Snap clip bounds to speech, trimming leading/trailing silence > threshold.
+
+    Guardas: si los timestamps parecen corridos (densidad efectiva > 5 w/s, o
+    hueco inicial > 40 % con densidad global normal) no se toca el clip. El
+    recorte inicial nunca supera `max_leading_trim_ratio` del clip salvo que la
+    región descartada realmente no tenga palabras.
 
     Returns (trim_start, trim_end) within [0, clip_duration].
     """
@@ -374,8 +415,30 @@ def snap_trim_bounds(
         return 0.0, clip_duration
 
     words = fix_ghost_leading_words(words)
+    if not words:
+        return 0.0, clip_duration
     first_start = float(words[0].get("start", 0))
     last_end = float(words[-1].get("end", first_start))
+
+    n_words = len(words)
+    density = n_words / clip_duration
+    speech_span = max(0.0, last_end - first_start)
+    effective_density = n_words / max(speech_span, _SNAP_MIN_SPEECH_SPAN_SEC)
+    leading_ratio = first_start / clip_duration
+    if effective_density > _SNAP_MAX_EFFECTIVE_DENSITY:
+        print(
+            f"   ⚠️ Snap omitido: timestamps Whisper sospechosos "
+            f"({n_words} palabras en {speech_span:.1f}s de habla = "
+            f"{effective_density:.1f} w/s)"
+        )
+        return 0.0, clip_duration
+    if leading_ratio > max_leading_trim_ratio and density >= _SNAP_NORMAL_DENSITY:
+        print(
+            f"   ⚠️ Snap omitido: hueco inicial {first_start:.1f}s "
+            f"({leading_ratio:.0%} del clip) con densidad normal "
+            f"({density:.2f} w/s) — timestamps Whisper sospechosos"
+        )
+        return 0.0, clip_duration
 
     trim_start = 0.0
     if first_start > silence_threshold:
@@ -383,8 +446,16 @@ def snap_trim_bounds(
         words_after = sum(
             1 for w in words if float(w.get("end", 0)) > candidate_start
         )
+        words_dropped = n_words - words_after
         if words_after >= min_words_after_trim:
-            trim_start = candidate_start
+            if candidate_start / clip_duration > max_leading_trim_ratio and words_dropped > 0:
+                print(
+                    f"   ⚠️ Snap inicial omitido: recortaría {candidate_start:.1f}s "
+                    f"({candidate_start / clip_duration:.0%} del clip) con "
+                    f"{words_dropped} palabras adentro"
+                )
+            else:
+                trim_start = candidate_start
 
     trim_end = clip_duration
     trailing_silence = clip_duration - last_end
@@ -402,7 +473,14 @@ def shift_words_timeline(
     clip_duration: float | None = None,
     pre_trim_tolerance: float = 0.2,
 ) -> list[dict]:
-    """Shift word timestamps after trimming clip start; drop words outside range."""
+    """
+    Shift word timestamps after trimming clip start; drop words outside range.
+
+    Garantías (guarda W3): tras el desplazamiento se descartan las palabras
+    con end ≤ 0 (quedaron antes del corte), se recortan a 0 las que cruzan el
+    origen y se descartan las que arrancan en o después de `clip_duration`.
+    Nunca quedan más palabras que las que caen dentro de [0, clip_duration].
+    """
     shifted = []
     for w in words:
         raw_start = float(w.get("start", 0))
@@ -415,7 +493,8 @@ def shift_words_timeline(
         if we <= 0:
             continue
         if clip_duration is not None and ws >= clip_duration:
-            break
+            # `continue` y no `break`: no asumir que las palabras vienen ordenadas
+            continue
         ws = max(0.0, ws)
         we = max(ws + 0.04, we)
         if clip_duration is not None:
@@ -634,6 +713,37 @@ def refine_bounds_to_sentences(
     if trim_end - trim_start < min_duration:
         return 0.0, clip_duration
     return trim_start, min(trim_end, clip_duration)
+
+
+_MIN_CLIP_DURATION_AFTER_REFINE_SEC = 15.0
+
+
+def enforce_min_duration(
+    candidates: list[tuple[float, float]],
+    min_s: float = _MIN_CLIP_DURATION_AFTER_REFINE_SEC,
+) -> tuple[tuple[float, float], bool]:
+    """
+    Guarda W3 de duración mínima post-refinamiento.
+
+    `candidates` son los límites (start, end) en orden cronológico de
+    refinamiento: el primero son los límites originales del clip y el último
+    el resultado de snap + oraciones + anclas. Si el último cumple ≥ min_s se
+    devuelve tal cual; si no, se vuelve al último conjunto de límites que sí
+    cumplía (o a los originales) y se devuelve reverted=True para que el
+    llamador marque `min_duration_reverted`.
+
+    Un clip de 12 s recortado a 11 s vuelve a 12 s: la oración que se perdió
+    se recupera, y el flag avisa que el clip es más corto que el mínimo.
+    """
+    if not candidates:
+        raise ValueError("enforce_min_duration requiere al menos los límites originales")
+    final = candidates[-1]
+    if final[1] - final[0] >= min_s:
+        return final, False
+    for start, end in reversed(candidates[:-1]):
+        if end - start >= min_s:
+            return (start, end), True
+    return candidates[0], True
 
 
 def _parse_srt_timestamp(ts: str) -> float:
@@ -999,6 +1109,319 @@ def segments_to_srt(
     return output_path
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# W11 — Subtítulos v2 (docs/PLAN_CALIDAD.md §9 Fase 1)
+# ═══════════════════════════════════════════════════════════════════════════
+# Bloques de 1-3 palabras, MAYÚSCULAS, palabra clave resaltada — imita el
+# estilo de captions cortas tipo TikTok / Opus Clip (docs/ANALISIS_OPUS_CLIP.md
+# §2.5: 1-5 palabras por bloque, mediana 2, sin texto en silencios).
+#
+# Partículas en español que nunca quedan solas al final de un bloque (se
+# arrastran a costa de superar el tope de palabras en ese caso puntual).
+V2_PARTICLES = frozenset({
+    "el", "la", "los", "las", "un", "una", "de", "del", "al", "a", "en",
+    "con", "por", "para", "que", "y", "o", "no", "se", "su", "mi", "tu",
+})
+
+# Puntuación que SIEMPRE corta un bloque (fin de idea).
+V2_STRONG_PUNCT = ".!?…"
+
+V2_MAX_WORDS = 3
+V2_GAP_SPLIT_SEC = 0.35          # gap entre palabras que fuerza un corte
+V2_SILENCE_GAP_SEC = 0.5         # gap a partir del cual NO hay texto (silencio)
+V2_MIN_BLOCK_DUR_SEC = 0.25      # bloque más corto que esto se funde con el vecino
+
+# Colores de palabra clave (docs/ANALISIS_OPUS_CLIP.md §2.5): verde primario,
+# amarillo secundario si el bloque tiene dos palabras marcadas.
+V2_KEYWORD_COLOR_PRIMARY = "#04F827"
+V2_KEYWORD_COLOR_SECONDARY = "#FFFD03"
+
+
+def _v2_clean_word(text: str) -> str:
+    """minúscula, sin puntuación/acentos-diacríticos de borde — para comparar."""
+    return re.sub(r"[^\w]", "", (text or "").lower(), flags=re.UNICODE)
+
+
+def _v2_is_particle(text: str) -> bool:
+    return _v2_clean_word(text) in V2_PARTICLES
+
+
+def _v2_ends_strong(text: str) -> bool:
+    t = (text or "").strip()
+    return bool(t) and t[-1] in V2_STRONG_PUNCT
+
+
+def group_words_v2(words: list[dict], *, max_words: int = V2_MAX_WORDS) -> list[list[dict]]:
+    """
+    Agrupa palabras (con 'word'/'start'/'end') en bloques de 1-`max_words`.
+
+    Corta siempre que: el bloque ya tiene `max_words`, la palabra anterior
+    termina en puntuación fuerte (.!?…), o el gap hasta la palabra siguiente
+    es >= V2_GAP_SPLIT_SEC. Excepción: si el corte por conteo dejaría una
+    partícula (el/la/de/en/...) sola al final del bloque, se la arrastra al
+    bloque (que en ese caso puntual queda de max_words+1).
+    """
+    clean = [w for w in words if (w.get("word") or "").strip()]
+    if not clean:
+        return []
+
+    groups: list[list[dict]] = []
+    current: list[dict] = [clean[0]]
+
+    for w in clean[1:]:
+        if not current:
+            # El bloque anterior cerró en la rama de "arrastrar partícula"
+            # (ver más abajo) — arrancamos uno nuevo con esta palabra.
+            current = [w]
+            continue
+        prev = current[-1]
+        gap = float(w.get("start", 0)) - float(prev.get("end", 0))
+        strong_cut = _v2_ends_strong(prev.get("word", "")) or gap >= V2_GAP_SPLIT_SEC
+        count_cut = len(current) >= max_words
+
+        if strong_cut:
+            groups.append(current)
+            current = [w]
+        elif count_cut:
+            if _v2_is_particle(prev.get("word", "")):
+                # No separar la partícula de lo que sigue: se pega y el
+                # bloque cierra ahí (excede max_words en 1, a propósito).
+                current.append(w)
+                groups.append(current)
+                current = []
+            else:
+                groups.append(current)
+                current = [w]
+        else:
+            current.append(w)
+
+    if current:
+        groups.append(current)
+
+    return groups
+
+
+def _v2_blocks_with_timing(
+    groups: list[list[dict]],
+    clip_duration_sec: Optional[float] = None,
+) -> list[dict]:
+    """
+    A partir de los grupos de `group_words_v2`, arma bloques {"words","start",
+    "end"} con el timing de despliegue: funde bloques que quedarían visibles
+    menos de V2_MIN_BLOCK_DUR_SEC con el vecino, y nunca estira el final de
+    un bloque hacia un hueco de silencio >= V2_SILENCE_GAP_SEC (sin texto
+    durante silencios).
+    """
+    if not groups:
+        return []
+
+    raw: list[dict] = []
+    for g in groups:
+        start = float(g[0]["start"])
+        end = float(g[-1]["end"])
+        if end <= start:
+            end = start + 0.06
+        raw.append({"words": g, "start": start, "end": end})
+
+    # Fundir bloques cortísimos con el bloque anterior (si el hueco entre
+    # ambos no es ya un silencio real).
+    merged: list[dict] = []
+    for b in raw:
+        dur = b["end"] - b["start"]
+        if merged and dur < V2_MIN_BLOCK_DUR_SEC:
+            gap_to_prev = b["start"] - merged[-1]["end"]
+            if gap_to_prev < V2_SILENCE_GAP_SEC:
+                merged[-1]["words"] = merged[-1]["words"] + b["words"]
+                merged[-1]["end"] = b["end"]
+                continue
+        merged.append(b)
+
+    # El primer bloque no tiene "anterior" para fundirse — si es cortísimo,
+    # se funde hacia el siguiente en su lugar.
+    if len(merged) > 1 and (merged[0]["end"] - merged[0]["start"]) < V2_MIN_BLOCK_DUR_SEC:
+        gap_to_next = merged[1]["start"] - merged[0]["end"]
+        if gap_to_next < V2_SILENCE_GAP_SEC:
+            merged[1]["words"] = merged[0]["words"] + merged[1]["words"]
+            merged[1]["start"] = merged[0]["start"]
+            merged.pop(0)
+
+    # Timing de despliegue: estirar el final un poco hacia el próximo bloque
+    # para que no parpadee — salvo que el hueco real sea un silencio.
+    gap_sec = 0.03
+    for i, b in enumerate(merged):
+        if i + 1 < len(merged):
+            next_start = merged[i + 1]["start"]
+            raw_gap = next_start - b["end"]
+            if raw_gap < V2_SILENCE_GAP_SEC:
+                b["end"] = min(b["end"] + 0.10, next_start - gap_sec)
+        elif clip_duration_sec is not None:
+            b["end"] = min(b["end"] + 0.15, clip_duration_sec + 0.10)
+        b["end"] = max(b["start"] + 0.08, b["end"])
+
+    return merged
+
+
+def detect_keywords_v2(
+    blocks: list[dict],
+    moment_keywords: Optional[list[str]] = None,
+) -> list[list[int]]:
+    """
+    Para cada bloque, índices (dentro de block["words"]) de las palabras a
+    resaltar.
+
+    Con `moment_keywords` (Pasada B, W11 punto 2 — 6-12 palabras del texto
+    real elegidas por el modelo): hasta 2 por bloque, en el orden en que
+    aparecen. Sin `moment_keywords` (jobs legacy): heurística local, máximo
+    1 por bloque — números, MAYÚSCULA que no arranca el bloque, o >=7 letras
+    que no sea partícula.
+    """
+    normalized_keywords = None
+    if moment_keywords:
+        normalized_keywords = {
+            _v2_clean_word(k) for k in moment_keywords if k and str(k).strip()
+        }
+        normalized_keywords.discard("")
+
+    result: list[list[int]] = []
+    for block in blocks:
+        words = block["words"]
+        picks: list[int] = []
+        if normalized_keywords:
+            for i, w in enumerate(words):
+                if _v2_clean_word(w.get("word", "")) in normalized_keywords:
+                    picks.append(i)
+                if len(picks) >= 2:
+                    break
+        else:
+            for i, w in enumerate(words):
+                text = (w.get("word") or "").strip()
+                clean = _v2_clean_word(text)
+                if not clean or _v2_is_particle(text):
+                    continue
+                is_number = any(ch.isdigit() for ch in text)
+                # Mayúscula "que no arranca oración": aproximamos con "no es
+                # la primera palabra del bloque" — barato y sin volver a
+                # analizar todo el clip para saber dónde arranca la oración.
+                is_mid_capital = i > 0 and text[:1].isupper()
+                is_long = len(clean) >= 7
+                if is_number or is_mid_capital or is_long:
+                    picks.append(i)
+                    break  # heurística: máximo 1 por bloque
+        result.append(picks)
+    return result
+
+
+def _v2_block_to_ass_text(block: dict, highlight_indices: list[int]) -> str:
+    """MAYÚSCULAS + color de palabra clave (primario/secundario) por bloque."""
+    colors: dict[int, str] = {}
+    if highlight_indices:
+        colors[highlight_indices[0]] = _hex_to_ass_color(V2_KEYWORD_COLOR_PRIMARY)
+    if len(highlight_indices) > 1:
+        colors[highlight_indices[1]] = _hex_to_ass_color(V2_KEYWORD_COLOR_SECONDARY)
+
+    parts = []
+    for i, w in enumerate(block["words"]):
+        text = (w.get("word") or "").strip().upper()
+        safe = text.replace("{", "\\{").replace("}", "\\}")
+        if i in colors:
+            parts.append(r"{\c" + colors[i] + r"&}" + safe + r"{\r}")
+        else:
+            parts.append(safe)
+    return " ".join(parts)
+
+
+def _v2_words_to_ass(
+    words: list[dict],
+    output_path: str,
+    base_style: dict,
+    play_res_x: int,
+    play_res_y: int,
+    clip_duration_sec: Optional[float],
+    start_offset_sec: float = 0.0,
+    moment_keywords: Optional[list[str]] = None,
+) -> str:
+    """
+    Construye el ASS de subtítulos v2 completo: agrupado 1-3 palabras,
+    MAYÚSCULAS, palabra clave en color, animación "pop" al aparecer cada
+    bloque (sin karaoke por palabra), sin texto en silencios.
+    """
+    clip_words = []
+    end_limit = (clip_duration_sec + 0.25) if clip_duration_sec is not None else None
+    for w in words:
+        w_start = float(w.get("start", 0)) - start_offset_sec
+        w_end = float(w.get("end", w_start + 0.1)) - start_offset_sec
+        word_text = (w.get("word") or "").strip()
+        if not word_text or w_end <= 0:
+            continue
+        if end_limit is not None and w_start > end_limit:
+            break
+        w_start = max(0.0, w_start)
+        if clip_duration_sec is not None:
+            w_end = min(clip_duration_sec + 0.15, w_end)
+        if w_end <= w_start:
+            w_end = w_start + 0.06
+        clip_words.append({"word": word_text, "start": w_start, "end": w_end})
+
+    if not clip_words:
+        raise ClipGenerationError("No words for v2 ASS")
+
+    groups = group_words_v2(clip_words)
+    blocks = _v2_blocks_with_timing(groups, clip_duration_sec)
+    highlights = detect_keywords_v2(blocks, moment_keywords)
+
+    events = []
+    # Pop: escala 100%→112%→100% en los primeros 120ms del bloque (\t con
+    # \fscx\fscy) — sin karaoke por palabra, un solo efecto por Dialogue.
+    pop_tag = r"{\fscx100\fscy100\t(0,60,\fscx112\fscy112)\t(60,120,\fscx100\fscy100)}"
+    for block, picks in zip(blocks, highlights):
+        text = _v2_block_to_ass_text(block, picks)
+        start_ass = _format_ass_time(block["start"])
+        end_ass = _format_ass_time(block["end"])
+        events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{pop_tag}{text}")
+
+    s = base_style
+    style_line = (
+        f"Style: Default,"
+        f"{s.get('FontName', 'Arial')},"
+        f"{s.get('FontSize', '48')},"
+        f"{s.get('PrimaryColour', '&H00FFFFFF')},"
+        f"&H000000FF,"
+        f"{s.get('OutlineColour', '&H00000000')},"
+        f"{s.get('BackColour', '&H00000000')},"
+        f"{s.get('Bold', '0')},"
+        f"0,0,0,"
+        f"100,100,{s.get('Spacing', '0')},0,"
+        f"{s.get('BorderStyle', '1')},"
+        f"{s.get('Outline', '1')},"
+        f"{s.get('Shadow', '0')},"
+        f"{s.get('Alignment', '2')},"
+        f"60,60,"
+        f"{s.get('MarginV', '40')},"
+        f"1"
+    )
+    ass_content = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+{style_line}
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+""" + "\n".join(events) + "\n"
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(ass_content)
+    n_kw = sum(1 for h in highlights if h)
+    print(f"   🎬 Subtítulos v2: {len(events)} bloques, {n_kw} con palabra clave")
+    return output_path
+
+
 # Presets de estilo para subtitulos (formato ASS force_style)
 # Colores en formato ASS: &HAABBGGRR  (AA=alpha 00=opaco, BB=blue, GG=green, RR=red)
 # Ejemplos: &H00FFFFFF=blanco, &H0000FFFF=amarillo, &H000080FF=naranja, &H0000FF00=verde
@@ -1048,6 +1471,28 @@ SUBTITLE_STYLES = {
         "Bold": "1",
         "Alignment": "2",
         "MarginV": "340",
+    },
+    # ── tiktok_viral_v2 (default, W11 — docs/PLAN_CALIDAD.md §9 Fase 1) ────────
+    # Bloques cortos (1-3 palabras, ver group_words_v2), MAYÚSCULAS, palabra
+    # clave en color. Fuente cómic Bangers (fonts/, OFL) en vez de Liberation
+    # Sans — el look "hecho para TikTok" que describe ANALISIS_OPUS_CLIP.md
+    # §2.5 (Opus usa Komika Axis; Bangers es el equivalente libre más cercano
+    # en Google Fonts). Tamaño y borde calculados para el canvas 720x1280:
+    # ~7% del alto (90px) y un borde de 5px — el borde de Opus es 16px sobre
+    # 1080p, que a 720p equivale a ~10-11px, pero un borde tan grueso ahoga
+    # los trazos finos de una fuente display; 5px es el punto legible.
+    "tiktok_viral_v2": {
+        "FontName": "Bangers",
+        "FontSize": "90",
+        "PrimaryColour": "&H00FFFFFF",   # blanco
+        "OutlineColour": "&H00000000",   # negro
+        "BorderStyle": "1",
+        "Outline": "5",
+        "Shadow": "2",                   # sombra suave (Opus también la usa)
+        "Bold": "0",                     # Bangers no tiene variante bold real
+        "Spacing": "1",
+        "Alignment": "2",                # bottom-anchored; MarginV lo sube a ~58% del alto
+        "MarginV": "500",                # ≈58% del alto (1280px) medido desde abajo
     },
 }
 
@@ -1353,14 +1798,21 @@ def burn_subtitles(
 # Diferencia vs SUBTITLE_STYLES: fuente mas grande, posicion configurable
 # El overlay va en la zona SUPERIOR del blur (top blur band del layout 9:16).
 OVERLAY_STYLES = {
-    # ── TikTok viral: blanco bold con borde negro — el clásico de hooks ───────
+    # ── TikTok viral (W11 — docs/PLAN_CALIDAD.md §9 Fase 1): caja blanca con
+    # texto negro, como el hook de Opus (docs/ANALISIS_OPUS_CLIP.md §2.4).
+    # Sin BorderStyle=4 (box real, esquinas cuadradas): un Outline grueso del
+    # mismo color que el fondo deseado (\3c = OutlineColour) sigue el
+    # contorno de las letras en vez de dibujar un rectángulo, así que el
+    # "borde" queda como una cápsula redondeada alrededor del texto —
+    # esquinas redondeadas "simuladas" sin dibujo vectorial. Fuente normal
+    # negrita (Liberation Sans), NO la cómic de los subtítulos.
     "tiktok_viral": {
         "FontName": "Liberation Sans",
-        "FontSize": "58",                # baja para que 4 palabras UPPER entren cómodas
-        "PrimaryColour": "&H00FFFFFF",   # blanco
-        "OutlineColour": "&H00000000",   # negro
+        "FontSize": "54",
+        "PrimaryColour": "&H00000000",   # texto negro
+        "OutlineColour": "&H00FFFFFF",   # "caja" blanca (bord grueso = cápsula)
         "BorderStyle": "1",
-        "Outline": "5",                  # borde grueso para legibilidad sobre blur
+        "Outline": "18",                 # grueso a propósito: es el fondo, no un borde fino
         "Shadow": "0",
         "Bold": "1",
         "Spacing": "1",
@@ -1444,7 +1896,7 @@ def _build_overlay_ass(
         f"{s.get('Outline', '3')},"
         f"{s.get('Shadow', '1')},"
         f"{alignment},"
-        f"80,80,"       # MarginL, MarginR (overlay tiene más aire lateral)
+        f"95,95,"       # MarginL, MarginR — deja ~73% del ancho para el texto (W11: 72-75%)
         f"{margin_v},"
         f"1"
     )
@@ -1578,20 +2030,75 @@ def burn_overlay_text(
     return probe_video(output_path)
 
 
+def _build_reframe_filter(layout: Optional[LayoutPlan], W: int, H: int, B: int, src_label: str = "0:v") -> str:
+    """
+    Filtro FFmpeg (sin `[vout]` final — lo agrega el caller) para pasar de
+    16:9 a WxH según `layout` (W5, docs/PLAN_CALIDAD.md §9 Fase 1):
+
+      - None o layout.name == "fit": EXACTAMENTE el filtro de fondo
+        desenfocado de siempre (test de snapshot en test_reframe.py).
+      - "fill": un solo crop+scale a pantalla completa (el CropArea ya viene
+        con el aspect ratio de destino calculado — ver reframe._fill_layout).
+      - "split": dos crop+scale apilados con vstack (mitad superior/inferior).
+
+    Los crops de LayoutPlan están en % del frame ORIGINAL, así que se
+    traducen a expresiones `iw*pct`/`ih*pct` de FFmpeg — no hace falta saber
+    las dimensiones reales del video de entrada.
+    """
+    if layout is None or layout.name == "fit" or not layout.crops:
+        return (
+            f"[{src_label}]split=2[bg][fg];"
+            f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,"
+            f"crop={W}:{H},boxblur=luma_radius={B}:luma_power=1[bg2];"
+            f"[fg]scale={W}:-2:force_original_aspect_ratio=decrease[fg2];"
+            f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"
+        )
+
+    if layout.name == "fill":
+        c = layout.crops[0]
+        return (
+            f"[{src_label}]crop=w=iw*{c.src_w_pct:.6f}:h=ih*{c.src_h_pct:.6f}:"
+            f"x=iw*{c.src_x_pct:.6f}:y=ih*{c.src_y_pct:.6f},"
+            f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},format=yuv420p"
+        )
+
+    if layout.name == "split":
+        top, bottom = layout.crops[0], layout.crops[1]
+        half_h = H // 2
+        return (
+            f"[{src_label}]split=2[a][b];"
+            f"[a]crop=w=iw*{top.src_w_pct:.6f}:h=ih*{top.src_h_pct:.6f}:"
+            f"x=iw*{top.src_x_pct:.6f}:y=ih*{top.src_y_pct:.6f},"
+            f"scale={W}:{half_h}[a2];"
+            f"[b]crop=w=iw*{bottom.src_w_pct:.6f}:h=ih*{bottom.src_h_pct:.6f}:"
+            f"x=iw*{bottom.src_x_pct:.6f}:y=ih*{bottom.src_y_pct:.6f},"
+            f"scale={W}:{H - half_h}[b2];"
+            f"[a2][b2]vstack=2,format=yuv420p"
+        )
+
+    raise ClipGenerationError(f"LayoutPlan.name desconocido: {layout.name!r}")
+
+
 def to_vertical_9_16(
     clip_path: str,
     output_path: Optional[str] = None,
     target_width: int = 1080,
     target_height: int = 1920,
     blur_intensity: int = 25,
+    layout: Optional[LayoutPlan] = None,
 ) -> ClipMetadata:
     """
-    Convierte un clip a formato vertical 9:16 con fondo desenfocado.
+    Convierte un clip a formato vertical 9:16.
 
-    Estilo TikTok/Reels/Shorts:
+    Sin `layout` (default, comportamiento original): fondo desenfocado
+    estilo TikTok/Reels/Shorts.
       - Fondo: version ampliada del mismo video con blur fuerte (llena el frame)
       - Foreground: video original centrado, escalado a ancho completo manteniendo aspect ratio
       - Resultado: 1080x1920 (o el target que se pase)
+
+    Con `layout` (W5, docs/PLAN_CALIDAD.md §9 Fase 1): "fill" (una cara,
+    recorte a pantalla completa) o "split" (dos caras, apiladas) en vez del
+    fondo desenfocado — ver `services.reframe.choose_layout`.
 
     Args:
         clip_path: Path al clip (tipicamente output de cut_clip)
@@ -1599,6 +2106,7 @@ def to_vertical_9_16(
         target_width: Ancho final (default 1080)
         target_height: Alto final (default 1920)
         blur_intensity: Intensidad del blur del fondo (10=suave, 25=medio, 50=fuerte)
+        layout: LayoutPlan opcional (services.reframe.choose_layout); None = "fit" (actual)
 
     Returns:
         ClipMetadata del clip vertical generado
@@ -1620,20 +2128,8 @@ def to_vertical_9_16(
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    # Filtergraph:
-    # [0:v]split=2[bg][fg]                          ← duplicar stream de video
-    # [bg]scale=W:H:force_original_aspect_ratio=increase,crop=W:H,
-    #       boxblur=luma_radius=BLUR:luma_power=1[bg2]  ← fondo cubriendo + blur
-    # [fg]scale=W:-2:force_original_aspect_ratio=decrease[fg2]  ← foreground ancho completo manteniendo AR
-    # [bg2][fg2]overlay=(W-w)/2:(H-h)/2             ← centrar fg sobre bg
     W, H, B = target_width, target_height, blur_intensity
-    filter_complex = (
-        f"[0:v]split=2[bg][fg];"
-        f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,"
-        f"crop={W}:{H},boxblur=luma_radius={B}:luma_power=1[bg2];"
-        f"[fg]scale={W}:-2:force_original_aspect_ratio=decrease[fg2];"
-        f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"
-    )
+    filter_complex = _build_reframe_filter(layout, W, H, B)
 
     cmd = [
         FFMPEG_PATH,
@@ -1704,13 +2200,30 @@ def generate_clip(
     segments_start_offset_sec: Optional[float] = None,
     words: Optional[list[dict]] = None,  # word-level timestamps (Whisper verbose_json)
     word_styles: Optional[list[dict]] = None,  # per-word ASS overrides
-    subtitle_style: str = "tiktok_viral",
+    subtitle_style: str = "tiktok_viral_v2",
+    # W11: palabras clave de la Pasada B (moment.keywords) para resaltar en
+    # tiktok_viral_v2; sin esto, heurística local (ver detect_keywords_v2).
+    keywords: Optional[list[str]] = None,
     overlay_text: Optional[str] = None,
     overlay_style: str = "tiktok_viral",
-    overlay_duration_sec: float = 3.5,
+    overlay_duration_sec: float = 5.0,
     overlay_position: str = "top",
     target_width: int = 1080,
     target_height: int = 1920,
+    # W9-B (docs/PLAN_CALIDAD.md §9 W9): el preview liviano de la galería usa
+    # crf 28 (más compresión, menos tiempo/tamaño) en vez del 23 de siempre;
+    # el HD a pedido (clip_edit_processor.py) sigue en 23. `-preset veryfast`
+    # ya era el de siempre en las dos pasadas de FFmpeg de más abajo, no es
+    # nuevo de W9-B.
+    crf: int = 23,
+    # W5 (docs/PLAN_CALIDAD.md §9 Fase 1): encuadre Split/Fill/Fit en vez del
+    # fondo desenfocado de siempre. None (default): si REFRAME_MODE=auto (env
+    # var, default "off") Y hay video_path local, se analiza automáticamente
+    # con services.reframe.plan_reframe_for_clip; si no, "fit" de siempre.
+    # Pasar un LayoutPlan explícito (services.reframe.choose_layout) salta el
+    # análisis automático y lo usa directamente (tests, o un caller que ya
+    # analizó por su cuenta).
+    layout: Optional[LayoutPlan] = None,
     keep_intermediate: bool = False,
     workdir: Optional[str] = None,
     # ── Descarga selectiva (stream URLs) ──────────────────────────────────────
@@ -1740,12 +2253,17 @@ def generate_clip(
         output_path: path del MP4 final
         segments: lista Whisper-style para subtitulos.
         segments_start_offset_sec: offset de timestamps de segments.
-        subtitle_style: 'tiktok_viral' | 'clean' | 'podcast'
+        subtitle_style: 'tiktok_viral_v2' (default, W11) | 'tiktok_viral' | 'clean' | 'podcast'
+        keywords: palabras a resaltar en tiktok_viral_v2 (Pasada B); sin esto,
+            heurística local (detect_keywords_v2)
         overlay_text: texto del hook inicial. Si None, no se quema overlay.
         overlay_style: 'tiktok_viral' | 'question' | 'stat'
         overlay_duration_sec: cuantos segundos dura el overlay visible
         overlay_position: 'top' | 'center' | 'bottom'
+        layout: LayoutPlan explícito (services.reframe). None = auto-detección
+            si REFRAME_MODE=auto (env var) y hay video_path local; si no, "fit"
         target_width, target_height: dimensiones finales (default 1080x1920)
+        crf: calidad/tamaño del encoder (default 23; el preview de W9-B usa 28)
         keep_intermediate: si True, no borra los archivos temporales
         workdir: directorio para archivos intermedios
         video_stream_url: URL de stream de video (modo descarga selectiva)
@@ -1802,6 +2320,33 @@ def generate_clip(
 
         t0 = time.time()
 
+        # Paso 0 (W5, docs/PLAN_CALIDAD.md §9 Fase 1): reencuadre por escena.
+        # `layout` explícito gana siempre. Si no vino ninguno, solo se
+        # analiza cuando REFRAME_MODE=auto Y hay un video_path local — el
+        # análisis lee frames reales (cv2.VideoCapture), no sirve con
+        # stream URLs. Con REFRAME_MODE=off (default) el comportamiento es
+        # idéntico al de antes de W5: layout queda None -> filtro "fit".
+        reframe_mode = os.environ.get("REFRAME_MODE", "off").strip().lower()
+        if layout is None and reframe_mode == "auto" and not use_stream_urls and video_path:
+            t_reframe = time.time()
+            try:
+                layout = plan_reframe_for_clip(
+                    video_path=video_path, start_sec=0.0, end_sec=duration_sec,
+                    target_w=W, target_h=H,
+                )
+                print(f"   🖼️  Reencuadre (W5): layout={layout.name}")
+            except Exception as e_reframe:
+                print(f"   ⚠️ Reencuadre falló, sigo con 'fit': {e_reframe}")
+                layout = None
+            step_times['reframe_analysis'] = round(time.time() - t_reframe, 2)
+
+        # W5: en "split" las dos caras ocupan toda la altura del frame, así
+        # que los subtítulos se corren de ~58% a la costura (centro
+        # vertical, 50%) para no taparlas — ver _build_reframe_filter.
+        subtitle_base_style = SUBTITLE_STYLES[subtitle_style]
+        if layout is not None and layout.name == "split" and subtitle_style == "tiktok_viral_v2":
+            subtitle_base_style = {**subtitle_base_style, "MarginV": str(H // 2)}
+
         # Paso A: generar ASS de subtítulos (si hay segments o words)
         subs_ass_path = None
         if segments or words:
@@ -1809,16 +2354,33 @@ def generate_clip(
             ass_path = str(Path(workdir) / f"{stem}_subs.ass")
             try:
                 if words and word_styles:
+                    # Overrides manuales del editor (WordSubtitleEditor):
+                    # tienen prioridad sobre el resaltado automático de v2.
                     _words_to_per_word_ass(
                         words=words,
                         output_path=ass_path,
-                        base_style=SUBTITLE_STYLES[subtitle_style],
+                        base_style=subtitle_base_style,
                         play_res_x=W,
                         play_res_y=H,
                         clip_duration_sec=duration_sec,
                         max_words_per_line=4,
                         word_styles=word_styles,
                         start_offset_sec=offset,
+                    )
+                    subs_ass_path = ass_path
+                    intermediates.append(ass_path)
+                elif words and subtitle_style == "tiktok_viral_v2":
+                    # W11: bloques 1-3 palabras, MAYÚSCULAS, palabra clave,
+                    # pop y sin texto en silencios (ver _v2_words_to_ass).
+                    _v2_words_to_ass(
+                        words=words,
+                        output_path=ass_path,
+                        base_style=subtitle_base_style,
+                        play_res_x=W,
+                        play_res_y=H,
+                        clip_duration_sec=duration_sec,
+                        start_offset_sec=offset,
+                        moment_keywords=keywords,
                     )
                     subs_ass_path = ass_path
                     intermediates.append(ass_path)
@@ -1863,28 +2425,24 @@ def generate_clip(
 
         step_times['prep'] = round(time.time() - t0, 2)
 
-        # Paso C: filter_complex — 9:16 base
-        # bg: escala a 9:16 rellenando + blur
-        # fg: escala manteniendo aspect ratio (ancho completo)
-        # overlay centra fg sobre bg
-        fg_filter = f"[fg]scale={W}:-2:force_original_aspect_ratio=decrease[fg2]"
-        filter_parts = (
-            f"[0:v]split=2[bg][fg];"
-            f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,"
-            f"crop={W}:{H},boxblur=luma_radius={B}:luma_power=1[bg2];"
-            f"{fg_filter};"
-            f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p"
-        )
+        # Paso C: filter_complex — 9:16 base (W5: fit/fill/split según `layout`)
+        filter_parts = _build_reframe_filter(layout, W, H, B)
 
         # Encadenar filtros de texto directamente en el mismo stream
         def _esc(p: str) -> str:
             """Escapa path para filtro ass= de ffmpeg (barras y dos puntos)."""
             return p.replace("\\", "/").replace(":", "\\:")
 
+        # W11: fontsdir le indica a libass dónde buscar además de
+        # fontconfig — necesario para Bangers (tiktok_viral_v2), que no se
+        # instala a nivel sistema. No afecta la resolución de las demás
+        # fuentes (Liberation Sans etc.), que fontconfig sigue encontrando.
+        fontsdir_opt = f":fontsdir='{_esc(str(FONTS_DIR))}'" if FONTS_DIR.exists() else ""
+
         if subs_ass_path:
-            filter_parts += f",ass='{_esc(subs_ass_path)}'"
+            filter_parts += f",ass='{_esc(subs_ass_path)}'{fontsdir_opt}"
         if overlay_ass_path:
-            filter_parts += f",ass='{_esc(overlay_ass_path)}'"
+            filter_parts += f",ass='{_esc(overlay_ass_path)}'{fontsdir_opt}"
 
         filter_parts += "[vout]"
 
@@ -1920,7 +2478,7 @@ def generate_clip(
                 '-filter_complex', filter_parts,  # opera sobre [0:v]
                 '-map', '[vout]',
                 '-map', '1:a',            # audio de input 1
-                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', '23',
+                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', str(crf),
                 '-c:a', 'aac', '-b:a', '128k',
                 '-avoid_negative_ts', 'make_zero',
                 '-movflags', '+faststart',
@@ -1935,7 +2493,7 @@ def generate_clip(
                 '-filter_complex', filter_parts,
                 '-map', '[vout]',
                 '-map', '0:a',
-                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', '23',
+                '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '2', '-crf', str(crf),
                 '-c:a', 'aac', '-b:a', '128k',
                 '-avoid_negative_ts', 'make_zero',
                 '-movflags', '+faststart',

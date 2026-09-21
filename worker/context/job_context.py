@@ -6,8 +6,9 @@ from usage_tracker / log_llm_usage without threading job_id through every call.
 """
 from __future__ import annotations
 
+import contextvars
 from contextvars import ContextVar
-from typing import Any, Optional
+from typing import Any, Callable, Optional, TypeVar
 
 _job_id: ContextVar[Optional[str]] = ContextVar("usage_job_id", default=None)
 _user_id: ContextVar[Optional[str]] = ContextVar("usage_user_id", default=None)
@@ -44,3 +45,28 @@ def get_job_context() -> dict[str, Any]:
         "moment_index": _moment_index.get(),
         "clip_edit_id": _clip_edit_id.get(),
     }
+
+
+_T = TypeVar("_T")
+
+
+def in_current_context(fn: Callable[..., _T]) -> Callable[..., _T]:
+    """
+    Envuelve `fn` para que, al correr en otro hilo, vea el contexto de job del
+    hilo que llamó a este helper. Los hilos de un `ThreadPoolExecutor` arrancan
+    con un contexto vacío, así que `usage_tracker` descartaría sus eventos
+    (medido en W4: el rollup registró US$0.02 de los US$0.146 de Whisper de los
+    tramos paralelos). No se puede reusar `Context.run` en varios hilos a la vez
+    ("context is already entered"), por eso se copian los valores y se vuelven a
+    setear dentro del hilo hijo.
+
+        pool.map(in_current_context(_una_tarea), items)
+    """
+    captured = list(contextvars.copy_context().items())
+
+    def _wrapped(*args, **kwargs) -> _T:
+        for var, value in captured:
+            var.set(value)
+        return fn(*args, **kwargs)
+
+    return _wrapped

@@ -155,6 +155,29 @@ class ViralMoment(BaseModel):
     verification_failed: Optional[bool] = None
     # Sprint 2: Fidelity & Verification
     verification: Optional[Verification] = None  # Validates AI didn't hallucinate
+    # W6 (docs/PLAN_CALIDAD.md §4): flags de fidelidad de copy contra el texto
+    # real del clip, seteados por generate_moment_copy_full (services/processor.py)
+    # — "overlay_no_fiel" / "hook_no_fiel" cuando el fallback determinístico
+    # tuvo que reemplazar lo que devolvió el modelo. Vocabulario compartido
+    # con clip_quality_issues (incomplete_tail, late_hook, whisper_mismatch_*,
+    # clip_not_rendered) que arma main.py al persistir el momento; main.py
+    # mergea ambos con build_clip_quality_issues(...) + (moment.
+    # clip_quality_issues or []) en _deliver_moment.
+    clip_quality_issues: Optional[List[str]] = None
+    # W10 (docs/PLAN_CALIDAD.md §9 Fase 0, docs/ANALISIS_OPUS_CLIP.md §2.4):
+    # copy por clip — lo que la persona pega al publicar en YouTube Shorts /
+    # TikTok, además de las piezas de hilo/post/caption. Lo llena la Pasada B
+    # (generate_moment_copy_full); nivel-momento como hook/viral_overlay, no
+    # dentro de content_pieces, porque se repite en las 3 filas de
+    # content_results igual que el resto de los metadatos del momento.
+    title: Optional[str] = None  # ≤60 chars, "Tema: ¡afirmación o pregunta!"
+    description: Optional[str] = None  # 2 oraciones: qué se ve + invitación
+    hashtags: Optional[List[str]] = None  # 10, español, sin acentos, CamelCase, con '#'
+    # W11 (docs/PLAN_CALIDAD.md §9 Fase 1): 6-12 palabras del texto real del
+    # clip a resaltar en color en el estilo de subtítulos tiktok_viral_v2
+    # (generate_moment_copy_full en processor.py las llena; sin esto, el
+    # render usa una heurística local — clip_generator.detect_keywords_v2).
+    keywords: Optional[List[str]] = None
     
     # Validators to convert float to int for timestamps
     @field_validator('start_time', 'end_time', mode='before')
@@ -164,6 +187,15 @@ class ViralMoment(BaseModel):
             return v
         if isinstance(v, float):
             return int(round(v))
+        # W4: el transcript de Whisper full llega con marcas [mm:ss], así que
+        # el modelo puede devolver "17:10" (o "1:17:10") en vez de 1030.
+        if isinstance(v, str):
+            parts = v.strip().split(":")
+            if len(parts) > 1 and all(p.strip().isdigit() for p in parts):
+                total = 0
+                for part in parts:
+                    total = total * 60 + int(part)
+                return total
         return v
 
 

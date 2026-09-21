@@ -12,16 +12,24 @@ const compression = require('compression');
 const jobsRouter = require('./routes/jobs');
 const billingRouter = require('./routes/billing');
 const clipEditsRouter = require('./routes/clip-edits');
+const feedbackRouter = require('./routes/feedback');
 const adminUsageRouter = require('./routes/admin-usage');
+const adminAlertsRouter = require('./routes/admin-alerts');
+const { startFailureWatcher } = require('./lib/failure-watcher');
 const logger = require('./lib/logger');
 
-// C4: Initialize Sentry error tracking (must be before Express app creation)
-Sentry.init({
-    dsn: process.env.SENTRY_DSN_BACKEND || "https://6bd5c4e61759dd1d1e269e0d999d56df@o4510909878632448.ingest.us.sentry.io/4510909927063552",
-    sendDefaultPii: true,
-    environment: process.env.NODE_ENV || 'development',
-    tracesSampleRate: 0.2, // Sample 20% of transactions for performance monitoring
-});
+// C4: Initialize Sentry error tracking (must be before Express app creation).
+// F1: sin DSN, Sentry NO se inicializa — antes había un DSN hardcodeado como
+// fallback que mandaba errores de cualquier fork/dev al proyecto de Sentry
+// de producción aunque SENTRY_DSN_BACKEND no estuviera seteada.
+if (process.env.SENTRY_DSN_BACKEND) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN_BACKEND,
+        sendDefaultPii: true,
+        environment: process.env.NODE_ENV || 'development',
+        tracesSampleRate: 0.2, // Sample 20% of transactions for performance monitoring
+    });
+}
 
 const app = express();
 
@@ -63,7 +71,12 @@ app.use(express.json({
 app.use('/', jobsRouter);
 app.use('/', billingRouter);
 app.use('/', clipEditsRouter);
+app.use('/', feedbackRouter);
 app.use('/admin', adminUsageRouter);
+app.use('/admin', adminAlertsRouter);
+
+// F1: poll de jobs 'failed' -> alerta Telegram (backend/src/lib/failure-watcher.js).
+startFailureWatcher();
 
 // Root route
 app.get('/', (req, res) => {
@@ -145,11 +158,6 @@ Sentry.setupExpressErrorHandler(app);
 app.use((err, req, res, next) => {
     logger.error('Unhandled error', { error: err.message, stack: err.stack, path: req.path, method: req.method });
     res.status(500).json({ error: 'Internal server error' });
-});
-
-// Agregá esto en app.js (temporal, para probar)
-app.get('/debug-sentry', (req, res) => {
-    throw new Error('Sentry test error!');
 });
 
 module.exports = app;

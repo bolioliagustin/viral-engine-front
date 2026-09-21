@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Check, Copy, Download } from "lucide-react";
+import { Check, Copy, Download, Send } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface CopyTabsProps {
@@ -13,6 +13,9 @@ interface CopyTabsProps {
   linkedinContent?: string;
   scriptContent?: string;
   overlayText?: string;
+  /** W10: descripción (2 oraciones) y hashtags del clip — pestaña "Publicar". */
+  description?: string;
+  hashtags?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,6 +96,8 @@ export function CopyTabs({
   linkedinContent,
   scriptContent,
   overlayText,
+  description,
+  hashtags,
 }: CopyTabsProps) {
   const { toast } = useToast();
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
@@ -101,6 +106,12 @@ export function CopyTabs({
     () => (twitterContent ? parseTwitterThread(twitterContent) : []),
     [twitterContent]
   );
+
+  const hasHashtags = Boolean(hashtags && hashtags.length > 0);
+  const hasPublishTab = Boolean(description || hasHashtags);
+  const publishText = [description, hasHashtags ? hashtags!.join(" ") : null]
+    .filter(Boolean)
+    .join("\n\n");
 
   const handleCopy = async (content: string, tabName: string) => {
     try {
@@ -134,8 +145,11 @@ export function CopyTabs({
     URL.revokeObjectURL(url);
   };
 
-  // Determine default tab (first available)
-  const defaultTab = twitterContent
+  // Determine default tab (first available) — "Publicar" primero: es lo
+  // que la persona pega tal cual al publicar (W10, ver ANALISIS_OPUS_CLIP).
+  const defaultTab = hasPublishTab
+    ? "publish"
+    : twitterContent
     ? "twitter"
     : tiktokContent
     ? "tiktok"
@@ -146,6 +160,15 @@ export function CopyTabs({
   return (
     <Tabs defaultValue={defaultTab} className="w-full flex flex-col h-full">
       <TabsList className="w-full bg-slate-950/50 border-b border-slate-800 flex justify-start gap-0 p-0 rounded-none h-12 overflow-x-auto">
+        {hasPublishTab && (
+          <TabsTrigger
+            value="publish"
+            className="flex-1 h-full rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-slate-900 data-[state=active]:text-emerald-400 hover:bg-slate-900/50 transition-colors"
+          >
+            <Send className="w-4 h-4 mr-1.5" />
+            Publicar
+          </TabsTrigger>
+        )}
         {twitterContent && (
           <TabsTrigger
             value="twitter"
@@ -180,6 +203,62 @@ export function CopyTabs({
           </TabsTrigger>
         )}
       </TabsList>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* PUBLICAR — descripción + hashtags, lo que se pega tal cual (W10)     */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {hasPublishTab && (
+        <TabsContent value="publish" className="mt-0 flex flex-col min-h-[400px] bg-slate-925">
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-5">
+            {description && (
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-emerald-400/70 mb-2">
+                  Descripción
+                </div>
+                <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">
+                  {description}
+                </p>
+              </div>
+            )}
+            {hasHashtags && (
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-emerald-400/70 mb-2">
+                  Hashtags
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {hashtags!.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 text-xs font-medium border border-emerald-500/20"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-800 p-3 flex gap-2 bg-slate-950/40">
+            <Button
+              size="sm"
+              onClick={() => handleCopy(publishText, "Publicar")}
+              className={`flex-1 transition-all ${
+                copiedTab === "Publicar"
+                  ? "bg-green-500 hover:bg-green-600"
+                  : "bg-emerald-600 hover:bg-emerald-700"
+              } text-white`}
+            >
+              {copiedTab === "Publicar" ? (
+                <Check className="w-4 h-4 mr-1" />
+              ) : (
+                <Copy className="w-4 h-4 mr-1" />
+              )}
+              {copiedTab === "Publicar" ? "Copiado" : "Copiar descripción + hashtags"}
+            </Button>
+          </div>
+        </TabsContent>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* TWITTER — Platform-fidelity preview                                 */}

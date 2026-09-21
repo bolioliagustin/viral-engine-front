@@ -22,16 +22,34 @@ import {
   Heart,
   Target,
   Flame,
+  ThumbsUp,
+  ThumbsDown,
+  Check,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getClipFeedback, submitClipFeedback, type ClipFeedback, type FeedbackMotivo } from "@/lib/api";
 import {
   type WhisperWordsData,
   computeSubtitleCoverage,
   isSubtitleCoverageComplete,
 } from "@/types/subtitles";
+
+// ─── Feedback: motivos ("no lo publicaría") ────────────────────────────────
+const MOTIVO_OPTIONS: { value: FeedbackMotivo; label: string }[] = [
+  { value: "arranca_mal", label: "Arranca mal" },
+  { value: "termina_mal", label: "Termina mal" },
+  { value: "momento_flojo", label: "Momento flojo" },
+  { value: "subtitulos_mal", label: "Subtítulos mal" },
+  { value: "se_ve_mal", label: "Se ve mal" },
+  { value: "copy_malo", label: "Copy malo" },
+  { value: "otro", label: "Otro" },
+];
+const MOTIVO_LABELS: Record<FeedbackMotivo, string> = MOTIVO_OPTIONS.reduce(
+  (acc, { value, label }) => ({ ...acc, [value]: label }),
+  {} as Record<FeedbackMotivo, string>
+);
 
 interface ScoreJustification {
   metric: string;
@@ -75,6 +93,24 @@ interface ViralMomentCardProps {
   clipGenerationError?: string;
   scoreJudge?: { hook: number; retention: number; shareability: number; reasoning?: string };
   scoreLlm?: { hook: number; retention: number; shareability: number };
+  // W10 (docs/PLAN_CALIDAD.md §9 Fase 0): copy por clip + "Score visible".
+  /** Título ≤60 chars, patrón "Tema: ¡afirmación o pregunta!". Jobs viejos: undefined. */
+  title?: string;
+  /** 2 oraciones: qué se ve + invitación. */
+  description?: string;
+  /** 10 hashtags con "#", listos para pegar. */
+  hashtags?: string[];
+  /** "Score visible": percentil 60-99 curvado por backend/src/lib/score-curve.js sobre el ranking del juez DENTRO del job. null si no hay juez. */
+  scoreDisplay?: number | null;
+  /** Letra A-D por dimensión, calculada sobre el score del juez (no sobre scoreDisplay). */
+  grades?: { hook: string; retention: string; shareability: string } | null;
+  // W9-A (docs/adr/0008): galería + HD a pedido.
+  /** Preview 480x854 del worker (pendiente — mitad worker de W9). Sin esto, clipUrl ya es el entregable final: no hay HD que pedir. */
+  previewUrl?: string | null;
+  /** URL del re-render HD ya completado (derivado de clip_edits en el backend), o null si nunca se pidió. */
+  hdUrl?: string | null;
+  /** 'none' | 'queued' | 'processing' | 'ready' | 'error'. */
+  hdStatus?: string | null;
 }
 
 // ─── Pillar config ─────────────────────────────────────────────────────────
@@ -146,6 +182,29 @@ const ScoreRing = ({ score, label }: { score: number; label: string }) => {
   );
 };
 
+// ─── Grade chip (letra A-D — W10, "Score visible") ─────────────────────────
+const GRADE_COLORS: Record<string, string> = {
+  A: "text-green-400 border-green-500/40 bg-green-500/10",
+  B: "text-blue-400 border-blue-500/40 bg-blue-500/10",
+  C: "text-yellow-400 border-yellow-500/40 bg-yellow-500/10",
+  D: "text-orange-400 border-orange-500/40 bg-orange-500/10",
+};
+
+const GradeChip = ({ letter, label }: { letter: string; label: string }) => (
+  <div className="flex flex-col items-center gap-0.5">
+    <div
+      className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${
+        GRADE_COLORS[letter] || GRADE_COLORS.D
+      }`}
+    >
+      {letter}
+    </div>
+    <span className="text-[8px] uppercase tracking-wider text-slate-500 font-medium">
+      {label}
+    </span>
+  </div>
+);
+
 // ─── Chip ──────────────────────────────────────────────────────────────────
 const Chip = ({
   icon,
@@ -203,13 +262,74 @@ export function ViralMomentCard({
   clipGenerationError,
   scoreJudge,
   scoreLlm,
+  title,
+  description,
+  hashtags,
+  scoreDisplay,
+  grades,
+  previewUrl,
+  hdUrl: hdUrlProp,
+  hdStatus: hdStatusProp,
 }: ViralMomentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [ringsOpen, setRingsOpen] = useState(false);
   // Si hay un re-render completado, este reemplaza al clipUrl original.
   const [renderedOverride, setRenderedOverride] = useState<string | null>(null);
+  // W7: etiqueta humana "¿lo publicarías tal cual?" — fuente de verdad de
+  // calidad (docs/PLAN_CALIDAD.md §2); el juez se calibra contra esto.
+  const [feedback, setFeedback] = useState<ClipFeedback | null>(null);
+  const [feedbackLoaded, setFeedbackLoaded] = useState(false);
+  const [feedbackEditing, setFeedbackEditing] = useState(false);
+  const [pendingNo, setPendingNo] = useState(false);
+  const [selectedMotivo, setSelectedMotivo] = useState<FeedbackMotivo | null>(null);
+  const [comentario, setComentario] = useState("");
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  // W9-A: solo tiene sentido pedir HD cuando lo que se está mostrando es un
+  // preview (worker de W9, pendiente) — si no hay previewUrl, clipUrl ya es
+  // el entregable final y el botón descarga directo, como siempre.
+  const hasPreview = Boolean(previewUrl);
+  const [hdUrl, setHdUrl] = useState<string | null>(hdUrlProp ?? null);
+  const [hdStatus, setHdStatus] = useState<string>(hdStatusProp ?? "none");
   const { toast } = useToast();
+
+  useEffect(() => {
+    setHdUrl(hdUrlProp ?? null);
+    setHdStatus(hdStatusProp ?? "none");
+  }, [hdUrlProp, hdStatusProp]);
+
+  // Poll mientras hay un pedido de HD en curso — reutiliza el mismo POST
+  // /hd (idempotente en el backend) como "estado actual" en vez de un GET
+  // separado, siguiendo el patrón de poll que ya usa results/[jobId]/page.tsx
+  // para el job completo.
+  useEffect(() => {
+    if (hdStatus !== "queued" && hdStatus !== "processing") return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await apiFetch(`/api/clips/${contentResultId}/hd`, {
+          method: "POST",
+        });
+        if (cancelled || !res.ok) return;
+        const data = await res.json();
+        if (res.status === 200 && data.hd_url) {
+          setHdUrl(data.hd_url);
+          setHdStatus("ready");
+        } else if (res.status === 202) {
+          setHdStatus(data.hd_status || "queued");
+        }
+      } catch {
+        // silencio — reintenta en el próximo tick
+      }
+    };
+    const interval = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hdStatus, contentResultId]);
 
   // Al montar, ver si ya existe un re-render completado para este clip
   // (persistente entre recargas de página).
@@ -235,6 +355,58 @@ export function ViralMomentCard({
     };
   }, [contentResultId]);
 
+  // Al montar, ver si el usuario ya etiquetó este clip antes. Sin sesión o
+  // con el backend caído, getClipFeedback devuelve null — no debe romper
+  // el render de la card.
+  useEffect(() => {
+    if (!contentResultId) return;
+    let cancelled = false;
+    (async () => {
+      const existing = await getClipFeedback(contentResultId);
+      if (cancelled) return;
+      setFeedback(existing);
+      setFeedbackLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contentResultId]);
+
+  const saveFeedback = async (posteable: boolean, motivo: FeedbackMotivo | null) => {
+    try {
+      setSubmittingFeedback(true);
+      const saved = await submitClipFeedback(contentResultId, {
+        posteable,
+        motivo,
+        comentario: comentario.trim() || undefined,
+      });
+      setFeedback(saved);
+      setFeedbackEditing(false);
+      setPendingNo(false);
+      toast({
+        title: posteable ? "👍 ¡Gracias!" : "Gracias por el detalle",
+        description: posteable
+          ? "Etiquetado como publicable tal cual."
+          : "Nos ayuda a mejorar el corte.",
+      });
+    } catch (e) {
+      toast({
+        title: "❌ No se pudo guardar el feedback",
+        description: e instanceof Error ? e.message : "Error",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const startChangeFeedback = () => {
+    setFeedbackEditing(true);
+    setPendingNo(false);
+    setSelectedMotivo(feedback?.motivo ?? null);
+    setComentario(feedback?.comentario ?? "");
+  };
+
   const effectiveClipUrl = renderedOverride || clipUrl;
 
   const globalScore = (
@@ -251,6 +423,10 @@ export function ViralMomentCard({
         )
       : null;
   const pillar = pillarType ? PILLAR_CONFIG[pillarType.toLowerCase()] : null;
+  // W10: "Score visible" reemplaza los anillos como vista principal solo
+  // cuando el backend lo mandó (jobs viejos / sin score_judge: scoreDisplay
+  // es undefined/null y la card cae al bloque legacy de siempre).
+  const hasScoreDisplay = scoreDisplay !== undefined && scoreDisplay !== null && Boolean(grades);
   const subtitleCoverage = computeSubtitleCoverage(whisperWords ?? null, duration);
   const subsComplete = isSubtitleCoverageComplete(subtitleCoverage);
   const improvementTips = justifications
@@ -272,24 +448,27 @@ export function ViralMomentCard({
     return `https://www.youtube.com/embed/${videoId}?start=${time}&rel=0`;
   };
 
+  const downloadBlobFrom = async (url: string) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Network response was not ok");
+
+    const blob = await response.blob();
+    const objectUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.style.display = "none";
+    a.href = objectUrl;
+    a.download = `clip_${momentIndex}_${hook
+      .substring(0, 20)
+      .replace(/\s+/g, "_")}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(objectUrl);
+  };
+
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      const response = await fetch(effectiveClipUrl!);
-      if (!response.ok) throw new Error("Network response was not ok");
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-      a.download = `clip_${momentIndex}_${hook
-        .substring(0, 20)
-        .replace(/\s+/g, "_")}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-
+      await downloadBlobFrom(effectiveClipUrl!);
       toast({
         title: "✅ Descarga completada",
         description: "El clip se ha guardado en tu dispositivo.",
@@ -299,6 +478,75 @@ export function ViralMomentCard({
       toast({
         title: "❌ Error en descarga",
         description: "No se pudo descargar el video. Intenta nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // W9-A: sin preview (jobs de hoy / viejos) el botón sigue descargando
+  // clipUrl directo — no hay "HD" que pedir porque ya es el entregable
+  // final (docs/adr/0008). Con preview, el botón pasa a pedir/pollear el
+  // re-render HD (clip_edits edit_type='hd_upgrade') antes de descargar.
+  const handleDownloadClick = async () => {
+    if (!hasPreview) {
+      return handleDownload();
+    }
+    if (hdUrl) {
+      try {
+        setIsDownloading(true);
+        await downloadBlobFrom(hdUrl);
+        toast({
+          title: "✅ Descarga completada",
+          description: "El clip HD se ha guardado en tu dispositivo.",
+        });
+      } catch {
+        toast({
+          title: "❌ Error en descarga",
+          description: "No se pudo descargar el HD. Intenta nuevamente.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsDownloading(false);
+      }
+      return;
+    }
+    if (hdStatus === "queued" || hdStatus === "processing") {
+      toast({
+        title: "⏳ Preparando HD…",
+        description: "Te avisamos apenas esté listo.",
+      });
+      return;
+    }
+    try {
+      setIsDownloading(true);
+      const res = await apiFetch(`/api/clips/${contentResultId}/hd`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.status === 200 && data.hd_url) {
+        setHdUrl(data.hd_url);
+        setHdStatus("ready");
+        await downloadBlobFrom(data.hd_url);
+        toast({
+          title: "✅ Descarga completada",
+          description: "El clip HD se ha guardado en tu dispositivo.",
+        });
+      } else if (res.status === 202) {
+        setHdStatus(data.hd_status || "queued");
+        toast({
+          title: "⏳ Preparando HD…",
+          description: "Puede tardar unos minutos. Te avisamos cuando esté listo.",
+        });
+      } else {
+        throw new Error(data.error || "No se pudo pedir el HD");
+      }
+    } catch (error) {
+      console.error("HD request failed:", error);
+      toast({
+        title: "❌ Error",
+        description: "No se pudo pedir el HD. Intenta nuevamente.",
         variant: "destructive",
       });
     } finally {
@@ -387,10 +635,22 @@ export function ViralMomentCard({
                 )}
               </div>
 
-              {/* Hook */}
-              <h3 className="text-lg md:text-xl font-bold text-white leading-snug">
-                &ldquo;{hook}&rdquo;
-              </h3>
+              {/* W10: título arriba de la card (jobs viejos sin título: el
+                  hook mantiene su jerarquía original, no se rompe nada). */}
+              {title ? (
+                <>
+                  <h3 className="text-lg md:text-xl font-bold text-white leading-snug">
+                    {title}
+                  </h3>
+                  <p className="text-sm text-slate-400 italic leading-snug">
+                    &ldquo;{hook}&rdquo;
+                  </p>
+                </>
+              ) : (
+                <h3 className="text-lg md:text-xl font-bold text-white leading-snug">
+                  &ldquo;{hook}&rdquo;
+                </h3>
+              )}
 
               {/* Chips row: trigger, sentiment, roi */}
               <div className="flex flex-wrap items-center gap-2">
@@ -419,30 +679,212 @@ export function ViralMomentCard({
             </div>
 
             {/* Score block — wrap en mobile para no overflow */}
-            <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
-              <div className="flex flex-col items-center justify-center px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
-                <div className="text-[9px] uppercase tracking-widest text-purple-300 font-bold">
-                  Viral Score
-                </div>
-                <div className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none mt-0.5">
-                  {globalScore}
-                </div>
-                <div className="text-[9px] text-slate-500 mt-0.5">/ 10</div>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
+                {hasScoreDisplay ? (
+                  // W10: "Score visible" — percentil curvado + letras, vista
+                  // principal. Reemplaza el bloque "Viral Score X/10" + anillos.
+                  <div className="flex items-center gap-3 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
+                    <div className="flex flex-col items-center">
+                      <div className="text-[9px] uppercase tracking-widest text-purple-300 font-bold">
+                        Score
+                      </div>
+                      <div className="flex items-baseline gap-0.5 mt-0.5">
+                        <span className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none">
+                          {scoreDisplay}
+                        </span>
+                        <span className="text-[10px] text-slate-500">/100</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 pl-2 border-l border-slate-700/60">
+                      <GradeChip letter={grades!.hook} label="Gancho" />
+                      <GradeChip letter={grades!.retention} label="Reten." />
+                      <GradeChip letter={grades!.shareability} label="Viral." />
+                    </div>
+                  </div>
+                ) : (
+                  // Legacy: sin score_display (jobs viejos o sin juez) — el
+                  // bloque de siempre, sin romper nada.
+                  <>
+                    <div className="flex flex-col items-center justify-center px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/30">
+                      <div className="text-[9px] uppercase tracking-widest text-purple-300 font-bold">
+                        Viral Score
+                      </div>
+                      <div className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent leading-none mt-0.5">
+                        {globalScore}
+                      </div>
+                      <div className="text-[9px] text-slate-500 mt-0.5">/ 10</div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800">
+                      <ScoreRing score={scores.hook} label="Gancho" />
+                      <ScoreRing score={scores.retention} label="Reten." />
+                      <ScoreRing score={scores.shareability} label="Viral." />
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800">
-                <ScoreRing score={scores.hook} label="Gancho" />
-                <ScoreRing score={scores.retention} label="Reten." />
-                <ScoreRing score={scores.shareability} label="Viral." />
-              </div>
+
+              {/* "Por qué este score" — reasoning del juez, colapsable (W7) */}
               {scoreJudge?.reasoning && (
-                <p
-                  className="text-[10px] text-slate-500 leading-snug max-w-[200px] line-clamp-3"
-                  title={scoreJudge.reasoning}
-                >
-                  {scoreJudge.reasoning}
-                </p>
+                <div className="max-w-[220px] w-full">
+                  <button
+                    type="button"
+                    onClick={() => setReasoningOpen((v) => !v)}
+                    className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors ml-auto"
+                  >
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform ${reasoningOpen ? "rotate-180" : ""}`}
+                    />
+                    Por qué este score
+                  </button>
+                  {reasoningOpen && (
+                    <p className="text-[10px] text-slate-400 leading-snug mt-1 text-right">
+                      {scoreJudge.reasoning}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Detalle 1-10 colapsable — los anillos, cuando ya mostramos
+                  el score visible arriba como vista principal (W10). */}
+              {hasScoreDisplay && (
+                <div className="w-full flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRingsOpen((v) => !v)}
+                    className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+                  >
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform ${ringsOpen ? "rotate-180" : ""}`}
+                    />
+                    Ver detalle 1-10
+                  </button>
+                  {ringsOpen && (
+                    <div className="flex items-center gap-2 sm:gap-3 bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800">
+                      <ScoreRing score={scores.hook} label="Gancho" />
+                      <ScoreRing score={scores.retention} label="Reten." />
+                      <ScoreRing score={scores.shareability} label="Viral." />
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+          </div>
+
+          {/* ═══════════ W7: feedback humano — "¿lo publicarías tal cual?" ═══════════ */}
+          {/* Esperamos a que resuelva el GET inicial para no mostrar los
+              botones "en blanco" y luego pegar el salto a la etiqueta ya
+              guardada (o quedar sin sesión, en cuyo caso getClipFeedback
+              devuelve null y la card sigue funcionando igual). */}
+          <div className="border-t border-slate-800/70 pt-3 min-h-[28px]">
+            {!feedbackLoaded ? null : feedback && !feedbackEditing ? (
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <Badge
+                  className={
+                    feedback.posteable
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 font-semibold border"
+                      : "bg-red-500/15 text-red-300 border-red-500/30 font-semibold border"
+                  }
+                >
+                  {feedback.posteable ? (
+                    <ThumbsUp className="w-3 h-3 mr-1" />
+                  ) : (
+                    <ThumbsDown className="w-3 h-3 mr-1" />
+                  )}
+                  Etiquetado: {feedback.posteable ? "Sí" : "No"}
+                  {!feedback.posteable && feedback.motivo && ` — ${MOTIVO_LABELS[feedback.motivo]}`}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px] text-slate-500 hover:text-slate-300"
+                  onClick={startChangeFeedback}
+                >
+                  Cambiar
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">
+                    ¿Lo publicarías tal cual?
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={submittingFeedback}
+                    className="h-7 px-2.5 text-xs border-emerald-500/30 text-emerald-300 hover:bg-emerald-600 hover:text-white hover:border-emerald-500"
+                    onClick={() => saveFeedback(true, null)}
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5 mr-1.5" />
+                    Lo publicaría
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={submittingFeedback}
+                    className="h-7 px-2.5 text-xs border-red-500/30 text-red-300 hover:bg-red-600 hover:text-white hover:border-red-500"
+                    onClick={() => setPendingNo(true)}
+                  >
+                    <ThumbsDown className="w-3.5 h-3.5 mr-1.5" />
+                    No lo publicaría
+                  </Button>
+                  {feedback && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-[11px] text-slate-500 hover:text-slate-300"
+                      onClick={() => {
+                        setFeedbackEditing(false);
+                        setPendingNo(false);
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+
+                {pendingNo && (
+                  <div className="space-y-2 bg-slate-950/40 border border-slate-800 rounded-lg p-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {MOTIVO_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setSelectedMotivo(opt.value)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border transition-colors ${
+                            selectedMotivo === opt.value
+                              ? "bg-red-500/20 border-red-500/50 text-red-200"
+                              : "bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500"
+                          }`}
+                        >
+                          {selectedMotivo === opt.value && <Check className="w-3 h-3" />}
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={comentario}
+                      onChange={(e) => setComentario(e.target.value.slice(0, 280))}
+                      placeholder="Comentario opcional (ej: el remate se corta)"
+                      rows={2}
+                      className="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring resize-none"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={!selectedMotivo || submittingFeedback}
+                      className="h-7 px-3 text-xs bg-red-600 hover:bg-red-700 text-white"
+                      onClick={() => saveFeedback(false, selectedMotivo)}
+                    >
+                      {submittingFeedback ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      ) : null}
+                      Guardar
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -514,15 +956,28 @@ export function ViralMomentCard({
                   <Button
                     variant="outline"
                     className="w-full border-slate-700 bg-slate-800 text-slate-200 hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all"
-                    onClick={handleDownload}
-                    disabled={isDownloading || !effectiveClipUrl}
+                    onClick={handleDownloadClick}
+                    disabled={
+                      isDownloading ||
+                      !effectiveClipUrl ||
+                      hdStatus === "queued" ||
+                      hdStatus === "processing"
+                    }
                   >
-                    {isDownloading ? (
+                    {isDownloading || hdStatus === "queued" || hdStatus === "processing" ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    {isDownloading ? "Descargando..." : "Descargar MP4"}
+                    {hdStatus === "queued" || hdStatus === "processing"
+                      ? "Preparando HD…"
+                      : isDownloading
+                        ? "Descargando..."
+                        : hasPreview
+                          ? hdUrl
+                            ? "Descargar HD"
+                            : "Descargar (pedir HD)"
+                          : "Descargar MP4"}
                   </Button>
                 )}
 
@@ -608,6 +1063,8 @@ export function ViralMomentCard({
                   linkedinContent={linkedinContent}
                   scriptContent={scriptContent}
                   overlayText={overlayText}
+                  description={description}
+                  hashtags={hashtags}
                 />
               </div>
             </div>

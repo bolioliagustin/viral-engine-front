@@ -2,14 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
+
+// P1 (docs/PROYECTO.md §7/§8): detalle de progreso dentro de current_step,
+// lo escribe el worker (W9-B, pendiente) en jobs.progress_detail. Con jobs
+// viejos o mientras el worker no lo escriba, queda undefined/null y la
+// pantalla cae al mensaje estático de la fase — no se rompe nada.
+interface ProgressDetail {
+  current?: number;
+  total?: number;
+  message?: string;
+  clips_ready?: number;
+}
 
 interface ProcessingScreenProps {
   currentStep?: string;
   progress?: number;
+  progressDetail?: ProgressDetail | null;
 }
 
-const STEPS = [
+// Pipeline viejo (pre-W2/W9): se mantiene tal cual para que un job en curso
+// de un worker viejo (o ya avanzado antes del deploy de esta pantalla) siga
+// viéndose exactamente como hoy — nunca se le aplican los pasos nuevos.
+const LEGACY_STEPS = [
   { id: "downloading", icon: "📥", label: "Descarga", color: "blue" },
   { id: "transcribing", icon: "🎙️", label: "Transcripción", color: "purple" },
   { id: "analyzing", icon: "🧠", label: "Análisis IA", color: "green" },
@@ -17,21 +33,74 @@ const STEPS = [
   { id: "generating", icon: "✨", label: "Contenido", color: "pink" },
 ];
 
+// P1: pipeline en dos fases (docs/PROYECTO.md §7) — transcript → clasificar
+// → Pasada A (candidatos) → evaluar cada candidato (descarga + Whisper +
+// Juez) → rankear → entregar (copy + Clip) los Momentos finalistas. Pasos
+// en español, sin jerga interna (CONTEXT.md: Candidato, Momento, Juez,
+// Clip) — nada de "Pasada A" ni "evaluating" en la UI.
+const NEW_STEPS = [
+  { id: "transcribing", icon: "🎙️", label: "Transcripción", color: "purple" },
+  { id: "classifying", icon: "🏷️", label: "Clasificación", color: "blue" },
+  { id: "analyzing", icon: "🧠", label: "Momentos", color: "green" },
+  { id: "evaluating", icon: "🔍", label: "Evaluación", color: "orange" },
+  { id: "ranking", icon: "🏆", label: "Selección", color: "pink" },
+  { id: "delivering", icon: "✨", label: "Generación", color: "purple" },
+  { id: "finalizing", icon: "🎬", label: "Cierre", color: "blue" },
+];
+
 const STEP_DESCRIPTIONS: Record<string, string> = {
+  // Legacy
   downloading: "Extrayendo pista de audio del video...",
-  transcribing: "Creando mapa de texto con timestamps...",
-  analyzing: "Aplicando las Leyes de Hierro (Mirror Rule, Padding)...",
   clipping: "Recortando clips con precisión quirúrgica...",
   generating: "Generando copy optimizado para cada plataforma...",
+  // Nuevos (P1)
+  transcribing: "Creando el mapa de texto del video...",
+  classifying: "Identificando el tipo de contenido...",
+  analyzing: "Buscando los mejores momentos del video...",
+  evaluating: "Evaluando cada candidato a fondo (descarga, transcripción y Juez)...",
+  ranking: "El Juez elige los Momentos finales...",
+  delivering: "Generando el copy y renderizando cada Clip...",
+  finalizing: "Últimos detalles antes de mostrarte todo...",
   completed: "¡Procesamiento completado!",
 };
 
-export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: ProcessingScreenProps) {
-  const currentStepIndex = STEPS.findIndex(s => s.id === currentStep);
+// Estimación gruesa (no medida) de segundos por ítem, solo para dar una
+// referencia de tiempo restante en las fases que traen `total` — a
+// propósito simple, sin telemetría real detrás.
+const ESTIMATED_SEC_PER_ITEM: Record<string, number> = {
+  evaluating: 20,
+  delivering: 25,
+};
+const STATIC_TIME_HINTS: Record<string, string> = {
+  transcribing: "~1 min",
+  classifying: "menos de 1 min",
+  analyzing: "~1 min",
+  ranking: "menos de 1 min",
+  finalizing: "menos de 1 min",
+};
+
+function estimateRemaining(step: string, detail?: ProgressDetail | null): string | null {
+  const perItem = ESTIMATED_SEC_PER_ITEM[step];
+  if (perItem && detail?.total && detail.current !== undefined) {
+    const remaining = Math.max(0, detail.total - detail.current);
+    const totalSec = remaining * perItem;
+    if (totalSec < 60) return "menos de 1 min";
+    return `~${Math.round(totalSec / 60)} min`;
+  }
+  return STATIC_TIME_HINTS[step] ?? null;
+}
+
+export function ProcessingScreen({ currentStep = "transcribing", progress = 0, progressDetail }: ProcessingScreenProps) {
+  const isNewPipeline = NEW_STEPS.some((s) => s.id === currentStep);
+  const STEPS = isNewPipeline ? NEW_STEPS : LEGACY_STEPS;
+  const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
   const activeStep = STEPS[currentStepIndex >= 0 ? currentStepIndex : 0];
+  const description = (isNewPipeline && progressDetail?.message) || STEP_DESCRIPTIONS[currentStep] || "Procesando...";
+  const clipsReady = isNewPipeline ? progressDetail?.clips_ready ?? 0 : 0;
+  const timeHint = isNewPipeline ? estimateRemaining(currentStep, progressDetail) : null;
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -42,7 +111,7 @@ export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: 
         <div className="text-center space-y-6">
           <div className="flex justify-center">
             <div className="relative">
-              <motion.div 
+              <motion.div
                 key={activeStep.id}
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -52,7 +121,7 @@ export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: 
                 <span className="text-5xl">{activeStep.icon}</span>
               </motion.div>
               {/* Spinning ring */}
-              <motion.div 
+              <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                 className={`absolute inset-0 rounded-full border-t-2 border-${activeStep.color}-500`}
@@ -65,17 +134,29 @@ export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: 
               />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <h1 className="text-4xl font-bold text-white tracking-tight">Analizando tu video</h1>
-            <motion.p 
-              key={currentStep}
+            <motion.p
+              key={description}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="text-slate-400 text-xl font-light"
             >
-              {STEP_DESCRIPTIONS[currentStep] || "Procesando..."}
+              {description}
             </motion.p>
+            {(clipsReady > 0 || timeHint) && (
+              <div className="flex items-center justify-center gap-2 pt-1">
+                {clipsReady > 0 && (
+                  <Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30 text-xs px-2.5 py-1">
+                    {clipsReady} {clipsReady === 1 ? "clip listo" : "clips listos"}
+                  </Badge>
+                )}
+                {timeHint && (
+                  <span className="text-slate-500 text-sm">Tiempo estimado restante: {timeHint}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -99,7 +180,7 @@ export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: 
               {STEPS.map((step, index) => {
                 const isActive = currentStepIndex === index;
                 const isCompleted = currentStepIndex > index;
-                
+
                 return (
                   <div key={step.id} className="flex flex-col items-center gap-3 z-10 w-20">
                     <motion.div
@@ -112,13 +193,13 @@ export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: 
                         !isActive && !isCompleted ? "bg-slate-800" : `bg-${step.color}-500/20`
                       }`}
                     >
-                      <motion.span 
+                      <motion.span
                         animate={{ scale: isActive ? 1.2 : 1 }}
                         className="text-2xl"
                       >
                         {step.icon}
                       </motion.span>
-                      
+
                       {isActive && (
                         <motion.div
                           layoutId="activeGlow"
@@ -127,7 +208,7 @@ export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: 
                         />
                       )}
                     </motion.div>
-                    
+
                     <span
                       className={`text-xs font-medium text-center transition-colors duration-300 ${
                         isActive ? `text-${step.color}-400` : isCompleted ? "text-slate-300" : "text-slate-600"
@@ -152,7 +233,7 @@ export function ProcessingScreen({ currentStep = "downloading", progress = 0 }: 
 // Simple tips carousel component
 function ViralTipsCarousel() {
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
-  
+
   const VIRAL_TIPS = [
     "💡 El 'Cringe' genera un 300% más de comentarios. No le tengas miedo a lo incómodo.",
     "🎣 Los primeros 3 segundos deciden si tu clip vive o muere. El gancho es todo.",

@@ -1,0 +1,976 @@
+"""
+Cortes anclados a las frases del modelo (W1, docs/PLAN_CALIDAD.md §4).
+
+La Pasada A entrega start_time/end_time sobre bloques de captions (C1) y el
+pipeline descartaba sus first/last_phrase_in_audio (C2). Ahora la verdad son
+las frases: se localizan en la Transcripción del segmento ancho y el Clip va
+de inicio de oración de la primera al fin de oración de la última.
+"""
+import os
+import sys
+import types
+import pytest
+from unittest.mock import patch, MagicMock
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from services.validation import (  # noqa: E402
+    locate_phrase,
+    sentence_bounds_around,
+    compute_clip_bounds,
+    build_clip_quality_issues,
+    CLIP_MAX_DURATION_SEC,
+    verification_failed_from_flags,
+    hook_delay_metrics,
+    is_late_hook,
+)
+
+
+# ── Fixtures sintéticas ──────────────────────────────────────────────────────
+
+def _speak(text: str, start: float, wps: float = 2.5, gap_before: float = 0.0) -> list[dict]:
+    """Palabras de `text` a `wps` palabras/s desde `start` (+gap_before)."""
+    out = []
+    t = start + gap_before
+    for tok in text.split():
+        out.append({"word": tok, "start": round(t, 3), "end": round(t + 0.3, 3)})
+        t += 1.0 / wps
+    return out
+
+
+def _segment(sentences: list[tuple[str, float]], start: float = 0.0, wps: float = 2.5) -> list[dict]:
+    """
+    Oraciones consecutivas: [(texto, gap_antes_s), ...]. Cada oración termina
+    donde termina su texto (puntuación incluida en el texto).
+    """
+    words: list[dict] = []
+    t = start
+    for text, gap in sentences:
+        chunk = _speak(text, t, wps=wps, gap_before=gap)
+        words += chunk
+        t = chunk[-1]["end"] + 0.1
+    return words
+
+
+FIRST = "El error del Ferrari fue creer que la velocidad lo era todo."
+PAYOFF = "La vía de contagio más habitual es el polvo que barrés."
+
+# Segmento ancho típico: 15 s de relleno antes, la idea, y relleno después.
+WIDE = _segment([
+    ("y entonces bueno nada eso es lo que te decía el otro día.", 0.0),
+    ("Bueno, sigamos con lo que importa de verdad hoy.", 0.4),
+    (FIRST, 0.8),
+    ("Cuando corrés sin frenos terminás pagando el doble.", 0.5),
+    ("Y eso lo aprendí tarde, como casi todo.", 0.5),
+    (PAYOFF, 0.7),
+    ("Y después de eso ya no hay vuelta atrás.", 0.5),
+    ("Bueno pasemos a otra cosa que quería comentar.", 0.9),
+], start=1.0)
+WIDE_DUR = WIDE[-1]["end"] + 3.0
+
+
+def _t(words, idx):
+    return words[idx]["start"]
+
+
+def _word_at(words, t):
+    return next(w for w in words if abs(w["start"] - t) < 1e-6)
+
+
+# ── locate_phrase ────────────────────────────────────────────────────────────
+
+class TestLocatePhrase:
+
+    def test_exact_match(self):
+        r = locate_phrase(WIDE, FIRST)
+        assert r is not None
+        assert WIDE[r["start_idx"]]["word"] == "El"
+        assert WIDE[r["end_idx"]]["word"] == "todo."
+        assert r["score"] == 1.0
+
+    def test_accents_and_punctuation_ignored(self):
+        r = locate_phrase(WIDE, "la via de contagio mas habitual, es el polvo que barres")
+        assert r is not None
+        assert WIDE[r["start_idx"]]["word"] == "La"
+        assert WIDE[r["end_idx"]]["word"] == "barrés."
+
+    def test_one_word_changed_still_matches(self):
+        # 1 de 8 palabras distinta ("velocidad" → "rapidez") → 0.875 ≥ 0.75
+        r = locate_phrase(WIDE, "El error del Ferrari fue creer que la rapidez")
+        assert r is not None
+        assert WIDE[r["start_idx"]]["word"] == "El"
+
+    def test_too_many_differences_is_none(self):
+        assert locate_phrase(WIDE, "El horror del Fiat fue pensar que la rapidez") is None
+
+    def test_absent_phrase_is_none(self):
+        assert locate_phrase(WIDE, "esto no se dijo nunca en el audio") is None
+
+    def test_prefer_first_and_last_on_repeated_phrase(self):
+        words = _segment([
+            ("En realidad los modelos están bastante bien.", 0.0),
+            ("Y eso es lo que importa.", 0.5),
+            ("En realidad los modelos están bastante bien.", 0.5),
+        ])
+        first = locate_phrase(words, "en realidad los modelos están bastante bien", prefer="first")
+        last = locate_phrase(words, "en realidad los modelos están bastante bien", prefer="last")
+        assert first["start_idx"] == 0
+        assert last["start_idx"] > first["end_idx"]
+        assert words[last["start_idx"]]["word"] == "En"
+
+    def test_start_idx_restricts_search(self):
+        words = _segment([
+            ("En realidad los modelos están bastante bien.", 0.0),
+            ("Y eso es lo que importa.", 0.5),
+            ("En realidad los modelos están bastante bien.", 0.5),
+        ])
+        r = locate_phrase(words, "en realidad los modelos", prefer="first", start_idx=8)
+        assert r["start_idx"] >= 8
+
+    def test_empty_inputs(self):
+        assert locate_phrase([], FIRST) is None
+        assert locate_phrase(WIDE, "") is None
+
+    def test_h_muda_hantavirus_vs_antavirus(self):
+        # W2-C: Whisper y la Pasada A difieren en la "h" muda del español
+        # ("hantavirus" transcribe como "antavirus") — no debe contar como
+        # palabra distinta.
+        words = _speak("el contagio de antavirus persona a persona es raro", 0.0)
+        r = locate_phrase(words, "el contagio de hantavirus persona a persona")
+        assert r is not None
+        assert r["score"] == 1.0
+
+    def test_r_cero_vs_r0_con_umbral_largo(self):
+        # W2-C: frase larga (≥6 palabras) tolera 1 de cada 3 distinta — cubre
+        # variantes de transcripción de números/siglas ("R0" vs "R cero").
+        words = _speak("y ese es exactamente el R0 del sarampion que mencionabamos antes", 0.0)
+        r = locate_phrase(words, "ese es exactamente el R cero del sarampión")
+        assert r is not None
+
+    def test_umbral_largo_no_relaja_frases_cortas(self):
+        # Frases < LOCATE_LONG_PHRASE_WORDS se quedan en el umbral estricto
+        # (1 de 4): 2 de 4 palabras distintas no debería matchear.
+        words = _speak("el gato negro corre rapido", 0.0)
+        assert locate_phrase(words, "el perro blanco corre") is None
+
+
+# ── sentence_bounds_around ───────────────────────────────────────────────────
+
+class TestSentenceBounds:
+
+    def test_punctuation_bounds(self):
+        r = locate_phrase(WIDE, "creer que la velocidad")
+        s_idx, e_idx = sentence_bounds_around(WIDE, r["start_idx"])
+        assert WIDE[s_idx]["word"] == "El"
+        assert WIDE[e_idx]["word"] == "todo."
+
+    def test_gap_bounds_without_punctuation(self):
+        words = _speak("hola qué tal todo bien", 0.0) + _speak("ahora arranca la idea buena", 5.0)
+        s_idx, e_idx = sentence_bounds_around(words, 6)
+        assert words[s_idx]["word"] == "ahora"
+        assert e_idx == len(words) - 1
+
+    def test_lookback_cap_on_endless_sentence(self):
+        # 30 s de palabras sin puntuación ni gaps: no retroceder más de 10 s
+        words = _speak(" ".join(f"w{i}" for i in range(75)), 0.0)
+        s_idx, e_idx = sentence_bounds_around(words, 60)
+        assert words[60]["start"] - words[s_idx]["start"] <= 10.0 + 0.5
+        assert words[e_idx]["end"] - words[60]["end"] <= 10.0 + 0.5
+
+
+# ── compute_clip_bounds ──────────────────────────────────────────────────────
+
+def _bounds(words, first, last, **kw):
+    params = dict(
+        seg_start_abs=100.0,
+        seg_end_abs=100.0 + WIDE_DUR,
+        video_duration=3000.0,
+        hint_start_abs=100.0 + 12.0,
+        hint_end_abs=100.0 + 30.0,
+    )
+    params.update(kw)
+    return compute_clip_bounds(words, first, last, **params)
+
+
+class TestComputeClipBounds:
+
+    def test_phrases_found_clip_spans_sentences(self):
+        r = _bounds(WIDE, FIRST, PAYOFF)
+        assert r["flags"] == []
+        first_w = _word_at(WIDE, locate_phrase(WIDE, FIRST)["start_idx"] and _t(WIDE, locate_phrase(WIDE, FIRST)["start_idx"]))
+        # Arranca 0,25 s antes de "El" y termina 0,40 s después de "barrés."
+        assert r["start_rel"] == pytest.approx(first_w["start"] - 0.25, abs=0.01)
+        payoff_end = WIDE[locate_phrase(WIDE, PAYOFF, prefer="last")["end_idx"]]["end"]
+        assert r["end_rel"] == pytest.approx(payoff_end + 0.40, abs=0.01)
+        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 120.0
+        assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
+        assert r["evidence"]["extend_recommended"] is False
+
+    def test_phrases_at_segment_edges(self):
+        # Primera frase es la primera oración del segmento y la última la final
+        words = _segment([(FIRST, 0.0), ("Algo en el medio que suma.", 0.5), (PAYOFF, 0.5)], wps=1.5)
+        dur = words[-1]["end"] + 0.3
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=dur,
+        )
+        assert r["start_rel"] == 0.0
+        assert r["end_rel"] == pytest.approx(dur, abs=0.01)   # remate + 0,4 s, capped al segmento
+        assert r["end_rel"] - r["start_rel"] >= 15.0
+        assert r["flags"] == []
+
+    def test_last_phrase_outside_segment_recommends_extension(self):
+        r = _bounds(WIDE, FIRST, "esta frase quedó fuera del segmento descargado")
+        assert "payoff_not_found" in r["flags"]
+        assert r["evidence"]["extend_recommended"] is True
+        # Fin de respaldo: primer fin de oración en o después del end_time numérico
+        assert r["evidence"]["end_source"] in ("sentence_after_hint", "last_fitting_sentence")
+        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 120.0
+        # y sigue arrancando en la primera frase
+        assert r["evidence"]["start_source"] == "first_phrase"
+
+    def test_no_extension_when_segment_reaches_video_end(self):
+        r = _bounds(
+            WIDE, FIRST, "frase inexistente",
+            video_duration=100.0 + WIDE_DUR,   # el segmento ya llega al final
+        )
+        assert "payoff_not_found" in r["flags"]
+        assert r["evidence"]["extend_recommended"] is False
+
+    def test_first_phrase_missing_uses_hint_sentence_start(self):
+        r = _bounds(WIDE, "frase que no está en el audio", PAYOFF)
+        assert "hook_not_found" in r["flags"]
+        assert r["evidence"]["start_source"] == "sentence_after_hint"
+        # Inicio de oración más cercano ≥ start_time − 3 s (hint_start_rel = 12)
+        assert r["start_rel"] >= 12.0 - 3.0 - 0.25
+        assert r["evidence"]["last_found"] is True
+
+    def test_first_phrase_missing_falls_back_to_hook_anchor(self):
+        r = _bounds(WIDE, "frase inexistente", PAYOFF, hook="Cuando corrés sin frenos pagás el doble")
+        assert "hook_not_found" in r["flags"]
+        assert r["evidence"]["start_source"] == "hook_anchor"
+        assert WIDE[[i for i, w in enumerate(WIDE) if abs(w["start"] - 0.25 - r["start_rel"]) < 0.01][0]]["word"] == "Cuando"
+
+    def test_repeated_last_phrase_prefers_last_after_first(self):
+        words = _segment([
+            ("Arrancamos con la idea principal.", 0.0),
+            ("Lo importante es medir antes de cambiar.", 0.5),
+            ("Y después de eso seguimos hablando un rato largo.", 0.5),
+            ("Lo importante es medir antes de cambiar.", 0.5),
+            ("Fin del bloque.", 0.5),
+        ])
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, "Arrancamos con la idea principal", "lo importante es medir antes de cambiar",
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        second = locate_phrase(words, "lo importante es medir antes de cambiar", prefer="last")
+        assert r["evidence"]["last_idx"] == second["end_idx"]
+
+    def test_no_punctuation_uses_gaps(self):
+        words = (
+            _speak("relleno relleno relleno relleno relleno", 0.0)
+            + _speak("el error del ferrari fue creer que la velocidad lo era todo", 4.0)
+            + _speak("cuando corrés sin frenos terminás pagando el doble", 10.5)
+            + _speak("la vía de contagio más habitual es el polvo que barrés", 16.0)
+            + _speak("y después de eso ya no hay vuelta atrás", 22.0)
+            + _speak("relleno final relleno final relleno", 28.0)
+        )
+        dur = words[-1]["end"] + 2.0
+        r = compute_clip_bounds(
+            words, "el error del ferrari fue creer", "la vía de contagio más habitual",
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["flags"] == []
+        assert r["start_rel"] == pytest.approx(4.0 - 0.25, abs=0.01)
+        # termina al final de la "oración" (gap) que contiene la última frase:
+        # "barrés" termina en 20.3 → 20.7; no entra la oración siguiente (22.0)
+        assert r["end_rel"] == pytest.approx(20.3 + 0.4, abs=0.01)
+
+    def test_short_clip_is_extended_to_next_sentence_end(self):
+        words = _segment([
+            ("Frase corta de gancho.", 0.0),
+            ("Y el remate viene enseguida.", 0.4),
+            ("Esta oración extra completa los quince segundos que hacen falta.", 0.4),
+            ("Y otra más por si acaso hiciera falta todavía.", 0.4),
+        ], wps=2.0)
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, "Frase corta de gancho", "el remate viene enseguida",
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["end_rel"] - r["start_rel"] >= 15.0
+        assert r["evidence"].get("extended_for_min") is True
+        assert r["flags"] == []
+
+    def test_long_clip_moves_start_forward_before_dropping_payoff(self):
+        # Primera frase + 65 s hasta el remate (> max_s=60, explícito para
+        # ejercitar el truncado sin depender del tope por defecto del sistema,
+        # que W2-B subió a 120s): antes que perder la última frase se mueve
+        # el START al siguiente inicio de oración (decisión del brief W1); la
+        # primera frase queda afuera y se flaggea.
+        sentences = [(FIRST, 0.0)] + [
+            (f"Oración de relleno número {i} que dura lo suficiente para sumar tiempo.", 0.4)
+            for i in range(7)
+        ] + [(PAYOFF, 0.4)]
+        words = _segment(sentences, wps=1.5)
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+            max_s=60.0,
+        )
+        payoff_end = words[locate_phrase(words, PAYOFF, prefer="last")["end_idx"]]["end"]
+        assert 15.0 <= r["end_rel"] - r["start_rel"] <= 60.0
+        assert r["end_rel"] >= payoff_end
+        assert "payoff_not_found" not in r["flags"]
+        assert r["evidence"].get("start_moved_for_max") is True
+        assert r["evidence"].get("hook_dropped_for_max") is True
+        assert "hook_not_found" in r["flags"]
+        # arranca en el primer inicio de oración que deja ≤ 60 s
+        start_word = next(w for w in words if abs(w["start"] - 0.25 - r["start_rel"]) < 0.01)
+        assert start_word["word"] == "Oración"
+
+    def test_long_clip_without_room_cuts_end_and_flags(self):
+        # Una sola oración larguísima (sin puntuación ni gaps) de 80 s con la
+        # primera frase al inicio y el remate al final: no hay inicio de oración
+        # al que mover el start → se corta a ≤ max_s y se flaggea el remate
+        # perdido. max_s=60 explícito para ejercitar el truncado (el tope por
+        # defecto del sistema es 120s desde W2-B).
+        text = FIRST[:-1] + " " + " ".join(f"relleno{i}" for i in range(90)) + " " + PAYOFF
+        words = _speak(text, 0.0, wps=1.5)
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+            max_s=60.0,
+        )
+        assert r["end_rel"] - r["start_rel"] <= 60.0
+        assert "payoff_not_found" in r["flags"]
+        assert r["evidence"].get("payoff_dropped_for_max") is True
+
+    def test_95s_candidate_is_not_truncated_by_120s_cap(self):
+        # W2-B (docs/PLAN_CALIDAD.md §8-9, análisis Opus Clip): con el tope
+        # viejo (60s) este candidato bien formado —planteo, desarrollo y
+        # remate en ~96s— se truncaba y perdía el remate. Con
+        # CLIP_MAX_DURATION_SEC=120 pasa entero, sin flags.
+        fillers = [
+            (f"Desarrollo del argumento numero {i} con varias palabras para sumar tiempo real.", 0.4)
+            for i in range(10)
+        ]
+        sentences = [(FIRST, 0.0)] + fillers + [(PAYOFF, 0.4)]
+        words = _segment(sentences, wps=1.5)
+        content_duration = words[-1]["end"] - words[0]["start"]
+        assert 90.0 < content_duration < 110.0  # el fixture realmente supera los 60s viejos
+        dur = words[-1]["end"] + 2.0
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["flags"] == []
+        assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
+        clip_duration = r["end_rel"] - r["start_rel"]
+        assert 90.0 < clip_duration <= CLIP_MAX_DURATION_SEC
+
+    def test_validate_durations_keeps_95s_moment_with_new_default(self):
+        # Mismo caso a nivel de validate_durations (Step 3.5 en main.py):
+        # ya no pasa min_duration=10/max_duration=60 a mano, usa los defaults
+        # CLIP_MIN/MAX_DURATION_SEC (15/120) — un momento de 95s bien formado
+        # llega intacto, no se recorta a 60.
+        from services.validation import validate_durations
+        from types import SimpleNamespace
+
+        moment = SimpleNamespace(start_time=100.0, end_time=195.0, hook="idea completa de 95s")
+        kept = validate_durations([moment])
+        assert len(kept) == 1
+        assert kept[0].end_time == 195.0  # sin recortar
+
+    def test_never_start_lowercase_if_sentence_start_within_2s(self):
+        # La "primera frase" empieza en minúscula a mitad de oración corta:
+        # el inicio salta al comienzo de esa oración (≤ 2 s antes).
+        words = _segment([
+            ("Relleno inicial que no importa nada.", 0.0),
+            ("Mirá, el error del Ferrari fue creer que la velocidad lo era todo.", 0.5),
+            ("Y después de eso ya no hay vuelta atrás.", 0.5),
+            (PAYOFF, 0.5),
+            ("Cierre del bloque con algo más de texto.", 0.5),
+        ])
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, "el error del Ferrari fue creer", PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        start_word = next(w for w in words if abs(w["start"] - 0.25 - r["start_rel"]) < 0.01)
+        assert start_word["word"] == "Mirá,"
+
+    def test_pads_never_cross_adjacent_words(self):
+        # Habla continua: Whisper deja las palabras pegadas (end == next.start).
+        # El pad de 0,25 s NO debe meter la última sílaba de la oración anterior
+        # ni el de 0,40 s la primera de la siguiente (caso real e2e: los clips
+        # arrancaban con "pasaba. Entraba en Claude…").
+        words = []
+        t = 0.0
+        for tok in ("relleno relleno relleno pasaba. " + FIRST + " Y algo más. " + PAYOFF + " Para entenderlo hay que verlo.").split():
+            words.append({"word": tok, "start": round(t, 3), "end": round(t + 0.7, 3)})
+            t += 0.7
+        dur = t + 1.0
+        r = compute_clip_bounds(
+            words, FIRST, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        first_w = words[locate_phrase(words, FIRST)["start_idx"]]
+        last_w = words[locate_phrase(words, PAYOFF, prefer="last")["end_idx"]]
+        assert r["start_rel"] == pytest.approx(first_w["start"], abs=0.001)   # sin pad: pegadas
+        assert r["end_rel"] == pytest.approx(last_w["end"], abs=0.001)
+        # y con las palabras desplazadas, la primera del clip es "El" y la última "barrés."
+        from services.clip_generator import shift_words_timeline, filter_whisper_words
+        shifted = filter_whisper_words(
+            shift_words_timeline(words, r["start_rel"], clip_duration=r["end_rel"] - r["start_rel"]),
+            r["end_rel"] - r["start_rel"],
+        )
+        assert shifted[0]["word"] == "El"
+        assert shifted[-1]["word"] == "barrés."
+
+    def test_numbers_in_digits_match_words(self):
+        words = _speak("bueno pasamos ahora al hack número 5 que es el mejor", 0.0)
+        r = locate_phrase(words, "pasamos ahora al hack número cinco")
+        assert r is not None
+        assert words[r["end_idx"]]["word"] == "5"
+
+    def test_no_words_returns_hint_bounds(self):
+        r = compute_clip_bounds(
+            [], FIRST, PAYOFF,
+            seg_start_abs=100.0, seg_end_abs=170.0, video_duration=500.0,
+            hint_start_abs=115.0, hint_end_abs=150.0,
+        )
+        assert r["start_rel"] == 15.0
+        assert r["end_rel"] == 50.0
+        assert set(r["flags"]) == {"hook_not_found", "payoff_not_found"}
+
+
+# ── W1-C: arrancar en el inicio de la Línea, no una palabra después ────────
+# Hallazgo del agente de W4 (docs/PLAN_CALIDAD.md): 6 de 7 clips que no
+# arrancan con mayúscula arrancan EXACTAMENTE una palabra después del inicio
+# de la Línea, porque el modelo cita first_phrase_in_audio sin el conector
+# inicial ("Luego", "Para", "Aquí"...) y sentence_bounds_around no puede
+# retroceder: en el segmento ancho (re-transcripción propia) no hay
+# puntuación ni gap antes de esa palabra. Casos reales medidos (conector →
+# lo que el modelo cita): "Luego|tenemos otra skill", "Y luego|tenemos",
+# "Para|probar esta funcionalidad", "Para|crear esta tienda",
+# "Aquí|estamos viendo", "Luego|tenemos una skill".
+
+class TestLineAlignedBounds:
+
+    REAL_CASES = [
+        ("Luego tenemos otra skill que ayuda mucho con esto", "tenemos otra skill que ayuda mucho con esto"),
+        ("Y luego tenemos una skill nueva para probar ahora", "tenemos una skill nueva para probar ahora"),
+        ("Para probar esta funcionalidad hacemos click en el botón", "probar esta funcionalidad hacemos click en el botón"),
+        ("Para crear esta tienda usamos el panel de control", "crear esta tienda usamos el panel de control"),
+        ("Aquí estamos viendo el resultado final del proceso", "estamos viendo el resultado final del proceso"),
+        ("Luego tenemos una skill que resuelve el problema", "tenemos una skill que resuelve el problema"),
+    ]
+
+    @pytest.mark.parametrize("full_sentence,quoted_phrase", REAL_CASES)
+    def test_start_lands_on_line_start_not_one_word_after(self, full_sentence, quoted_phrase):
+        # "prev" sin punto final y gap chico antes de full_sentence: simula
+        # que en el segmento ancho NO hay boundary detectable antes del
+        # conector (el bug real). Sin la Línea, sentence_bounds_around se
+        # quedaría en la primera palabra de quoted_phrase.
+        prev = "bueno dale vamos a ver algo importante ahora"
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        words = _segment([(prev, 0.0), (full_sentence, 0.3), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+
+        match = locate_phrase(words, full_sentence, prefer="first")
+        assert match is not None
+        line = {
+            "id": 0,
+            "start": seg_start_abs + words[match["start_idx"]]["start"],
+            "end": seg_start_abs + words[match["end_idx"]]["end"],
+            "text": full_sentence,
+            "n_words": match["end_idx"] - match["start_idx"] + 1,
+        }
+
+        r = compute_clip_bounds(
+            words, quoted_phrase, payoff,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+            hint_end_abs=seg_start_abs + dur,
+            lines=[line],
+        )
+        assert r["evidence"]["line_aligned"] is True
+        assert r["start_rel"] == pytest.approx((line["start"] - seg_start_abs) - 0.25, abs=0.02)
+        # El conector quedó DENTRO del clip (no arranca en la frase citada).
+        connector_word = full_sentence.split()[0].rstrip(".,").lower()
+        quoted_first_word = quoted_phrase.split()[0].lower()
+        assert connector_word != quoted_first_word
+
+    def test_end_aligns_to_line_containing_last_phrase(self):
+        first = "arrancamos con la idea central de todo esto"
+        full_last_sentence = "Luego cerramos con la conclusión final que buscabamos"
+        quoted_last = "cerramos con la conclusión final que buscabamos"
+        words = _segment([
+            (first, 0.0),
+            ("relleno en el medio que no importa mucho", 0.5),
+            (full_last_sentence, 0.3),
+        ], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+
+        match = locate_phrase(words, full_last_sentence, prefer="first")
+        assert match is not None
+        line = {
+            "id": 0,
+            "start": seg_start_abs + words[match["start_idx"]]["start"],
+            "end": seg_start_abs + words[match["end_idx"]]["end"],
+            "text": full_last_sentence,
+            "n_words": match["end_idx"] - match["start_idx"] + 1,
+        }
+
+        r = compute_clip_bounds(
+            words, first, quoted_last,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs, hint_end_abs=seg_start_abs + dur,
+            lines=[line],
+        )
+        assert r["evidence"]["line_aligned"] is True
+        assert r["end_rel"] == pytest.approx((line["end"] - seg_start_abs) + 0.40, abs=0.02)
+
+    def test_without_lines_unchanged_no_line_aligned_flag(self):
+        # Sin Líneas (Supadata/jobs legacy): no se activa el ajuste — no se
+        # marca line_aligned. (El respaldo de partículas es harina de otro
+        # costal, ver TestParticleFallback.)
+        r = _bounds(WIDE, FIRST, PAYOFF)  # sin lines=...
+        assert "line_aligned" not in r["evidence"]
+
+    def test_line_aligned_start_over_max_moves_to_next_line(self):
+        # Si alinear a la Línea deja el clip por encima de max_s, se mueve
+        # el inicio a la Línea SIGUIENTE (no a cualquier boundary del
+        # segmento ancho) sin perder el remate.
+        max_s, min_s = 10.0, 3.0
+        prev = "bueno dale vamos a ver algo importante ahora"
+        sentence_a = "Luego tenemos una skill que es larguisima de verdad"  # sin punto
+        sentence_b = "Después seguimos con otra parte del tutorial ahora."
+        payoff = "y ese es el final del tutorial que buscabas ver."
+        quoted_first = "tenemos una skill que es larguisima de verdad"
+
+        words = _segment([
+            (prev, 0.0), (sentence_a, 0.3), (sentence_b, 0.2), (payoff, 0.5),
+        ], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+
+        m_a = locate_phrase(words, sentence_a, prefer="first")
+        m_b = locate_phrase(words, sentence_b, prefer="first")
+        assert m_a and m_b
+        line_a = {
+            "id": 0, "start": seg_start_abs + words[m_a["start_idx"]]["start"],
+            "end": seg_start_abs + words[m_a["end_idx"]]["end"], "text": sentence_a, "n_words": 0,
+        }
+        line_b = {
+            "id": 1, "start": seg_start_abs + words[m_b["start_idx"]]["start"],
+            "end": seg_start_abs + words[m_b["end_idx"]]["end"], "text": sentence_b, "n_words": 0,
+        }
+
+        r = compute_clip_bounds(
+            words, quoted_first, payoff,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs + words[m_a["start_idx"]]["start"],
+            hint_end_abs=seg_start_abs + dur,
+            lines=[line_a, line_b],
+            max_s=max_s, min_s=min_s,
+        )
+        assert r["evidence"].get("start_moved_for_max") is True
+        assert r["start_rel"] == pytest.approx((line_b["start"] - seg_start_abs) - 0.25, abs=0.05)
+        assert min_s <= r["end_rel"] - r["start_rel"] <= max_s
+        payoff_match = locate_phrase(words, payoff, prefer="last")
+        assert r["end_rel"] >= words[payoff_match["end_idx"]]["end"] - 0.05
+
+
+class TestParticleFallback:
+    """W1-C item 2: respaldo barato SIN Líneas — retrocede una palabra y no
+    más cuando la anterior es una partícula inicial frecuente pegada."""
+
+    # sentence_bounds_around puede quedarse en la palabra citada por varias
+    # combinaciones de puntuación/gaps del segmento ancho (el mecanismo
+    # exacto varía caso a caso); acá se mockea para testear el respaldo de
+    # partículas de forma aislada, con su única precondición documentada:
+    # "sigue en la palabra citada" (sin retroceso).
+
+    def test_retreats_one_word_when_particle_precedes(self):
+        prev = "bueno dale vamos a ver algo importante ahora"
+        sentence = "Luego tenemos otra skill que ayuda mucho."
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        quoted_first = "tenemos otra skill que ayuda mucho"
+
+        words = _segment([(prev, 0.0), (sentence, 0.3), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+        match = locate_phrase(words, quoted_first, prefer="first")
+        assert match is not None
+
+        with patch(
+            "services.validation.sentence_bounds_around",
+            side_effect=lambda w, idx, segments=None, **kw: (idx, idx),
+        ):
+            r = compute_clip_bounds(
+                words, quoted_first, payoff,
+                seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+                video_duration=3000.0,
+                hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+                hint_end_abs=seg_start_abs + dur,
+                # sin lines -> respaldo de partículas
+            )
+        assert r["evidence"].get("particle_fix") is True
+        connector_idx = match["start_idx"] - 1
+        assert words[connector_idx]["word"].rstrip(".,").lower() == "luego"
+        assert r["start_rel"] == pytest.approx(words[connector_idx]["start"] - 0.25, abs=0.02)
+
+    def test_does_not_retreat_past_one_word(self):
+        # La palabra dos atrás ("ahora", fin de "prev") NO es una partícula
+        # -> el retroceso se detiene en "luego", no sigue.
+        prev = "bueno dale vamos a ver algo importante ahora"
+        sentence = "Luego tenemos otra skill que ayuda mucho."
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        quoted_first = "tenemos otra skill que ayuda mucho"
+        words = _segment([(prev, 0.0), (sentence, 0.3), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+        match = locate_phrase(words, quoted_first, prefer="first")
+
+        with patch(
+            "services.validation.sentence_bounds_around",
+            side_effect=lambda w, idx, segments=None, **kw: (idx, idx),
+        ):
+            r = compute_clip_bounds(
+                words, quoted_first, payoff,
+                seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+                video_duration=3000.0,
+                hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+                hint_end_abs=seg_start_abs + dur,
+            )
+        connector_idx = match["start_idx"] - 1
+        word_before_connector = words[connector_idx - 1]
+        assert not _is_leading_particle_for_test(word_before_connector["word"])
+        # start_rel corresponde a "luego", no a una palabra más atrás.
+        assert r["start_rel"] > word_before_connector["end"] - 0.25
+
+    def test_no_fix_when_gap_too_large(self):
+        # Partícula presente pero con pausa >= 0,6s antes de la frase: no es
+        # el mismo caso (probablemente sí hay corte de oración real ahí) ->
+        # no se activa el respaldo.
+        prev = "bueno dale vamos a ver algo importante ahora luego"
+        sentence = "tenemos otra skill que ayuda mucho."
+        payoff = "y eso resuelve todo el problema que teniamos antes."
+        words = _segment([(prev, 0.0), (sentence, 0.7), (payoff, 0.6)], wps=2.5)
+        seg_start_abs = 100.0
+        dur = words[-1]["end"] + 3.0
+        match = locate_phrase(words, sentence, prefer="first")
+
+        r = compute_clip_bounds(
+            words, sentence, payoff,
+            seg_start_abs=seg_start_abs, seg_end_abs=seg_start_abs + dur,
+            video_duration=3000.0,
+            hint_start_abs=seg_start_abs + words[match["start_idx"]]["start"],
+            hint_end_abs=seg_start_abs + dur,
+        )
+        assert r["evidence"].get("particle_fix") is not True
+
+
+def _is_leading_particle_for_test(word: str) -> bool:
+    from services.validation import _is_leading_particle
+    return _is_leading_particle(word)
+
+
+# ── W2-C: verification_failed = SOLO hook_not_found / payoff_not_found ──────
+# docs/PLAN_CALIDAD.md §9. late_hook/incomplete_tail quedan informativos: el
+# clip ancla al INICIO DE ORACIÓN de la primera frase, no a su primera
+# palabra, así que unas palabras/segundos de contexto antes del hook citado
+# son normales (antes disparaban verification_failed en falso).
+
+class TestVerificationSemanticsW2C:
+
+    def test_hook_con_contexto_previo_no_es_late_hook_ni_verification_failed(self):
+        # Caso real que motivó el cambio: podcast_general_01, candidato
+        # 1010-1050s (mismo tema que el clip mejor puntuado de Opus Clip
+        # sobre este video). La oración que contiene la primera frase citada
+        # arranca ~8 palabras / ~5s antes de esa frase.
+        first_phrase = "ciencia que también se hizo muy famoso"
+        words = _segment([
+            ("Porque esto se calcula con base en la " + first_phrase + ".", 0.0),
+            ("Un desarrollo que conecta la idea del medio con el resto.", 0.4),
+            (PAYOFF, 0.4),
+        ], wps=1.5)
+        dur = words[-1]["end"] + 1.0
+        r = compute_clip_bounds(
+            words, first_phrase, PAYOFF,
+            seg_start_abs=0.0, seg_end_abs=dur, video_duration=500.0,
+        )
+        assert r["flags"] == []
+        assert r["evidence"]["first_found"] and r["evidence"]["last_found"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is False
+
+        delay_sec, words_before = hook_delay_metrics(
+            words, float(r["start_rel"]), r["evidence"].get("first_phrase_rel_start")
+        )
+        assert delay_sec is not None and 0 < delay_sec < 8.0
+        assert words_before is not None and words_before <= 12
+        assert is_late_hook(delay_sec, words_before) is False
+
+    def test_payoff_not_found_marca_verification_failed(self):
+        r = _bounds(WIDE, FIRST, "esta frase quedó fuera del segmento descargado")
+        assert "payoff_not_found" in r["flags"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is True
+
+    def test_hook_not_found_marca_verification_failed(self):
+        r = _bounds(WIDE, "frase que no está en el audio", PAYOFF)
+        assert "hook_not_found" in r["flags"]
+        assert verification_failed_from_flags(
+            "hook_not_found" in r["flags"], "payoff_not_found" in r["flags"]
+        ) is True
+
+    def test_is_late_hook_por_muchas_palabras_aunque_pocos_segundos(self):
+        # Muletillas rápidas: muchas palabras cortas antes del hook aunque el
+        # tiempo total no llegue a 8s — igual cuenta como late_hook.
+        assert is_late_hook(4.0, 13) is True
+        assert is_late_hook(4.0, 12) is False
+        assert is_late_hook(9.0, 2) is True
+        assert is_late_hook(None, None) is False
+
+
+# ── Sin Verificación → flujo legacy intacto ─────────────────────────────────
+
+class TestLegacyPathWithoutVerification:
+
+    def test_moment_without_verification_has_no_phrases(self):
+        from main import _moment_phrases
+        m = types.SimpleNamespace(verification=None)
+        assert _moment_phrases(m) == ("", "")
+        m2 = types.SimpleNamespace(verification=types.SimpleNamespace(
+            first_phrase_in_audio="  ", last_phrase_in_audio=None,
+        ))
+        assert _moment_phrases(m2) == ("", "")
+
+    def test_refine_bounds_legacy_healthy_clip_unchanged(self):
+        """Clip sano de 30 s: el refinamiento numérico no toca nada (igual que hoy)."""
+        from main import _refine_bounds_legacy
+        words = _segment([
+            ("Hola a todos y bienvenidos a este episodio del podcast.", 0.0),
+            ("Hoy vamos a hablar de un tema que me apasiona bastante.", 0.3),
+            ("Y al final les cuento la conclusión que saqué de todo esto.", 0.3),
+            ("Así que quedate hasta el final porque vale la pena.", 0.3),
+            ("Empecemos entonces con la primera idea importante del día.", 0.3),
+        ], start=0.4)
+        dur = 30.0
+        m = types.SimpleNamespace(verification=None, hook="Un tema que me apasiona", viral_overlay="")
+        out = _refine_bounds_legacy(
+            clip_words=words, clip_duration=dur, clip_segments_whisper=[],
+            moment=m, precut_path="/nonexistent/precut.mp4",
+            video_id="vid", moment_index=1, whisper_timestamps_suspect=False,
+        )
+        assert out["precut_path"] == "/nonexistent/precut.mp4"   # no hubo re-corte
+        assert out["clip_duration"] == dur
+        assert out["snap_trim_start"] == 0.0
+        assert out["min_duration_reverted"] is False
+        assert len(out["clip_words"]) == len(words)
+
+
+# ── Márgenes de descarga asimétricos ────────────────────────────────────────
+
+class TestClipMargins:
+
+    def test_defaults(self, monkeypatch):
+        from services.downloader import _clip_margins_sec
+        for k in ("CLIP_KEYFRAME_MARGIN_SEC", "CLIP_MARGIN_BEFORE_SEC", "CLIP_MARGIN_AFTER_SEC"):
+            monkeypatch.delenv(k, raising=False)
+        assert _clip_margins_sec() == (15.0, 20.0)
+
+    def test_legacy_alias_sets_both(self, monkeypatch):
+        from services.downloader import _clip_margins_sec
+        monkeypatch.delenv("CLIP_MARGIN_BEFORE_SEC", raising=False)
+        monkeypatch.delenv("CLIP_MARGIN_AFTER_SEC", raising=False)
+        monkeypatch.setenv("CLIP_KEYFRAME_MARGIN_SEC", "8")
+        assert _clip_margins_sec() == (8.0, 8.0)
+
+    def test_explicit_wins_over_legacy(self, monkeypatch):
+        from services.downloader import _clip_margins_sec
+        monkeypatch.setenv("CLIP_KEYFRAME_MARGIN_SEC", "8")
+        monkeypatch.setenv("CLIP_MARGIN_AFTER_SEC", "30")
+        monkeypatch.delenv("CLIP_MARGIN_BEFORE_SEC", raising=False)
+        assert _clip_margins_sec() == (8.0, 30.0)
+
+    def test_download_clip_ytdlp_explicit_after_margin(self, monkeypatch):
+        from services.downloader import download_clip_ytdlp
+        for k in ("CLIP_KEYFRAME_MARGIN_SEC", "CLIP_MARGIN_BEFORE_SEC", "CLIP_MARGIN_AFTER_SEC"):
+            monkeypatch.delenv(k, raising=False)
+        mock_ydl_cls = MagicMock()
+        mock_ydl_cls.return_value.__enter__.return_value = MagicMock()
+        with patch("services.downloader.yt_dlp.YoutubeDL", mock_ydl_cls), \
+             patch("services.downloader._build_ydl_opts", side_effect=lambda o, **kw: o), \
+             patch("services.downloader.Path") as mock_path:
+            mock_path.return_value.with_suffix.return_value = mock_path.return_value
+            mp4 = MagicMock()
+            mp4.exists.return_value = True
+            mp4.stat.return_value.st_size = 1024 * 1024
+            mock_path.side_effect = lambda *a, **k: mp4 if str(a[0]).endswith(".mp4") else MagicMock()
+            result = download_clip_ytdlp(
+                "https://youtube.com/watch?v=abc12345678",
+                start_sec=100.0, end_sec=160.0, output_path="/tmp/clip",
+                margin_after_sec=45.0, video_duration=1000.0,
+            )
+        assert result.download_start == 85.0
+        assert result.download_end == 205.0
+
+    def test_resolve_source_extends_cached_segment(self, tmp_path, monkeypatch):
+        """Segmento cacheado corto + extensión → re-descarga con margen después ampliado."""
+        import main
+        from services.downloader import ClipDownloadResult
+        for k in ("CLIP_KEYFRAME_MARGIN_SEC", "CLIP_MARGIN_BEFORE_SEC", "CLIP_MARGIN_AFTER_SEC"):
+            monkeypatch.delenv(k, raising=False)
+        cached_file = tmp_path / "seg.mp4"
+        cached_file.write_bytes(b"x")
+        cache = {1: ClipDownloadResult(str(cached_file), 85.0, 180.0)}
+
+        # sin extensión → usa el cache
+        src = main._resolve_moment_video_source(
+            moment_index=1, start_s=100.0, end_s=160.0, video_url="u", video_id="v",
+            video_duration=1000.0, muxed_video_path=None, clip_paths_cache=cache,
+            partial_download_failed=False,
+        )
+        assert src.kind == "cached"
+        assert (src.avail_start_abs, src.avail_end_abs) == (85.0, 180.0)
+        assert src.src_start == 15.0
+
+        # con extensión +25 → el cache (llega a 180) no alcanza (necesita 205) → yt-dlp
+        fake = ClipDownloadResult(str(cached_file), 85.0, 205.0)
+        with patch.object(main, "_should_use_ytdlp_for_clips", return_value=True), \
+             patch.object(main, "download_clip_ytdlp", return_value=fake) as dl:
+            src2 = main._resolve_moment_video_source(
+                moment_index=1, start_s=100.0, end_s=160.0, video_url="u", video_id="v",
+                video_duration=1000.0, muxed_video_path=None, clip_paths_cache=cache,
+                partial_download_failed=False, extend_after_sec=25.0,
+            )
+        assert src2.kind == "ytdlp"
+        assert dl.call_args.kwargs["margin_after_sec"] == 45.0
+        assert "_ext25" in dl.call_args.kwargs["output_path"]
+        assert src2.avail_end_abs == 205.0
+
+    def test_resolve_source_extension_failure_keeps_cached_segment(self, tmp_path, monkeypatch):
+        """Si la re-descarga para extender el margen no está disponible (caso real:
+        user_recommended_01 m=3, momento más allá del primer 20% del video, sin
+        proxies residenciales), el clip no se pierde: se sigue con el segmento
+        cacheado ya descargado, marcado como insuficiente."""
+        import main
+        from services.downloader import ClipDownloadResult
+        for k in ("CLIP_KEYFRAME_MARGIN_SEC", "CLIP_MARGIN_BEFORE_SEC", "CLIP_MARGIN_AFTER_SEC"):
+            monkeypatch.delenv(k, raising=False)
+        cached_file = tmp_path / "seg.mp4"
+        cached_file.write_bytes(b"x")
+        cache = {3: ClipDownloadResult(str(cached_file), 785.0, 880.0)}
+
+        with patch.object(main, "_should_use_ytdlp_for_clips", return_value=False), \
+             patch.object(main, "download_clip_ytdlp", side_effect=RuntimeError("403 sin proxy residencial")), \
+             patch.object(main, "_use_apify_fallback", return_value=False):
+            src = main._resolve_moment_video_source(
+                moment_index=3, start_s=800.0, end_s=860.0, video_url="u", video_id="v",
+                video_duration=1000.0, muxed_video_path=None, clip_paths_cache=cache,
+                partial_download_failed=False, extend_after_sec=25.0,
+            )
+        assert src.kind == "cached"
+        assert src.insufficient is True
+        assert src.avail_end_abs == 880.0
+
+    def test_resolve_source_no_fallback_still_raises(self, tmp_path):
+        """Sin ningún segmento previo (ni cache, ni muxed, ni fallback_source), la
+        falta total de video sigue siendo un error — no hay nada que degradar."""
+        import main
+        with patch.object(main, "_should_use_ytdlp_for_clips", return_value=False), \
+             patch.object(main, "_use_apify_fallback", return_value=False):
+            with pytest.raises(RuntimeError, match="Sin video disponible"):
+                main._resolve_moment_video_source(
+                    moment_index=3, start_s=800.0, end_s=860.0, video_url="u", video_id="v",
+                    video_duration=1000.0, muxed_video_path=None, clip_paths_cache={},
+                    partial_download_failed=False, extend_after_sec=25.0,
+                )
+
+
+# ── transcribe_with_whisper_openrouter(provider=...) ────────────────────────
+
+class TestWhisperProvider:
+
+    @staticmethod
+    def _fake_audio():
+        audio = MagicMock()
+        audio.__len__ = lambda self: 30_000   # 30 s
+        return audio
+
+    def test_provider_openai_skips_groq(self):
+        from services import transcriber
+        openai_client = MagicMock()
+        resp = MagicMock()
+        resp.model_dump.return_value = {"text": "hola", "words": [], "segments": []}
+        openai_client.audio.transcriptions.create.return_value = resp
+        groq_client = MagicMock()
+        with patch("pydub.AudioSegment.from_file", return_value=self._fake_audio()), \
+             patch.object(transcriber, "_openai_client", return_value=openai_client), \
+             patch.object(transcriber, "_groq_client", return_value=groq_client), \
+             patch.object(transcriber, "_save_transcript"), \
+             patch.object(transcriber, "_record_whisper_result"), \
+             patch("builtins.open", MagicMock()):
+            result = transcriber.transcribe_with_whisper_openrouter(
+                "/tmp/x.mp3", prompt="p", language="es", provider="openai",
+            )
+        assert result["provider"] == "openai"
+        assert openai_client.audio.transcriptions.create.called
+        assert not groq_client.audio.transcriptions.create.called
+        assert openai_client.audio.transcriptions.create.call_args.kwargs["model"] == "whisper-1"
+
+    def test_provider_groq_without_key_raises(self):
+        from services import transcriber
+        with patch("pydub.AudioSegment.from_file", return_value=self._fake_audio()), \
+             patch.object(transcriber, "_groq_client", return_value=None):
+            with pytest.raises(RuntimeError):
+                transcriber.transcribe_with_whisper_openrouter("/tmp/x.mp3", provider="groq")
+
+    def test_default_cascade_groq_first(self):
+        from services import transcriber
+        groq_client = MagicMock()
+        resp = MagicMock()
+        resp.model_dump.return_value = {"text": "hola", "words": [], "segments": []}
+        groq_client.audio.transcriptions.create.return_value = resp
+        with patch("pydub.AudioSegment.from_file", return_value=self._fake_audio()), \
+             patch.object(transcriber, "_groq_client", return_value=groq_client), \
+             patch.object(transcriber, "_openai_client", return_value=MagicMock()), \
+             patch.object(transcriber, "_save_transcript"), \
+             patch.object(transcriber, "_record_whisper_result"), \
+             patch("builtins.open", MagicMock()):
+            result = transcriber.transcribe_with_whisper_openrouter("/tmp/x.mp3")
+        assert result["provider"] == "groq"
+
+    def test_invalid_provider(self):
+        from services import transcriber
+        with patch("pydub.AudioSegment.from_file", return_value=self._fake_audio()):
+            with pytest.raises(ValueError):
+                transcriber.transcribe_with_whisper_openrouter("/tmp/x.mp3", provider="deepgram")
+
+
+# ── Flags nuevos ─────────────────────────────────────────────────────────────
+
+class TestNewFlags:
+
+    def test_w1_flags_emitted(self):
+        issues = build_clip_quality_issues(
+            hook_not_found=True, payoff_not_found=True,
+            margin_extended=True, subs_disabled_timestamps=True,
+        )
+        assert issues == [
+            "hook_not_found", "payoff_not_found", "margin_extended", "subs_disabled_timestamps",
+        ]

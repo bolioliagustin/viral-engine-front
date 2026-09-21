@@ -1,0 +1,1368 @@
+{
+  "videos_evaluated": 4,
+  "videos_ok": 4,
+  "clips_total": 20,
+  "clips_judged": 20,
+  "clips_rendered_rate": 1.0,
+  "judge_hook_avg": 5.3,
+  "judge_retention_avg": 4.95,
+  "judge_shareability_avg": 4.8,
+  "judge_avg": 5.017,
+  "judge_all_ge7_rate": 0.0,
+  "verification_failed_rate": 0.35,
+  "late_hook_rate": 0.1,
+  "whisper_mismatch_last_rate": 0.1,
+  "capitalized_start_rate": 0.45,
+  "density_out_of_range_rate": 0.0,
+  "duration_chosen_avg": 35.85,
+  "duration_final_avg": 36.693,
+  "total_cost_usd": 0.2081,
+  "total_seconds": 646.8,
+  "results": [
+    {
+      "id": "business_spanish_01",
+      "youtube_id": "Lqq78q17jDY",
+      "job_id": "e7c7134f-6fa4-4d55-9d1f-c722e19c3941",
+      "ok": true,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 1,
+          "start_time": 0,
+          "end_time": 27,
+          "duration_chosen_sec": 27.0,
+          "duration_final_sec": 29.98,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Cómo",
+            "hacer",
+            "que",
+            "estén",
+            "con",
+            "un",
+            "chat",
+            "GPT",
+            "con",
+            "una"
+          ],
+          "last_words": [
+            "a",
+            "ver",
+            "10",
+            "formas",
+            "de",
+            "ganar",
+            "dinero",
+            "de"
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 3.069,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "hook_not_found",
+            "whisper_mismatch_first"
+          ],
+          "score_llm": {
+            "hook": 9,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 4,
+            "shareability": 5,
+            "reasoning": "El hook promete una guía concreta (instalar en el ordenador) y la frase “con esteroides” engancha, pero el texto se demora en llegar a detalles y usa mucha generalidad. La retención cae por exceso de afirmaciones grandilocuentes sin evidencia en el transcript y el clip parece cortarse a mitad (“10 formas de ganar dinero de...”), lo que limita el cierre; es compartible por ser tutorial/tech, pero no aporta un dato socialmente “impresionante” o verificable en el texto."
+          },
+          "judge_all_ge7": false,
+          "hook": "Cómo hacer que estén con un chat GPT con una herramienta de inteligencia artificial que instalas directamente en tu ordenador",
+          "viral_overlay": "CHAT GPT EN ORDENADOR",
+          "clip_rendered": true,
+          "clip_url": "dryrun://e7c7134f-6fa4-4d55-9d1f-c722e19c3941/1.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 2,
+          "start_time": 75,
+          "end_time": 104,
+          "duration_chosen_sec": 29.0,
+          "duration_final_sec": 54.44,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Por",
+            "un",
+            "lado",
+            "están",
+            "las",
+            "personas",
+            "que",
+            "compran,",
+            "se",
+            "tragan"
+          ],
+          "last_words": [
+            "mi",
+            "punto",
+            "de",
+            "vista,",
+            "quien",
+            "entiende",
+            "esto,",
+            "gana."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.921,
+          "density_out_of_range": false,
+          "sub_coverage": 0.9965,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "late_hook"
+          ],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 7,
+            "shareability": 6,
+            "reasoning": "El hook plantea un contraste claro (compran el discurso de miedo vs lo rechazan), pero tarda ~varios segundos en aterrizar la tesis y el overlay “DISCURSO DE MIEDO” no cambia la estructura del inicio. Mantiene una postura coherente hasta el final (“quien entiende esto, gana”), aunque hay repeticiones y tramos explicativos genéricos; es compartible por su enfoque opinativo, pero no aporta un dato sorprendente o una utilidad inmediata tipo “estatus para etiquetar”."
+          },
+          "judge_all_ge7": false,
+          "hook": "Por un lado están las personas que compran y se tragan el discurso de miedo de que la inteligencia artificial nos va a quitar el trabajo.",
+          "viral_overlay": "DISCURSO DE MIEDO",
+          "clip_rendered": true,
+          "clip_url": "dryrun://e7c7134f-6fa4-4d55-9d1f-c722e19c3941/2.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 3,
+          "start_time": 250,
+          "end_time": 280,
+          "duration_chosen_sec": 30.0,
+          "duration_final_sec": 43.26,
+          "snap_trim_start": 6.74,
+          "first_words": [
+            "tenemos",
+            "una",
+            "skill",
+            "que",
+            "esta",
+            "es",
+            "realmente",
+            "impresionante",
+            "y",
+            "es"
+          ],
+          "last_words": [
+            "precio",
+            "es",
+            "esa",
+            "presentación",
+            "con",
+            "toda",
+            "la",
+            "información."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.329,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El hook engancha con una promesa clara (“auditoría de meta ads”) y menciona el valor, pero llega contexto tarde y falta una tensión contraintuitiva inmediata. Mantiene la atención con explicación del proceso y remate de “presentación”, aunque hay varios tramos repetitivos/ventas y el mensaje podría ser más directo para sostener 43s; es compartible por utilidad/claridad comercial, pero no tiene un dato o insight con “estatus”."
+          },
+          "judge_all_ge7": false,
+          "hook": "Tenemos una skill impresionante para hacer una auditoría de Meta Ads",
+          "viral_overlay": "NUEVA SKILL DE AUDITORÍA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://e7c7134f-6fa4-4d55-9d1f-c722e19c3941/3.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 4,
+          "start_time": 1135,
+          "end_time": 1161,
+          "duration_chosen_sec": 26.0,
+          "duration_final_sec": 30.2,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "sacando",
+            "modelos",
+            "de",
+            "lenguajes,",
+            "hm,",
+            "que",
+            "son",
+            "bastante",
+            "potentes",
+            "y"
+          ],
+          "last_words": [
+            "un",
+            "Ferrari",
+            "con",
+            "el",
+            "motor",
+            "de",
+            "un",
+            "Hyundai?"
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.278,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "late_hook"
+          ],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 5,
+            "shareability": 6,
+            "reasoning": "El inicio es claro (modelos gratuitos potentes pero requieren buen ordenador y hay restricciones), aunque la frase arranca con muletillas y tarda en encarrilarse. La retención es media: usa analogías (Homer/Ferrari) que rematan bien, pero hay relleno (“hm”, repetición “muy fuerte”) y el argumento se siente algo improvisado; es compartible porque desacraliza la idea de “gratis = sin condiciones”, aunque no aporta un dato nuevo o una verdad incómoda completamente definitiva."
+          },
+          "judge_all_ge7": false,
+          "hook": "Están sacando modelos de lenguaje gratuitos que son bastante potentes pero necesitas un buen ordenador para usarlos",
+          "viral_overlay": "MODELOS GRATUITOS TIENEN RESTRICCIONES",
+          "clip_rendered": true,
+          "clip_url": "dryrun://e7c7134f-6fa4-4d55-9d1f-c722e19c3941/4.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "business_spanish_01",
+          "youtube_id": "Lqq78q17jDY",
+          "moment_index": 5,
+          "start_time": 5058,
+          "end_time": 5085,
+          "duration_chosen_sec": 27.0,
+          "duration_final_sec": 23.88,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Qué",
+            "buena",
+            "manera",
+            "de",
+            "saber",
+            "cuánto",
+            "tiempo",
+            "pasas",
+            "en",
+            "tu"
+          ],
+          "last_words": [
+            "cabeza",
+            "y",
+            "ya",
+            "vemos",
+            "que",
+            "es",
+            "100%",
+            "funcional."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.722,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 5,
+            "retention": 5,
+            "shareability": 4,
+            "reasoning": "El hook es una frase genérica que tarda en aterrizar en el valor real (la extensión) y el inicio no crea tensión clara. La retención es media: hay afirmaciones (“locura”, “100% funcional”) pero con relleno y explicación poco enfocada; además el remate no termina con una promesa concreta. Es compartible solo moderadamente por ser tecnología/idea de extensión, pero no aporta un dato sorprendente ni una utilidad inmediata verificable para “etiquetar a un amigo”."
+          },
+          "judge_all_ge7": false,
+          "hook": "Qué buena manera de saber cuánto tiempo pasas en tu día en redes sociales",
+          "viral_overlay": "TIEMPO EN REDES SOCIALES",
+          "clip_rendered": true,
+          "clip_url": "dryrun://e7c7134f-6fa4-4d55-9d1f-c722e19c3941/5.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        }
+      ],
+      "clips_count": 5,
+      "clips_rendered": 5,
+      "cost_usd": 0.052698,
+      "cost_by_task": {
+        "analysis": 0.0,
+        "download": 0.0,
+        "whisper": 0.003325,
+        "copy": 0.047957,
+        "judge": 0.001416
+      },
+      "elapsed_sec": 140.5,
+      "errors": [],
+      "video_title": "La Forma Más Fácil De Ganar Dinero Con Claude",
+      "whisper_seconds": 299.213,
+      "whisper_provider": "groq"
+    },
+    {
+      "id": "podcast_general_01",
+      "youtube_id": "XxoVRjTySsM",
+      "job_id": "f5815572-4e32-426c-b58b-434a1ac62fc5",
+      "ok": true,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 1,
+          "start_time": 224,
+          "end_time": 254,
+          "duration_chosen_sec": 30.0,
+          "duration_final_sec": 41.58,
+          "snap_trim_start": 3.02,
+          "first_words": [
+            "pasaban?",
+            "Pues",
+            "hay",
+            "varias",
+            "maneras",
+            "posibles.",
+            "Eh,",
+            "lo",
+            "más",
+            "probable"
+          ],
+          "last_words": [
+            "en",
+            "un",
+            "domicilio",
+            "y",
+            "y",
+            "producir",
+            "la",
+            "enfermedad."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 2.718,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 5,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "Hook correcto pero con formulación genérica y tarda en aterrizar la explicación. Mantiene la idea hasta el final (se entiende la vía más habitual y otra posibilidad), aunque hay muletillas y un tramo confuso (“almacén en el…/humedad/ aerosol”) que baja la tensión. Es relativamente compartible por su utilidad (cómo se contagia), pero no aporta un dato tan contundente o “incómodo” como para puntuar alto en estatus."
+          },
+          "judge_all_ge7": false,
+          "hook": "¿Cómo pasaban? Hay varias maneras posibles en que te pillas el virus",
+          "viral_overlay": "¿CÓMO PASABAN ESTOS VIRUS",
+          "clip_rendered": true,
+          "clip_url": "dryrun://f5815572-4e32-426c-b58b-434a1ac62fc5/1.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 2,
+          "start_time": 405,
+          "end_time": 443,
+          "duration_chosen_sec": 38.0,
+          "duration_final_sec": 21.56,
+          "snap_trim_start": 1.5,
+          "first_words": [
+            "virus.",
+            "Y",
+            "en",
+            "los",
+            "de",
+            "América,",
+            "incluso",
+            "hay",
+            "uno",
+            "en"
+          ],
+          "last_words": [
+            "ensanchez.",
+            "Perdón.",
+            "no",
+            "te",
+            "decía",
+            "que",
+            "el",
+            "virus,"
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.664,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 4,
+            "shareability": 3,
+            "reasoning": "El hook promete una curiosidad (“virus sin nombre”) pero tarda en concretar por qué es relevante y suena genérico. La retención cae por fragmentación y cortes a mitad de explicación (“Perdón… no te decía que el virus,”) sin remate claro; por ello no hay argumento fuerte para compartir. El overlay es llamativo (“VIRUS SIN NOMBRE”) pero el contenido no llega a aportar un dato sorprendente o utilidad social inmediata."
+          },
+          "judge_all_ge7": false,
+          "hook": "Hay un virus en Norteamérica muy curioso llamado el virus sin nombre",
+          "viral_overlay": "VIRUS SIN NOMBRE",
+          "clip_rendered": true,
+          "clip_url": "dryrun://f5815572-4e32-426c-b58b-434a1ac62fc5/2.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 3,
+          "start_time": 575,
+          "end_time": 609,
+          "duration_chosen_sec": 34.0,
+          "duration_final_sec": 27.68,
+          "snap_trim_start": 5.68,
+          "first_words": [
+            "Esto",
+            "es",
+            "lo",
+            "habitual",
+            "en",
+            "los",
+            "antavirus,",
+            "salvo",
+            "excepcionalmente",
+            "el"
+          ],
+          "last_words": [
+            "persona",
+            "y",
+            "es",
+            "el",
+            "que",
+            "nos",
+            "ha",
+            "tocado."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.421,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 8,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 5,
+            "retention": 4,
+            "shareability": 5,
+            "reasoning": "El hook promete una excepción clara (“salvo excepcionalmente… Andes”), pero el transcript empieza con una frase con errores (“antavirus/antavirus”), y el contexto tarda en llegar. La idea central se entiende (salto roedor→persona y persona→persona), pero hay relleno (“puede funcionar… primero…”) y el remate es algo vago, por eso la retención y el shareability no suben."
+          },
+          "judge_all_ge7": false,
+          "hook": "Esto es lo habitual en los hantavirus, salvo excepcionalmente el virus Andes",
+          "viral_overlay": "EL VIRUS EXCEPCIONAL",
+          "clip_rendered": true,
+          "clip_url": "dryrun://f5815572-4e32-426c-b58b-434a1ac62fc5/3.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 4,
+          "start_time": 981,
+          "end_time": 1014,
+          "duration_chosen_sec": 33.0,
+          "duration_final_sec": 44.76,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Este,",
+            "la",
+            "potencialidad",
+            "de",
+            "de",
+            "y",
+            "ahí",
+            "vamos",
+            "a",
+            "la"
+          ],
+          "last_words": [
+            "los",
+            "públicos",
+            "es",
+            "muy",
+            "sencillo.",
+            "es",
+            "muy",
+            "sencillo."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.458,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 3,
+            "shareability": 6,
+            "reasoning": "El overlay y la primera frase afirman algo contundente y fácil de entender, pero el transcript tarda en aterrizar la idea y suena repetitivo/confuso. La explicación del R0 se entiende a medias y el final no llega con un remate claro (hay muletillas como “es muy sencillo”), por lo que la retención cae. La afirmación “pandemia potencialidad cero” con un concepto tipo R0 puede generar curiosidad/etiquetado, aunque no es tan sorprendente o demostrable como para puntuar más alto."
+          },
+          "judge_all_ge7": false,
+          "hook": "La potencialidad de originar una pandemia de un virus de estas características es cero.",
+          "viral_overlay": "POTENCIALIDAD DE PANDEMIA NULA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://f5815572-4e32-426c-b58b-434a1ac62fc5/4.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "podcast_general_01",
+          "youtube_id": "XxoVRjTySsM",
+          "moment_index": 5,
+          "start_time": 4317,
+          "end_time": 4350,
+          "duration_chosen_sec": 33.0,
+          "duration_final_sec": 28.1,
+          "snap_trim_start": 2.9,
+          "first_words": [
+            "El",
+            "abuso",
+            "tecnológico",
+            "deprime",
+            "al",
+            "sistema",
+            "inmunitario.",
+            "Y",
+            "yo",
+            "mismo"
+          ],
+          "last_words": [
+            "la",
+            "pizza,",
+            "con",
+            "lo",
+            "cual",
+            "te",
+            "alimentas",
+            "peor."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.384,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 8,
+            "retention": 7,
+            "shareability": 6,
+            "reasoning": "El hook/overlay es una afirmación fuerte y contraintuitiva (“deprime al sistema inmunitario”) que engancha rápido. Mantiene la idea con una explicación clara en dos puntos (sedentarismo y mala alimentación), aunque hay un arranque conversacional (“estos de qué van…”) y no llega a un remate totalmente contundente para el final."
+          },
+          "judge_all_ge7": false,
+          "hook": "El abuso tecnológico deprime al sistema inmunitario",
+          "viral_overlay": "TECNOLOGÍA DEPRIME TU SISTEMA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://f5815572-4e32-426c-b58b-434a1ac62fc5/5.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        }
+      ],
+      "clips_count": 5,
+      "clips_rendered": 5,
+      "cost_usd": 0.05366,
+      "cost_by_task": {
+        "analysis": 0.0,
+        "download": 0.0,
+        "whisper": 0.003813,
+        "copy": 0.04854,
+        "judge": 0.001307
+      },
+      "elapsed_sec": 152.4,
+      "errors": [],
+      "video_title": "The Wild Project #373 - Alfredo Corell | TODA la VERDAD sobre el HANTAVIRUS, ¿Próxima pandemia?",
+      "whisper_seconds": 343.093,
+      "whisper_provider": "groq"
+    },
+    {
+      "id": "claude_hacks_regression_01",
+      "youtube_id": "KXKzgeHOr7A",
+      "job_id": "15cb6e94-3128-4d45-a7ac-8134d8ce32fa",
+      "ok": true,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 1,
+          "start_time": 24,
+          "end_time": 60,
+          "duration_chosen_sec": 36.0,
+          "duration_final_sec": 46.8,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Entraba",
+            "en",
+            "Claude",
+            "y",
+            "lo",
+            "utilizaba",
+            "como",
+            "si",
+            "fuese",
+            "un"
+          ],
+          "last_words": [
+            "para",
+            "crear",
+            "lo",
+            "que",
+            "nosotros",
+            "le",
+            "estamos",
+            "pidiendo."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 3.825,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 8,
+            "retention": 9,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 7,
+            "shareability": 6,
+            "reasoning": "El hook es claro y relevante, pero tarda en llegar al punto fuerte (la diferencia Claude vs Claude Code) y hay una pequeña repetición (“ahora mismo”). Mantiene la atención con una explicación progresiva y un contraste nítido, aunque hay explicación algo larga y sin remate “share-worthy” inmediato más allá de la comparación básica."
+          },
+          "judge_all_ge7": false,
+          "hook": "Entraba en Claude y lo utilizaba como un simple ChatGPT sin saber cómo crear las cosas increíbles que veía por ahí.",
+          "viral_overlay": "UTILIZABA CLAUDE COMO CHATGPT",
+          "clip_rendered": true,
+          "clip_url": "dryrun://15cb6e94-3128-4d45-a7ac-8134d8ce32fa/1.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 2,
+          "start_time": 142,
+          "end_time": 192,
+          "duration_chosen_sec": 50.0,
+          "duration_final_sec": 24.88,
+          "snap_trim_start": 4.5,
+          "first_words": [
+            "hacer.",
+            "Este",
+            "software",
+            "financiero",
+            "lo",
+            "hemos",
+            "creado",
+            "en",
+            "3",
+            "días"
+          ],
+          "last_words": [
+            "utilizar",
+            "en",
+            "base",
+            "a",
+            "tu",
+            "perfil",
+            "de",
+            "inversión."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.738,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 7,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "El hook es fuerte por la promesa contraintuitiva (crear un software financiero en 3 días sin programar), aunque llega con muletilla/arranque poco claro. Mantiene atención con una explicación de 3 partes, pero el flujo se corta con repeticiones (“partes. Número 1…”) y no hay remate contundente; es compartible por la utilidad/demostración, pero genérico y sin dato/resultado concreto."
+          },
+          "judge_all_ge7": false,
+          "hook": "Este software financiero lo hemos creado en 3 días sin escribir ni una línea de programación únicamente utilizando Claude Code.",
+          "viral_overlay": "CREADO EN 3 DÍAS",
+          "clip_rendered": true,
+          "clip_url": "dryrun://15cb6e94-3128-4d45-a7ac-8134d8ce32fa/2.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 3,
+          "start_time": 342,
+          "end_time": 393,
+          "duration_chosen_sec": 51.0,
+          "duration_final_sec": 59.12,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "descargado",
+            "esta",
+            "imagen.",
+            "Todo",
+            "esto",
+            "es",
+            "una",
+            "imagen.",
+            "Entonces",
+            "únicamente"
+          ],
+          "last_words": [
+            "bien",
+            "para",
+            "modificarla",
+            "si",
+            "queremos",
+            "cambiar",
+            "alguna",
+            "cosa."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.484,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [
+            "hook_no_fiel"
+          ],
+          "score_llm": {
+            "hook": 8,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 4,
+            "retention": 4,
+            "shareability": 3,
+            "reasoning": "El inicio es confuso y genérico (“descargado esta imagen…”) y el overlay (“DESCARGAS ESTA IMAGEN WEB”) no aterriza una promesa clara en los primeros segundos. La retención baja por divagación (varias ideas sobre Claude Code/animaciones/autorizar clics) sin un remate nítido ni un punto de aprendizaje destacable; y la shareability es baja porque el contenido no aporta un dato sorprendente, plantilla o resultado concreto fácilmente etiquetable."
+          },
+          "judge_all_ge7": false,
+          "hook": "descargado esta imagen.",
+          "viral_overlay": "DESCARGAS ESTA IMAGEN WEB",
+          "clip_rendered": true,
+          "clip_url": "dryrun://15cb6e94-3128-4d45-a7ac-8134d8ce32fa/3.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 4,
+          "start_time": 665,
+          "end_time": 718,
+          "duration_chosen_sec": 53.0,
+          "duration_final_sec": 40.54,
+          "snap_trim_start": 0.52,
+          "first_words": [
+            "podemos",
+            "ver",
+            "aquí,",
+            "es",
+            "una",
+            "tienda",
+            "que",
+            "vende",
+            "este",
+            "producto,"
+          ],
+          "last_words": [
+            "y",
+            "exclusivamente",
+            "con",
+            "Claude",
+            "Code",
+            "conectado",
+            "con",
+            "Shopify."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.305,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 8,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 4,
+            "retention": 6,
+            "shareability": 5,
+            "reasoning": "Hook correcto pero con contexto lento: empieza descriptivo (“podemos ver aquí”) y tarda en plantear un ángulo claro de valor. Mantiene la atención con una explicación concreta (web hecha desde cero con Claude Code + conexión con Shopify) pero hay tramos algo redundantes y el remate no es especialmente sorprendente o urgente para compartir."
+          },
+          "judge_all_ge7": false,
+          "hook": "Podemos ver aquí una tienda que vende este producto, un altavoz con una pantallita donde la música baila, creada desde cero.",
+          "viral_overlay": "TIENDA CON ESTE ALTAVOZ",
+          "clip_rendered": true,
+          "clip_url": "dryrun://15cb6e94-3128-4d45-a7ac-8134d8ce32fa/4.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "claude_hacks_regression_01",
+          "youtube_id": "KXKzgeHOr7A",
+          "moment_index": 5,
+          "start_time": 994,
+          "end_time": 1045,
+          "duration_chosen_sec": 51.0,
+          "duration_final_sec": 56.86,
+          "snap_trim_start": 3.32,
+          "first_words": [
+            "vídeo",
+            "solo",
+            "en",
+            "concreto.",
+            "Y",
+            "además",
+            "entonces",
+            "vamos",
+            "a",
+            "recordar"
+          ],
+          "last_words": [
+            "ya",
+            "nos",
+            "entregó",
+            "esta",
+            "tienda",
+            "online",
+            "sin",
+            "errores."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.764,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "hook_not_found",
+            "whisper_mismatch_first",
+            "hook_no_fiel"
+          ],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 3,
+            "retention": 5,
+            "shareability": 5,
+            "reasoning": "El hook (“vídeo solo en concreto”) es poco informativo y llega tarde a una idea clara. La explicación está completa y con ejemplo (Shopify, 18 errores), pero hay relleno/confusión (“recordar todo el vídeo”, “código se sacole…”) y el remate no es especialmente contundente o accionable para compartir."
+          },
+          "judge_all_ge7": false,
+          "hook": "vídeo solo en concreto.",
+          "viral_overlay": "VÍDEO EN CONCRETO REVELA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://15cb6e94-3128-4d45-a7ac-8134d8ce32fa/5.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        }
+      ],
+      "clips_count": 5,
+      "clips_rendered": 5,
+      "cost_usd": 0.056128,
+      "cost_by_task": {
+        "analysis": 0.0,
+        "download": 0.0,
+        "whisper": 0.004624,
+        "copy": 0.050182,
+        "judge": 0.001322
+      },
+      "elapsed_sec": 171.3,
+      "errors": [],
+      "video_title": "Estos Hacks De Claude Te Harán Tan Productivo Que Parece Ilegal",
+      "whisper_seconds": 416.15,
+      "whisper_provider": "groq"
+    },
+    {
+      "id": "user_recommended_01",
+      "youtube_id": "MaXgAEI4Vm8",
+      "job_id": "62925d35-56ac-4c0a-9b5c-0aee2066edce",
+      "ok": true,
+      "status": "completed",
+      "timed_out": false,
+      "clips": [
+        {
+          "video_id": "user_recommended_01",
+          "youtube_id": "MaXgAEI4Vm8",
+          "moment_index": 1,
+          "start_time": 358,
+          "end_time": 414,
+          "duration_chosen_sec": 56.0,
+          "duration_final_sec": 53.0,
+          "snap_trim_start": 1.62,
+          "first_words": [
+            "insoportable.",
+            "¿No",
+            "te",
+            "das",
+            "cuenta",
+            "que",
+            "todos",
+            "tus",
+            "compañeros",
+            "dicen"
+          ],
+          "last_words": [
+            "que",
+            "sentarlo",
+            "y",
+            "decirle",
+            "¿qué",
+            "te",
+            "pasa,",
+            "nene?"
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 3.17,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 9,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 4,
+            "shareability": 3,
+            "reasoning": "El hook está bien alineado con el overlay (insinuación de que todos se aburren) y engancha desde temprano, pero el clip entra en un ataque personal caótico y con redundancias (“mirá, mirá…”, “siempre solo”) que diluyen la idea y no hay remate limpio. La compartibilidad baja por ser principalmente insulto/gossip y humor agresivo sin un dato útil o giro “para estatus”."
+          },
+          "judge_all_ge7": false,
+          "hook": "Dicen que es insoportable y que todo el mundo se aburre con él.",
+          "viral_overlay": "INSOPORTABLE CARA DE ORTO",
+          "clip_rendered": true,
+          "clip_url": "dryrun://62925d35-56ac-4c0a-9b5c-0aee2066edce/1.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "user_recommended_01",
+          "youtube_id": "MaXgAEI4Vm8",
+          "moment_index": 2,
+          "start_time": 803,
+          "end_time": 830,
+          "duration_chosen_sec": 27.0,
+          "duration_final_sec": 26.34,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Tras",
+            "pruebas",
+            "realizadas,",
+            "hoy",
+            "a",
+            "nuestro",
+            "jugador",
+            "Fede",
+            "Valverde,",
+            "por"
+          ],
+          "last_words": [
+            "se",
+            "golpea",
+            "la",
+            "cabeza",
+            "y",
+            "ahí",
+            "se",
+            "desmaya."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 3.948,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": false,
+          "clip_quality_issues": [],
+          "score_llm": {
+            "hook": 7,
+            "retention": 8,
+            "shareability": 7
+          },
+          "score_judge": {
+            "hook": 6,
+            "retention": 6,
+            "shareability": 6,
+            "reasoning": "Hook y overlay prometen un anuncio oficial, pero el arranque tarda en aterrizar el diagnóstico y el clip se apoya en relato adicional/coloquial que no suma mucha tensión. Aun así, el contenido cierra con detalles del reposo y el estado, y resulta compartible por el interés deportivo/noticia, aunque no llega a “dato con estatus” ni es sorprendente por sí solo."
+          },
+          "judge_all_ge7": false,
+          "hook": "El Real Madrid diagnostica oficialmente un traumatismo cráneo encefálico a Fede Valverde.",
+          "viral_overlay": "VALVERDE DIAGNÓSTICO TRAUMATISMO OFICIAL",
+          "clip_rendered": true,
+          "clip_url": "dryrun://62925d35-56ac-4c0a-9b5c-0aee2066edce/2.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "user_recommended_01",
+          "youtube_id": "MaXgAEI4Vm8",
+          "moment_index": 3,
+          "start_time": 2472,
+          "end_time": 2500,
+          "duration_chosen_sec": 28.0,
+          "duration_final_sec": 33.36,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "pfff.",
+            "Tres,",
+            "treinta",
+            "y",
+            "cuatro",
+            "años,",
+            "boludo,",
+            "hace",
+            "que",
+            "me"
+          ],
+          "last_words": [
+            "es",
+            "que",
+            "creen",
+            "que",
+            "nos",
+            "vaya",
+            "a",
+            "empezar."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 2.158,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "payoff_not_found",
+            "margin_extended",
+            "whisper_mismatch_last"
+          ],
+          "score_llm": {
+            "hook": 8,
+            "retention": 8,
+            "shareability": 8
+          },
+          "score_judge": {
+            "hook": 5,
+            "retention": 3,
+            "shareability": 3,
+            "reasoning": "El hook es llamativo por la frase inicial y la relación con el Mundial 90, pero llega con poca claridad y mucha confusión (“boludo… me enferma la cabeza” sin contexto). La retención es baja porque el discurso divaga y se vuelve incoherente hacia el final; el remate no está claro. No hay un dato útil/sorprendente ni una idea socialmente “compartible”, solo catarsis y desorden."
+          },
+          "judge_all_ge7": false,
+          "hook": "Llevo 34 años con la cabeza enferma con este tema del Mundial 90.",
+          "viral_overlay": "PFFF CABEZA ENFERMA",
+          "clip_rendered": true,
+          "clip_url": "dryrun://62925d35-56ac-4c0a-9b5c-0aee2066edce/3.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "user_recommended_01",
+          "youtube_id": "MaXgAEI4Vm8",
+          "moment_index": 4,
+          "start_time": 4480,
+          "end_time": 4510,
+          "duration_chosen_sec": 30.0,
+          "duration_final_sec": 31.78,
+          "snap_trim_start": 0.0,
+          "first_words": [
+            "Increíble,",
+            "eh.",
+            "Es",
+            "notísimo.",
+            "Bien,",
+            "Horacio.",
+            "Nooo.",
+            "Eh,",
+            "fue",
+            "un"
+          ],
+          "last_words": [
+            "tenía.",
+            "Sí,",
+            "el",
+            "escritorio",
+            "ese.",
+            "¿Cuántos",
+            "eran?",
+            "Diarios."
+          ],
+          "starts_capitalized": true,
+          "words_per_sec": 2.297,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "hook_not_found",
+            "whisper_mismatch_first"
+          ],
+          "score_llm": {
+            "hook": 9,
+            "retention": 9,
+            "shareability": 9
+          },
+          "score_judge": {
+            "hook": 3,
+            "retention": 4,
+            "shareability": 3,
+            "reasoning": "El hook promete algo (“la radio… en ese escritorio”) pero el clip arranca con muletillas y conversación desordenada (“Bien, Horacio… Nooo…”), sin tensión clara desde el inicio. La retención baja por fragmentación y repetición, y no hay un remate informativo; además, la sobreimpresión “INCREÍBLE SHOW EN VIVO” no aporta una razón social para compartir."
+          },
+          "judge_all_ge7": false,
+          "hook": "Increíble la radio y todas las cosas que tenía en ese escritorio.",
+          "viral_overlay": "INCREÍBLE SHOW EN VIVO",
+          "clip_rendered": true,
+          "clip_url": "dryrun://62925d35-56ac-4c0a-9b5c-0aee2066edce/4.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        },
+        {
+          "video_id": "user_recommended_01",
+          "youtube_id": "MaXgAEI4Vm8",
+          "moment_index": 5,
+          "start_time": 5336,
+          "end_time": 5364,
+          "duration_chosen_sec": 28.0,
+          "duration_final_sec": 15.73,
+          "snap_trim_start": 14.75,
+          "first_words": [
+            "ríos.",
+            "No,",
+            "el",
+            "viejo",
+            "es",
+            "buenísimo,",
+            "boludo.",
+            "Bueno.",
+            "Bueno,",
+            "tenemos"
+          ],
+          "last_words": [
+            "vos.",
+            "Sos",
+            "bueno,",
+            "amigo.",
+            "Rompela.",
+            "Rompela.",
+            "fútbol.",
+            "Criar."
+          ],
+          "starts_capitalized": false,
+          "words_per_sec": 2.352,
+          "density_out_of_range": false,
+          "sub_coverage": 1.0,
+          "verification_failed": true,
+          "clip_quality_issues": [
+            "hook_not_found",
+            "payoff_not_found",
+            "margin_extended",
+            "whisper_mismatch_first",
+            "whisper_mismatch_last"
+          ],
+          "score_llm": {
+            "hook": 7,
+            "retention": 8,
+            "shareability": 6
+          },
+          "score_judge": {
+            "hook": 3,
+            "retention": 3,
+            "shareability": 3,
+            "reasoning": "El hook “El viejo es buenísimo, boludo” arranca con una muletilla/jerga y sin contexto; no sostiene tensión clara en el inicio. El contenido se vuelve caótico (frases cortadas, “Bueno…”, “Rompe… fútbol… Criar.”) y no hay idea completa ni remate, lo que baja la retención y tampoco ofrece un motivo social claro para compartir."
+          },
+          "judge_all_ge7": false,
+          "hook": "El viejo es buenísimo, boludo",
+          "viral_overlay": "RÍOS DEL BUEN VIEJO",
+          "clip_rendered": true,
+          "clip_url": "dryrun://62925d35-56ac-4c0a-9b5c-0aee2066edce/5.mp4",
+          "clip_generation_error": null,
+          "copy_types": [
+            "linkedin_post",
+            "tiktok_caption",
+            "twitter_thread"
+          ]
+        }
+      ],
+      "clips_count": 5,
+      "clips_rendered": 5,
+      "cost_usd": 0.045618,
+      "cost_by_task": {
+        "analysis": 0.0,
+        "download": 0.0,
+        "whisper": 0.00648,
+        "copy": 0.037832,
+        "judge": 0.001306
+      },
+      "elapsed_sec": 182.6,
+      "errors": [],
+      "video_title": "CANCIONES DE MUNDIALES Y LOS VIEJOS JUEGAN AL POOL | #ParenLaMano Completo - 07/05 | VORTERIX",
+      "whisper_seconds": 583.31,
+      "whisper_provider": "groq"
+    }
+  ],
+  "tier": "e2e",
+  "models": {
+    "analysis": "google/gemini-3.5-flash",
+    "copy": "google/gemini-3.5-flash",
+    "judge": "openai/gpt-5.4-nano",
+    "classifier": "google/gemini-2.5-flash-lite"
+  },
+  "prompt_version": "v4",
+  "run_at": "2026-09-18T22:29:37+00:00",
+  "git_commit": "af12bd8",
+  "wall_seconds": 647.8,
+  "failures": [
+    "judge_avg=5.02 < 7.0 (judge_avg_min)",
+    "judge_all_ge7_rate=0.00 < 0.6 (judge_all_ge7_rate_min)",
+    "verification_failed_rate=0.35 > 0.15 (verification_failed_rate_max)",
+    "capitalized_start_rate=0.45 < 0.9 (capitalized_start_rate_min)"
+  ],
+  "passed": false,
+  "thresholds_blocking": false
+}

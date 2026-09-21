@@ -316,6 +316,7 @@ class TestDownloadStrategySelector:
         assert _should_sync_retry_download(1.0) is False
 
     def test_download_clip_ytdlp_applies_keyframe_margin(self):
+        # W1: márgenes asimétricos (15 s antes, 20 s después) en vez de ±8 s
         from services.downloader import download_clip_ytdlp, ClipDownloadResult
         from unittest.mock import patch, MagicMock
 
@@ -325,7 +326,7 @@ class TestDownloadStrategySelector:
 
         with patch("services.downloader.yt_dlp.YoutubeDL", mock_ydl_cls), \
              patch("services.downloader._build_ydl_opts", side_effect=lambda o, **kw: o), \
-             patch("services.downloader._clip_keyframe_margin_sec", return_value=8.0), \
+             patch("services.downloader._clip_margins_sec", return_value=(15.0, 20.0)), \
              patch("services.downloader.Path") as mock_path:
             mock_path.return_value.with_suffix.return_value = mock_path.return_value
             mp4 = MagicMock()
@@ -341,8 +342,8 @@ class TestDownloadStrategySelector:
                 video_duration=1000.0,
             )
         assert isinstance(result, ClipDownloadResult)
-        assert result.download_start == 92.0
-        assert result.download_end == 168.0
+        assert result.download_start == 85.0
+        assert result.download_end == 180.0
 
 
 class TestGooglevideoSticky:
@@ -759,30 +760,43 @@ class TestMomentSelector:
         assert target_moment_count(3600) == 5
 
     def test_candidate_count_overgenerates(self):
-        from services.moment_selector import candidate_count, target_moment_count
-        # video de 30 min → 12 candidatos (cap)
-        assert candidate_count(1800, target_moment_count(1800)) == 12
-        # video de 8 min → 8 candidatos
-        assert candidate_count(480, target_moment_count(480)) == 8
-        # nunca menos que target
-        assert candidate_count(120, target_moment_count(120)) >= 3
+        # W9-B: min(30, max(6, minutos // 2)) — ya no depende de `target`.
+        from services.moment_selector import candidate_count
+        # video de 60 min → 30 candidatos (cap)
+        assert candidate_count(3600) == 30
+        # video de 30 min → 15
+        assert candidate_count(1800) == 15
+        # video de 8 min → 6 (piso, no 4)
+        assert candidate_count(480) == 6
+        # video corto → nunca menos de 6 (piso)
+        assert candidate_count(120) == 6
 
-    def test_rank_and_prune_keeps_best_in_chrono_order(self):
+    def test_rank_and_prune_ya_no_trunca(self):
+        # W9-B: TODOS los candidatos se evalúan de verdad (main.py) — esta
+        # función solo anota `candidates_all`, no descarta nada.
         from services.moment_selector import rank_and_prune_candidates
         result = {
             "viral_moments": [
-                {"start_time": 10, "scores": {"hook": 5, "retention": 5, "shareability": 5}},
-                {"start_time": 100, "scores": {"hook": 9, "retention": 9, "shareability": 9}},
-                {"start_time": 50, "scores": {"hook": 8, "retention": 8, "shareability": 8}},
-                {"start_time": 200, "scores": {"hook": 2, "retention": 2, "shareability": 2}},
+                {"start_time": 10 * i, "scores": {"hook": s, "retention": s, "shareability": s}}
+                for i, s in enumerate([5, 9, 8, 2, 7, 6, 1], start=1)
             ]
         }
         pruned = rank_and_prune_candidates(result, target=2)
         moments = pruned["viral_moments"]
-        assert len(moments) == 2
-        # top 2 por score (100 y 50), en orden cronológico
-        assert moments[0]["start_time"] == 50
-        assert moments[1]["start_time"] == 100
+        assert len(moments) == 7
+        assert [m["start_time"] for m in moments] == [10, 20, 30, 40, 50, 60, 70]
+        assert len(pruned["candidates_all"]) == 7
+
+    def test_rank_and_prune_keeps_all_if_pool_not_exceeded(self):
+        from services.moment_selector import rank_and_prune_candidates
+        result = {
+            "viral_moments": [
+                {"start_time": 10, "scores": {"hook": 5, "retention": 5, "shareability": 5}},
+                {"start_time": 50, "scores": {"hook": 8, "retention": 8, "shareability": 8}},
+            ]
+        }
+        pruned = rank_and_prune_candidates(result, target=2)
+        assert len(pruned["viral_moments"]) == 2
 
     def test_content_pieces_optional_for_pass_a(self):
         from models.schemas import ViralMoment

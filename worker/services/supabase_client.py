@@ -13,6 +13,33 @@ _RECONNECT_COOLDOWN = 30.0  # seconds between reconnect attempts
 _reconnect_lock = threading.Lock()
 
 
+# ─── Modo dry-run (EVAL_DRY_RUN=1) ──────────────────────────────────────────
+# Lo usa el tier `e2e` del golden set (worker/eval): el pipeline corre igual
+# (descarga, Whisper, Pasada B, juez, render) pero nada se persiste. Las
+# escrituras a `jobs` y `content_results` se acumulan en memoria para que el
+# eval las lea; las subidas a R2 devuelven una URL ficticia; el crédito no se
+# descuenta. Las lecturas (caches) siguen funcionando normal.
+# Sin la variable, el comportamiento es idéntico al de siempre.
+DRY_RUN_RESULTS: list[dict] = []          # filas que save_content_result habría insertado
+DRY_RUN_JOBS: dict[str, dict] = {}        # job_id → último estado/progreso/error del job
+
+
+def is_dry_run() -> bool:
+    return os.getenv("EVAL_DRY_RUN", "").strip().lower() in ("1", "true", "yes")
+
+
+def reset_dry_run() -> None:
+    """Vacía los acumuladores en memoria (llamar antes de cada job del eval)."""
+    DRY_RUN_RESULTS.clear()
+    DRY_RUN_JOBS.clear()
+
+
+def _dry_run_job(job_id: str) -> dict:
+    return DRY_RUN_JOBS.setdefault(job_id, {"status": None, "error_message": None,
+                                            "current_step": None, "progress_percentage": None,
+                                            "video_title": None})
+
+
 def reset_supabase() -> None:
     """
     Mark the current client as broken so the next get_supabase() call
@@ -102,6 +129,12 @@ def _require_supabase() -> Client:
 
 def update_job_status(job_id: str, status: str, video_title: str = None) -> None:
     """Update job status in Supabase"""
+    if is_dry_run():
+        job = _dry_run_job(job_id)
+        job["status"] = status
+        if video_title:
+            job["video_title"] = video_title
+        return
     supabase = _require_supabase()
     update_data = {"status": status}
     if video_title:
@@ -111,6 +144,11 @@ def update_job_status(job_id: str, status: str, video_title: str = None) -> None
 
 def update_job_error(job_id: str, error_message: str) -> None:
     """Mark job as failed"""
+    if is_dry_run():
+        job = _dry_run_job(job_id)
+        job["status"] = "failed"
+        job["error_message"] = error_message
+        return
     supabase = _require_supabase()
     supabase.table("jobs").update({
         "status": "failed",
@@ -119,25 +157,56 @@ def update_job_error(job_id: str, error_message: str) -> None:
 
 
 def update_job_progress(
-    job_id: str, 
-    current_step: str = None, 
-    progress_percentage: int = None
+    job_id: str,
+    current_step: str = None,
+    progress_percentage: int = None,
+    progress_detail: dict = None,
 ) -> None:
     """Update job processing step and progress for real-time UI updates
-    
+
     Args:
         job_id: The job ID to update
-        current_step: Current processing step (e.g., 'downloading', 'transcribing', 'analyzing', 'clipping', 'generating')
-        progress_percentage: Progress from 0-100
+        current_step: Fase del pipeline. Enum acordado con P1 (pantalla de
+            progreso, docs/PLAN_CALIDAD.md §9 W9-B): 'transcribing' |
+            'classifying' | 'analyzing' | 'evaluating' | 'ranking' |
+            'delivering' | 'finalizing'.
+        progress_percentage: Progreso 0-100 (ver main.py::compute_progress_percentage,
+            función pura y testeada que calcula este número).
+        progress_detail: W9-B — jsonb con detalle fino para la pantalla de
+            progreso: {"current": N, "total": M, "message": "...",
+            "clips_ready": K}. La columna la agrega P1 en su migración;
+            si todavía no existe, degrada con gracia (mismo patrón que
+            save_content_result con las columnas de calidad).
     """
+    if is_dry_run():
+        job = _dry_run_job(job_id)
+        if current_step is not None:
+            job["current_step"] = current_step
+        if progress_percentage is not None:
+            job["progress_percentage"] = progress_percentage
+        if progress_detail is not None:
+            job["progress_detail"] = progress_detail
+        return
+    import json
     supabase = _require_supabase()
     update_data = {}
     if current_step is not None:
         update_data["current_step"] = current_step
     if progress_percentage is not None:
         update_data["progress_percentage"] = progress_percentage
-    if update_data:
+    if progress_detail is not None:
+        update_data["progress_detail"] = json.dumps(progress_detail)
+    if not update_data:
+        return
+    try:
         supabase.table("jobs").update(update_data).eq("id", job_id).execute()
+    except Exception as e:
+        if progress_detail is not None and ("column" in str(e).lower() or "pgrst204" in str(e).lower()):
+            update_data.pop("progress_detail", None)
+            if update_data:
+                supabase.table("jobs").update(update_data).eq("id", job_id).execute()
+        else:
+            raise
 
 
 def _is_connection_error(e: Exception) -> bool:
@@ -172,11 +241,53 @@ def save_content_result(
     words_per_sec: float = None,  # Fase 4: densidad de palabras del clip
     clip_quality_issues: list = None,  # flags: incomplete_tail, clip_not_rendered, etc.
     clip_generation_error: str = None,  # error si el MP4 no se generó
+    title: str = None,  # W10: título ≤60 chars para publicar
+    description: str = None,  # W10: 2 oraciones (qué se ve + invitación)
+    hashtags: list = None,  # W10: 10 hashtags, español, CamelCase, con '#'
+    preview_url: str = None,  # W9-B: mismo archivo que clip_url (preview 480x854)
 ) -> str:
     """Save content result to Supabase"""
     import uuid
     import json
     result_id = str(uuid.uuid4())
+
+    if is_dry_run():
+        # Misma fila que iría a content_results, pero con los valores sin
+        # serializar (el eval los lee como dicts).
+        DRY_RUN_RESULTS.append({
+            "id": result_id,
+            "job_id": job_id,
+            "type": content_type,
+            "content": content,
+            "clip_url": clip_url,
+            "start_time": start_time,
+            "end_time": end_time,
+            "hook": hook,
+            "emotional_trigger": emotional_trigger,
+            "moment_index": moment_index,
+            "pillar_type": pillar_type,
+            "score_hook": score_hook,
+            "score_retention": score_retention,
+            "score_shareability": score_shareability,
+            "sentiment_detected": sentiment_detected,
+            "roi_time_saved": roi_time_saved,
+            "score_justifications": score_justifications,
+            "viral_overlay": viral_overlay,
+            "raw_clip_url": raw_clip_url,
+            "whisper_words": whisper_words,
+            "score_llm": score_llm,
+            "score_judge": score_judge,
+            "verification_failed": verification_failed,
+            "sub_coverage": sub_coverage,
+            "words_per_sec": words_per_sec,
+            "clip_quality_issues": clip_quality_issues,
+            "clip_generation_error": clip_generation_error,
+            "title": title,
+            "description": description,
+            "hashtags": hashtags,
+            "preview_url": preview_url,
+        })
+        return result_id
 
     supabase = _require_supabase()
     data = {
@@ -239,6 +350,20 @@ def save_content_result(
     if clip_generation_error:
         data["clip_generation_error"] = clip_generation_error[:500]
         _quality_keys.append("clip_generation_error")
+    # W10: copy por clip (requiere supabase/migrations/*_copy_por_clip.sql)
+    if title:
+        data["title"] = title[:60]
+        _quality_keys.append("title")
+    if description:
+        data["description"] = description
+        _quality_keys.append("description")
+    if hashtags:
+        data["hashtags"] = hashtags
+        _quality_keys.append("hashtags")
+    # W9-B (docs/PLAN_CALIDAD.md §9 W9, requiere migración galeria_hd)
+    if preview_url:
+        data["preview_url"] = preview_url
+        _quality_keys.append("preview_url")
 
     def _insert(payload):
         supabase.table("content_results").insert(payload).execute()
@@ -271,6 +396,9 @@ def save_content_result(
 
 def upload_clip_to_storage(file_path: str, job_id: str, moment_index: int) -> Optional[str]:
     """Upload clip to Cloudflare R2 and return public URL"""
+    if is_dry_run():
+        print(f"   🧪 dry-run: no se sube clip {moment_index} a R2")
+        return f"dryrun://{job_id}/{moment_index}.mp4"
     try:
         from services.storage_client import upload_file
         
@@ -422,6 +550,8 @@ def upload_raw_clip_to_storage(file_path: str, job_id: str, moment_index: int) -
 
     Path estable: raw_clips/{job_id}_{moment_index}.mp4
     """
+    if is_dry_run():
+        return f"dryrun://{job_id}/raw_{moment_index}.mp4"
     try:
         from services.storage_client import upload_file
         object_name = f"raw_clips/{job_id}_{moment_index}.mp4"
@@ -439,6 +569,9 @@ def deduct_credit(user_id: str, job_id: str, video_url: str) -> bool:
     Deduct 1 credit from user using atomic SQL function.
     Must be called only after successful processing.
     """
+    if is_dry_run():
+        print("   🧪 dry-run: no se descuenta crédito")
+        return True
     supabase = get_supabase()
     if not supabase:
         print("❌ Cannot deduct credit: Supabase not connected")

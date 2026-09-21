@@ -32,3 +32,14 @@ services:
         sync: false
       - key: ADMIN_EMAILS
         sync: false
+      - key: ADMIN_USER_IDS
+        sync: false
+      # F1 (docs/PROYECTO.md §14/§15, docs/DEPLOY_FASE0.md): faltaban acá —
+      # el blueprint es lo que le da al panel de Render los campos para
+      # cargarlas, así que sin esto no hay dónde pegarlas sin editar a mano.
+      - key: MAX_VIDEO_MINUTES
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

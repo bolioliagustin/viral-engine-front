@@ -5,17 +5,22 @@ Prompt enfocado SOLO en encontrar momentos: timing, hook conceptual, trigger
 emocional, verificación de frases y scores preliminares. SIN copy (el copy
 completo se genera en la pasada B post-Whisper con el texto real del clip).
 
-Sobre-generación: pedimos hasta `min(12, minutos_de_video)` candidatos con
-score preliminar, rankeamos y nos quedamos con los top N (N según duración,
-igual que el pipeline legacy). Esto reemplaza la densidad fija "video >5min
-= 5 momentos" por selección competitiva entre candidatos.
+Sobre-generación: pedimos `candidate_count()` candidatos con score
+preliminar (W9-B: `min(30, max(6, minutos // 2))`), el juez evalúa TODOS en
+main.py y se entrega por umbral (`select_finalists`, `DELIVERY_JUDGE_MIN`),
+no una cantidad fija. Esto reemplaza la densidad fija "video >5min = 5
+momentos" por selección competitiva entre candidatos.
 """
+import copy
 import json
 import os
+import re
 import time
+from dataclasses import dataclass
 
 from config.model_tiers import output_language_instruction
 from config.llm_chat import build_chat_kwargs, log_llm_usage
+from services.validation import CLIP_MAX_DURATION_SEC
 
 
 def target_moment_count(duration_sec: float) -> int:
@@ -27,14 +32,256 @@ def target_moment_count(duration_sec: float) -> int:
     return 5
 
 
-def candidate_count(duration_sec: float, target: int) -> int:
+def candidate_count(duration_sec: float) -> int:
     """
-    Candidatos a sobre-generar: min(12, minutos de video), nunca menos que
-    el target final (para videos cortos pedimos al menos target+1 y rankear).
+    Candidatos a pedirle a la Pasada A (W9-B, docs/PLAN_CALIDAD.md §9 W9):
+    min(30, max(6, minutos // 2)). Ya no se acota a `target+1` — TODOS los
+    candidatos que devuelva la Pasada A se evalúan de verdad (descarga +
+    Whisper + juez) en main.py, así que el techo de cuántos pedir lo pone
+    el costo objetivo (~US$0.0015/candidato evaluado, medido en
+    eval/runs/2026-09-18-w2c-verificacion.json), no el `target` final de
+    entrega (que ahora es un piso, no un tope — ver
+    moment_selector.select_finalists / DELIVERY_MAX_CLIPS).
     """
     minutes = max(1, int(duration_sec // 60))
-    n = min(12, minutes)
-    return max(n, min(target + 1, 12))
+    return min(30, max(6, minutes // 2))
+
+
+# ─── W2: el juez elige ───────────────────────────────────────────────────────
+# docs/PLAN_CALIDAD.md §4 W2 (causas C4/C5): la Pasada A sobre-genera pero el
+# auto-score del propio LLM no discrimina (8-9 a casi todo); el juez corría
+# después de renderizar y no decidía nada. Ahora el juez evalúa a TODOS los
+# candidatos (W9-B: ya no se trunca a un pool chico, ver
+# `rank_and_prune_candidates`) antes de decidir qué se entrega.
+
+# ─── W9-B: entrega por umbral, no por target fijo ────────────────────────────
+# docs/PLAN_CALIDAD.md §9 W9, docs/adr/0008: el plan de créditos (1/3/5) ya no
+# limita la cantidad de clips entregados — se entrega todo lo que pase la
+# nota del juez, hasta un tope de costo/UX. `target_moment_count` (el 1/3/5
+# de siempre) pasa de "cantidad exacta a entregar" a "piso mínimo
+# garantizado" (junto con DELIVERY_MIN_CLIPS) en `select_finalists`.
+#
+# DELIVERY_MAX_CLIPS: 12, no 30. Con candidate_count() pidiendo hasta 30
+# candidatos para un video de 60 min, evaluarlos cuesta ~30×US$0.0015≈
+# US$0.045 (Whisper+juez, medido). Entregar cada candidato que pasa el
+# umbral cuesta además la Pasada B (~US$0.0073/clip, medido en
+# eval/runs/2026-09-18-w2c-verificacion.json → cost_by_task.copy/clips_count).
+# Si el propio objetivo de Fase 0 se cumple (juez sube y MUCHOS candidatos
+# pasan el umbral), entregar los 30 costaría 30×0.0073≈US$0.22 solo de
+# copy — sumado a la evaluación, ~US$0.27/job, muy por encima del tope de
+# US$0.15/job (docs/PLAN_CALIDAD.md §3). Con el tope en 12: peor caso
+# (30 evaluados, los 12 mejores entregados) ≈ 0.045 + 12×0.0073 ≈
+# US$0.13/job — bajo el tope, con margen, y sigue cumpliendo el objetivo de
+# "≥8 clips por video de 60 min" de docs/ANALISIS_OPUS_CLIP.md §6 fila B.
+DELIVERY_JUDGE_MIN = float(os.getenv("DELIVERY_JUDGE_MIN", "15"))     # sobre 30 (3 métricas × 10)
+DELIVERY_MAX_CLIPS = int(os.getenv("DELIVERY_MAX_CLIPS", "12"))
+DELIVERY_MIN_CLIPS = 3   # piso absoluto, aunque target_moment_count() sea 1
+
+# Penalizaciones sobre la suma de notas del juez (hook+retention+shareability,
+# rango teórico 3-30), en tres niveles según qué tan roto está el candidato
+# (W2-C, docs/PLAN_CALIDAD.md §9 — reemplaza las penalizaciones planas de W2,
+# que trataban `verification_failed` como una sola señal aunque mezclaba
+# cosas muy distintas: ver services.validation.verification_failed_from_flags).
+#
+# FUERTE (PENALTY_BROKEN): el clip no tiene lo que dice tener.
+#   hook_not_found / payoff_not_found — Verificación (CONTEXT.md) falló: la
+#   frase citada por la Pasada A no se pudo anclar en el audio real, ni con
+#   el matching difuso de locate_phrase. bad_segment (W3) — el segmento no
+#   tiene habla plausible. Cualquiera de las tres hace que casi nunca
+#   convenga entregar el candidato aunque el juez lo haya puntuado bien.
+# MEDIA (PENALTY_DEGRADED): se pudo entregar algo, pero con una degradación
+#   real. insufficient_source (W1) — no se pudo ampliar el margen ni
+#   reintentar la descarga, se usó el mejor segmento disponible.
+#   timestamps_suspect (W3) — Whisper dio tiempos sospechosos y hubo que
+#   re-transcribir con el otro proveedor (si igual persiste, termina en
+#   bad_segment o subs_disabled_timestamps, penalizados aparte).
+# LEVE (PENALTY_MINOR): señales informativas que NO significan que el corte
+#   esté mal (W2-C). late_hook / incomplete_tail — W1 ancla el clip al
+#   INICIO DE ORACIÓN de la primera frase, no a su primera palabra, así que
+#   unas palabras/segundos de contexto antes del hook citado son normales;
+#   antes estas dos disparaban `verification_failed` completo y un candidato
+#   bien cortado perdía contra uno peor (caso real: podcast_general_01,
+#   candidato 1010-1050s). min_duration_reverted — el refinamiento tuvo que
+#   volver a límites anteriores, pero el clip igual se entrega.
+PENALTY_BROKEN = 12.0
+PENALTY_DEGRADED = 6.0
+PENALTY_MINOR = 2.0
+PENALTY_DENSITY_OUT_OF_RANGE = 8.0   # sin cambios: sin habla plausible o timestamps rotos
+PENALTY_NO_JUDGE_SCORE = 10.0        # el juez falló: nos quedamos con el auto-score, muy penalizado
+
+# Diversidad entre candidatos entregados.
+MAX_OVERLAP_RATIO = 0.30             # solapamiento temporal máximo (ver filter_overlapping_moments)
+MAX_HOOK_SIMILARITY = 0.6            # Jaccard de palabras normalizadas (sin stopwords)
+
+_STOPWORDS_ES = {
+    "el", "la", "los", "las", "de", "del", "un", "una", "unos", "unas", "que",
+    "y", "o", "a", "en", "por", "para", "con", "su", "sus", "es", "se", "lo",
+    "al", "como", "más", "tu", "este", "esta", "esa", "ese", "no", "si", "sí",
+    "le", "les", "nos", "muy", "ya", "pero", "porque", "cuando", "qué",
+}
+
+
+@dataclass
+class CandidateEval:
+    """Resultado de evaluar un candidato (W2): descarga + Whisper + ancla de
+    frases (W1) + juez sobre el texto real del clip, sin Pasada B ni render.
+
+    `index` es la posición 1-based del candidato dentro de la lista que
+    devolvió la Pasada A (estable durante todo el job, antes de renumerar
+    los finalistas 1..target en orden cronológico para la entrega).
+    """
+    index: int
+    start_time: float
+    end_time: float
+    hook: str
+    judge_scores: dict | None      # {"hook","retention","shareability","reasoning"} o None
+    self_score: float              # suma de scores de la Pasada A (fallback si el juez falla)
+    usable: bool = True            # False = ni siquiera hay clip_text (sin video/sin habla)
+    density_out_of_range: bool = False
+    # Nivel FUERTE (PENALTY_BROKEN): el clip no tiene lo que dice tener.
+    hook_not_found: bool = False
+    payoff_not_found: bool = False
+    bad_segment: bool = False
+    # Nivel MEDIO (PENALTY_DEGRADED): degradación real pero entregable.
+    insufficient_source: bool = False
+    timestamps_suspect: bool = False
+    # Nivel LEVE (PENALTY_MINOR): informativo, no significa corte roto (W2-C).
+    late_hook: bool = False
+    incomplete_tail: bool = False
+    min_duration_reverted: bool = False
+    discard_reason: str | None = None
+
+
+def _judge_sum(c: "CandidateEval") -> float:
+    if c.judge_scores:
+        try:
+            return (
+                float(c.judge_scores["hook"])
+                + float(c.judge_scores["retention"])
+                + float(c.judge_scores["shareability"])
+            )
+        except (KeyError, TypeError, ValueError):
+            pass
+    return max(0.0, c.self_score - PENALTY_NO_JUDGE_SCORE)
+
+
+def score_candidate(c: "CandidateEval") -> float:
+    """
+    Nota de ranking (W2): suma del juez sobre el clip real (o el auto-score
+    de la Pasada A muy penalizado si el juez falló) menos penalizaciones por
+    señales de calidad ya conocidas, en tres niveles (W2-C, ver constantes
+    PENALTY_* arriba). El auto-score NUNCA gana si el juez puntuó — es la
+    causa C4 que W2 corrige. Cada nivel penaliza UNA vez aunque el candidato
+    dispare más de una señal de ese nivel (son síntomas del mismo problema,
+    no problemas independientes que se sumen).
+    """
+    if not c.usable:
+        return -1000.0  # sin clip_text no hay nada que renderizar: nunca se entrega
+    score = _judge_sum(c)
+    if c.hook_not_found or c.payoff_not_found or c.bad_segment:
+        score -= PENALTY_BROKEN
+    if c.insufficient_source or c.timestamps_suspect:
+        score -= PENALTY_DEGRADED
+    if c.late_hook or c.incomplete_tail or c.min_duration_reverted:
+        score -= PENALTY_MINOR
+    if c.density_out_of_range:
+        score -= PENALTY_DENSITY_OUT_OF_RANGE
+    return score
+
+
+def _normalize_words(text: str) -> set[str]:
+    words = re.findall(r"[a-záéíóúñü0-9]+", (text or "").lower())
+    return {w for w in words if w not in _STOPWORDS_ES and len(w) > 2}
+
+
+def _hook_similarity(a: str, b: str) -> float:
+    """Jaccard de palabras normalizadas (sin stopwords) — comparación simple,
+    sin embeddings, para detectar candidatos que repiten el mismo momento."""
+    wa, wb = _normalize_words(a), _normalize_words(b)
+    if not wa or not wb:
+        return 0.0
+    inter = len(wa & wb)
+    union = len(wa | wb)
+    return inter / union if union else 0.0
+
+
+def _overlap_ratio(a: "CandidateEval", b: "CandidateEval") -> float:
+    start = max(a.start_time, b.start_time)
+    end = min(a.end_time, b.end_time)
+    inter = max(0.0, end - start)
+    shortest = min(a.end_time - a.start_time, b.end_time - b.start_time)
+    return (inter / shortest) if shortest > 0 else 0.0
+
+
+def select_finalists(
+    candidates: list["CandidateEval"], target: int
+) -> tuple[list["CandidateEval"], list["CandidateEval"]]:
+    """
+    W9-B — entrega por umbral (docs/PLAN_CALIDAD.md §9 W9), no por `target`
+    fijo: se entregan TODOS los candidatos usables, sin conflicto de
+    diversidad, con `score_candidate() >= DELIVERY_JUDGE_MIN`, hasta
+    `DELIVERY_MAX_CLIPS`. `target` (`target_moment_count`, el 1/3/5 de
+    siempre) y `DELIVERY_MIN_CLIPS` (3) son ahora un PISO: si menos
+    candidatos que `max(target, DELIVERY_MIN_CLIPS)` pasan el umbral, se
+    completa con los siguientes mejores igual aunque no lo pasen — mejor
+    un clip mediocre que entregar menos de lo mínimo (mismo criterio que
+    W2, ahora aplicado a un piso más alto). Nunca se entrega un candidato
+    `usable=False` (sin `clip_text`, no hay nada que renderizar), ni
+    siquiera para completar el piso.
+
+    Diversidad: un candidato se descarta si solapa > MAX_OVERLAP_RATIO en
+    tiempo con uno ya elegido, o si su hook es casi el mismo (Jaccard de
+    palabras > MAX_HOOK_SIMILARITY) — igual que W2. El backfill del piso
+    ignora la diversidad (como antes): mejor un candidato repetido que
+    entregar menos del piso.
+
+    Returns:
+        (elegidos, en orden cronológico), (descartados, con `discard_reason`)
+    """
+    floor = max(target, DELIVERY_MIN_CLIPS)
+    ranked = sorted(candidates, key=score_candidate, reverse=True)
+    selected: list[CandidateEval] = []
+    deferred: list[CandidateEval] = []
+
+    for cand in ranked:
+        if not cand.usable:
+            cand.discard_reason = cand.discard_reason or "sin clip_text: no se puede entregar"
+            deferred.append(cand)
+            continue
+        if len(selected) >= DELIVERY_MAX_CLIPS:
+            cand.discard_reason = f"tope: ya se alcanzaron los {DELIVERY_MAX_CLIPS} clips de DELIVERY_MAX_CLIPS"
+            deferred.append(cand)
+            continue
+        conflict = any(
+            _overlap_ratio(cand, s) > MAX_OVERLAP_RATIO
+            or _hook_similarity(cand.hook, s.hook) > MAX_HOOK_SIMILARITY
+            for s in selected
+        )
+        if conflict:
+            cand.discard_reason = "diversidad: solapa o repite el hook de un candidato ya elegido"
+            deferred.append(cand)
+            continue
+        if score_candidate(cand) >= DELIVERY_JUDGE_MIN:
+            selected.append(cand)
+        else:
+            cand.discard_reason = "umbral: nota del juez por debajo de DELIVERY_JUDGE_MIN"
+            deferred.append(cand)
+
+    if len(selected) < floor:
+        selected_idx = {c.index for c in selected}
+        for cand in deferred:
+            if len(selected) >= floor or len(selected) >= DELIVERY_MAX_CLIPS:
+                break
+            if cand.index in selected_idx or not cand.usable:
+                continue
+            cand.discard_reason = None
+            selected.append(cand)
+            selected_idx.add(cand.index)
+
+    selected_idx = {c.index for c in selected}
+    discarded = [c for c in ranked if c.index not in selected_idx]
+    selected.sort(key=lambda c: c.start_time)
+    return selected, discarded
 
 
 def get_selection_prompt(
@@ -54,7 +301,7 @@ def get_selection_prompt(
 4. Frase memorable standalone que no necesita contexto
 5. Reacción genuina (risa, incomodidad, sorpresa)
 
-TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/reacción + 4s. Ideal 20-40s."""
+TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/reacción + 4s."""
     else:
         focus = """PRIORIZA (contenido de un orador / educativo):
 1. Contrarian truths: ideas que rompen creencias comunes
@@ -62,7 +309,7 @@ TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/re
 3. Deep vulnerability: admisión de errores humanos
 4. Curiosity gap: declaraciones que abren loops mentales
 
-TIMING: start = inicio del setup de la idea; end = fin del remate/conclusión. Ideal 20-55s."""
+TIMING: start = inicio del setup de la idea; end = fin del remate/conclusión."""
 
     return f"""Eres un editor senior de clips virales. Tu ÚNICA tarea en esta pasada es SELECCIONAR los mejores momentos del video. NO generes copy, threads ni posts — eso ocurre en otra etapa.
 
@@ -75,7 +322,8 @@ Identifica los {num_candidates} MEJORES momentos candidatos del video. Sé exige
 
 REGLAS DE TIMING (CRÍTICAS):
 - Usa EXACTAMENTE los timestamps de la transcripción (no los inventes).
-- Cada momento: 15-60 segundos. NUNCA menos de 10s.
+- start_time y end_time se devuelven SIEMPRE en segundos absolutos desde el inicio del video (un número, sin formato): las marcas del transcript son referencia de lectura, y si alguna viene como [mm:ss] hay que convertirla (mm × 60 + ss).
+- Un momento es una idea completa: planteo, desarrollo y remate. Entre 20 y {CLIP_MAX_DURATION_SEC:.0f} segundos. En podcasts y entrevistas lo normal es 40-90 s; en videos cortos de un solo hablante, 20-60 s. Cortá siempre donde termina una oración.
 - El momento debe empezar donde empieza la IDEA (setup) y terminar donde termina (remate). No cortes a mitad de frase.
 - Momentos NO solapados (máximo 20% de overlap entre candidatos).
 
@@ -144,13 +392,22 @@ def rank_and_prune_candidates(
     transcript: dict | None = None,
 ) -> dict:
     """
-    Rankea candidatos por score preliminar (suma hook+retention+shareability)
-    y conserva los top `target`. Mantiene orden cronológico en el output final
-    (los momentos se muestran al usuario en orden de aparición).
+    W9-B (docs/PLAN_CALIDAD.md §9 W9): ya NO trunca. Hasta esta línea de
+    trabajo, esto podaba a un pool chico (`target + EVAL_POOL_EXTRA`, W2)
+    por auto-score de la Pasada A antes de gastar en descarga+Whisper+juez;
+    ahora `candidate_count()` ya pone el techo de cuántos candidatos pedirle
+    al LLM (según el costo objetivo, no según `target`), y TODOS los que
+    devuelve se evalúan de verdad en main.py — la selección final la hace
+    el juez sobre el clip real en `select_finalists`, por umbral, no acá
+    por auto-score (el auto-score del propio LLM no discrimina, causa C4,
+    PLAN_CALIDAD.md §1.3). `target` queda sin usar en esta función (se
+    conserva en la firma por compatibilidad con el único caller,
+    `select_moments`, y porque documenta la intención de quien la llama).
+
+    Solo anota `candidates_all` (auto-score + penalización de borde de
+    segmento) para poder comparar después contra el ranking del juez.
     """
     moments = result_dict.get("viral_moments") or []
-    if len(moments) <= target:
-        return result_dict
 
     def _score(m: dict) -> float:
         s = m.get("scores") or {}
@@ -169,12 +426,13 @@ def rank_and_prune_candidates(
                 base = 0.0
         return base - _segment_boundary_penalty(m, transcript)
 
-    ranked = sorted(moments, key=_score, reverse=True)[:target]
-    dropped = len(moments) - len(ranked)
-    # Orden cronológico para presentación
-    ranked.sort(key=lambda m: float(m.get("start_time") or 0))
-    print(f"   🏆 Ranking candidatos: {len(moments)} generados → top {target} ({dropped} descartados)")
-    result_dict["viral_moments"] = ranked
+    # Todos los candidatos de la Pasada A (con el score usado para rankear)
+    # viajan en `candidates_all` hasta analysis_cache, para poder comparar el
+    # ranking con el juez después. AnalysisResult ignora la clave.
+    result_dict["candidates_all"] = [
+        {**copy.deepcopy(m), "rank_score": round(_score(m), 2)} if isinstance(m, dict) else m
+        for m in moments
+    ]
     return result_dict
 
 
@@ -199,7 +457,7 @@ def select_moments(
         Exception si el LLM falla tras los retries (el caller cae al mega-prompt).
     """
     target = target_moment_count(duration)
-    num_candidates = candidate_count(duration, target)
+    num_candidates = candidate_count(duration)
 
     prompt = get_selection_prompt(
         duration=int(duration),

@@ -64,6 +64,7 @@ Al iniciar (`python main.py` o Docker):
 | `OPENAI_API_KEY` | Sí | Whisper fallback |
 | `GROQ_API_KEY` | Recomendada | Whisper preferido (más rápido) |
 | `SUPADATA_API_KEY` | Sí en VPS/cloud | Transcripts (IPs datacenter) |
+| `TRANSCRIPT_SOURCE` | No (default `supadata`) | `whisper_full` / `hybrid`: Transcript por Whisper del audio completo (W4) |
 | `R2_*` | Sí para clips | Upload a Cloudflare R2 |
 | `WEBSHARE_PROXY_FILE` | Sí en VPS | Proxies residenciales YouTube |
 | `USE_RAPIDAPI_DOWNLOAD` | Recomendada | URLs de stream cuando yt-dlp falla |
@@ -174,6 +175,45 @@ Metadata vía oEmbed (título, autor)
 **Ideal:** Supadata responde en < 5s con 100% de videos públicos.  
 **Sin descarga de video** en este paso — solo texto.
 
+**Transcript de alta resolución (W4, `TRANSCRIPT_SOURCE`, docs/PLAN_CALIDAD.md §4 y §9):**
+la Pasada A no puede cortar en oraciones sobre captions de 3–30 s sin puntuación (causa C1).
+Con `TRANSCRIPT_SOURCE=whisper_full` el paso 1–2 pasa a ser:
+
+```
+YouTube URL
+    ↓
+downloader.download_audio_only (bestaudio → stream de audio por proxy sticky → progresivo mínimo)
+    ↓
+transcriber.transcribe_full_audio: tramos de 10 min + 5 s de solape (ffmpeg),
+  Groq whisper-large-v3-turbo → OpenAI whisper-1, verbose_json con palabras, ≤3 en paralelo
+    ↓
+transcriber.merge_chunk_transcripts: une los tramos cortando en la mitad del solape (sin duplicar palabras)
+    ↓
+transcript_lines.build_full_transcript:
+  words  = palabras con puntuación y mayúsculas + tokens `__silence` (huecos ≥ 0,3 s)
+  lines  = Líneas (oración con start/end; termina en . ? ! … o pausa ≥ 1,5 s;
+           los tramos ≥ 40 palabras sin puntuar se puntúan con el modelo del clasificador)
+  segments = lines  (los consumidores actuales no cambian de firma)
+  wpm
+    ↓
+Cache en transcription_cache por (video_id, fuente, modelo) + copia local en downloads/
+```
+
+La Pasada A recibe `[inicio-fin] Oración.` en segundos por renglón en vez de bloques
+(`processor.py`; `TRANSCRIPT_LINE_STYLE=mmss` para `[mm:ss]`, que con gemini-3.5-flash hace
+que el modelo concatene minutos y segundos: `[57:16]` → `start_time=5716`); el
+clasificador, `validate_durations` y `validate_against_transcript` ven las Líneas como
+`segments`. `hybrid` = captions para clasificador/validaciones + Líneas de Whisper para la
+Pasada A. Si el audio no baja o Whisper falla → captions (`source_fallback_from`). Los
+consumidores del Transcript completo deben usar `transcript_lines.words_without_silence()`;
+la Transcripción del clip (Step 5) no trae silencios. El cache de la Pasada A se separa por
+fuente (`analysis_cache.effective_prompt_version()` → `v6+whisper_full`). Usage:
+`task=transcript_full`. Medido en podcast_general_01 (77 min): ~50 s, US$0.055, 730 Líneas,
+98 % terminan en puntuación, 464 silencios, 174 wpm; segunda corrida desde cache en 1 s.
+En la Pasada A (misma llamada, mismo video): con Líneas 6/8 candidatos arrancan en inicio de
+oración y duran 41–65 s; con captions 1/8 y 81–192 s.
+Tests: `tests/test_transcript_full.py`. Con `supadata` (default) nada cambia.
+
 ### Step 3: Análisis IA
 
 **Módulo:** [`services/processor.py`](services/processor.py)
@@ -226,19 +266,30 @@ flowchart TD
 
 1. `clip_paths_cache` (per-clip paralelo)
 2. `muxed_video_path` (upfront/full)
-3. `download_clip_ytdlp` con margen ±8s (`CLIP_KEYFRAME_MARGIN_SEC`)
+3. `download_clip_ytdlp` con margen −15 s / +20 s (`CLIP_MARGIN_BEFORE_SEC` / `CLIP_MARGIN_AFTER_SEC`; `CLIP_KEYFRAME_MARGIN_SEC` = alias simétrico legacy)
 4. `download_clip_apify` si `USE_APIFY_FALLBACK=true`
 5. Stream partial solo si clip está en primer 20% del video
 6. Deep-link YouTube
 
 **Validación anti-desfase:** `verify_phrases_after_snap` marca `verification_failed` si hay phrase mismatch (cache de análisis stale), cola incompleta o hook tardío. **Re-descarga** solo si la cobertura Whisper es &lt;90% (`STRICT_SYNC_VALIDATION=true`, hasta `CLIP_SYNC_RETRIES`). Phrase mismatch con cobertura alta **no** re-descarga — re-descargar no arregla análisis viejo.
 
+**Cortes anclados a frases (W1):** por momento, el orden es **segmento ancho → Whisper → frases → límites → corte final**. Se pre-corta `[start_time − 15, end_time + 20]` de la fuente, se transcribe entero con Whisper word-level (`_transcribe_with_guards`), `compute_clip_bounds` (`services/validation.py`, función pura) localiza `first/last_phrase_in_audio` (`locate_phrase`, fuzzy — tolera 1 de 4 palabras distinta, 1 de 3 en frases ≥6 palabras desde W2-C) y corta de inicio de oración de la primera a fin de oración de la última (`sentence_bounds_around`), `CLIP_MIN_DURATION_SEC`–`CLIP_MAX_DURATION_SEC` (15–120 s desde W2-B). Si la última frase no está y el segmento no llega al final del video, se re-descarga UNA vez con +25 s (`margin_extended`). Flags: `hook_not_found`, `payoff_not_found` (estos dos son los únicos que marcan `verification_failed` desde W2-C — ver más abajo), `margin_extended`, `subs_disabled_timestamps` (dos proveedores Whisper con timestamps sospechosos → clip sin subtítulos). Sin frases de Verificación corre el flujo numérico anterior (`_refine_bounds_legacy`). Tests: `tests/test_cortes.py`.
+
+**Arrancar en el inicio de la Línea, no una palabra después (W1-C):** hallazgo del agente de W4 medido sobre 15 clips — 6 de 7 clips que no arrancaban con mayúscula arrancaban *exactamente una palabra después* del inicio de la Línea ("Luego|tenemos otra skill", "Para|probar esta funcionalidad", "Aquí|estamos viendo"...) porque el modelo cita `first_phrase_in_audio` sin el conector inicial y `sentence_bounds_around` no puede retroceder: en las palabras del segmento ancho (re-transcripción propia de Whisper, no la misma pasada que armó las Líneas) no hay puntuación ni gap detectable antes de esa palabra. Con Líneas disponibles (`transcript["lines"]`, W4, `TRANSCRIPT_SOURCE=whisper_full|hybrid`), `compute_clip_bounds` recibe un parámetro `lines` (tiempo absoluto de video) y las usa como fuente de verdad para decidir bordes — nunca para subtítulos ni guardas, que siguen viendo las palabras del clip: el inicio se alinea al inicio de la Línea que contiene la primera palabra de la primera frase, el fin al fin de la Línea de la última (`evidence["line_aligned"]`, flag informativo `line_aligned` en `clip_quality_issues` para contarlo en el eval); si alinear a la Línea deja el clip por encima de `CLIP_MAX_DURATION_SEC`, el candidato para mover el inicio (regla `f` de arriba) también considera el inicio de la Línea siguiente, no solo los boundaries del segmento ancho. Sin Líneas (Supadata, jobs legacy) el comportamiento es el de siempre, más un respaldo barato: si la primera palabra queda en minúscula y la anterior es una partícula inicial frecuente (y/pero/luego/para/aquí/entonces/porque/así/sea) pegada (gap <0,6 s), retrocede UNA palabra y no más — el arreglo de verdad es el de arriba, con Líneas. `main.py` solo pasa el dato (`lines=transcript.get("lines")`) y propaga `line_aligned` a través de `_PreparedClip`; ninguna otra lógica cambió. Tests: `tests/test_cortes.py::TestLineAlignedBounds`, `::TestParticleFallback`.
+
+**Verificación ≠ hook tardío ni cola incompleta (W2-C):** `late_hook` (`services.validation.hook_delay_metrics` + `is_late_hook`) e `incomplete_tail` son informativos — W1 ancla el clip al INICIO DE ORACIÓN de la primera frase citada, no a su primera palabra, así que unas palabras/segundos de contexto antes del hook son normales. `verification_failed` es SOLO `hook_not_found or payoff_not_found` (`services.validation.verification_failed_from_flags`); antes incluía `late_hook`/`incomplete_tail` y penalizaba en el ranking de W2 a candidatos bien cortados. `late_hook` ahora es `> 12 palabras` (sin contar tokens de silencio, cuando existan) **o** `> 8 s` antes de la primera palabra citada, lo que se cumpla primero.
+
+**Guardas de sanidad sobre Whisper (W3):** `assess_whisper_words` corre sobre las palabras del segmento ancho (o del clip, en el flujo legacy) antes de decidir límites. `timestamps_suspect` (densidad efectiva &gt;5 w/s o hueco inicial &gt;40 % con densidad normal) → se re-transcribe una vez con el otro proveedor; si persiste, clip sin subtítulos (`subs_disabled_timestamps`). `bad_segment` (densidad &lt;1,2 w/s, &lt;8 palabras únicas, texto repetido) → una re-descarga con otro proxy y, si persiste, clip **sin subtítulos** + flag. `enforce_min_duration` revierte límites si el refinamiento deja el clip &lt;15 s (`min_duration_reverted`). Tests: `tests/test_guards.py`.
+
+**El juez elige (W2):** el loop por momento (`_process_job_inner`) pasa a tener dos fases — **evaluar → rankear → entregar**. La Pasada A ya no poda a `target`, conserva un pool de `target + EVAL_POOL_EXTRA` candidatos (`moment_selector.rank_and_prune_candidates`). Por cada candidato del pool, `_prepare_moment_clip` corre fuente + Whisper + ancla (W1) + juez sobre el texto real (sin Pasada B) y deja `precut.mp4` sin borrar. `moment_selector.select_finalists` rankea por la suma del juez (nunca por el auto-score de la Pasada A — causa C4) menos penalizaciones con nombre en tres niveles (W2-C): fuerte (`PENALTY_BROKEN`: `hook_not_found`/`payoff_not_found`/`bad_segment` — el clip no tiene lo que dice tener), media (`PENALTY_DEGRADED`: `insufficient_source`/`timestamps_suspect`) y leve (`PENALTY_MINOR`: `late_hook`/`incomplete_tail`/`min_duration_reverted` — informativo, no significa corte roto), más `PENALTY_DENSITY_OUT_OF_RANGE` aparte; y aplica diversidad (descarta solapamiento &gt;30 % o hook casi idéntico, con backfill si faltan candidatos). Solo los `target` finalistas (renumerados 1..target en orden cronológico) pasan por `_deliver_moment`: Pasada B, juez final post-copy, render, subida, `save_content_result`. Los descartados no cuestan Pasada B ni render; sus notas quedan anotadas en `candidates_all` (`analysis_cache`, sin migración) vía `_annotate_candidates_all_with_judge`. Tests: `tests/test_seleccion.py`.
+
 **Variables de entorno:**
 
 ```env
 DOWNLOAD_STRATEGY=auto
 DOWNLOAD_PARALLEL_WORKERS=3
-CLIP_KEYFRAME_MARGIN_SEC=8
+CLIP_MARGIN_BEFORE_SEC=15
+CLIP_MARGIN_AFTER_SEC=20
 DOWNLOAD_PHASE_BUDGET_SEC=600
 CLIP_SYNC_RETRIES=2
 STRICT_SYNC_VALIDATION=true
@@ -286,6 +337,132 @@ Por cada `ViralMoment` (típicamente 5):
 | `viral_overlay` | Texto del overlay |
 | `hook_score`, etc. | Scores de viralidad |
 
+### Subtítulos y overlay v2 (W11, `docs/PLAN_CALIDAD.md` §9 Fase 1)
+
+Motivación: `docs/ANALISIS_OPUS_CLIP.md` §2.5 — Opus muestra bloques de
+1-5 palabras (mediana 2) en MAYÚSCULAS con palabra clave en color; nuestro
+render mostraba hasta 4 palabras por línea sin resaltado.
+
+- **Estilo por defecto:** `tiktok_viral_v2` (`generate_clip(subtitle_style=...)`
+  en `services/clip_generator.py`). `tiktok_viral`, `clean` y `podcast`
+  siguen disponibles sin cambios — el editor los elige vía
+  `clip_edits.subtitle_style`.
+- **Agrupado** (`group_words_v2`): bloques de 1-3 palabras; corta siempre
+  en puntuación fuerte (`.!?…`) y en gaps ≥0,35 s entre palabras; nunca
+  deja una partícula española (el/la/de/en/que/...) sola al final de un
+  bloque — se arrastra, excediendo el tope en 1 palabra en ese caso
+  puntual (con partículas encadenadas, ej. "que se", puede pasar más de
+  una vez seguida y el bloque queda de 4).
+- **Timing** (`_v2_blocks_with_timing`): funde bloques que quedarían
+  visibles <0,25 s con el vecino; nunca estira el final de un bloque
+  hacia un hueco de silencio ≥0,5 s — sin texto durante silencios.
+- **Palabra clave** (`detect_keywords_v2`): con `moment.keywords` (Pasada
+  B, 6-12 palabras exactas del transcript, prompt en `processor.py`)
+  marca hasta 2 por bloque (verde `#04F827` primario, amarillo `#FFFD03`
+  secundario); sin eso (jobs legacy), heurística local — números,
+  MAYÚSCULA que no arranca el bloque, ≥7 letras sin ser partícula, máx 1.
+- **Fuente:** Bangers (Google Fonts, licencia OFL — `worker/fonts/README.md`),
+  embebida en `worker/fonts/` y pasada a FFmpeg como `fontsdir` del filtro
+  `ass=` (`services/clip_generator.py::FONTS_DIR`) — no se instala a nivel
+  sistema ni en el Dockerfile. `Dockerfile` sí agrega `fonts-liberation` /
+  `fonts-dejavu-core` (bug preexistente: el filtro `ass=` pedía "Liberation
+  Sans" por nombre sin garantizar que el paquete estuviera instalado).
+- **Animación:** "pop" — escala 100→112→100 % en 120 ms al aparecer cada
+  bloque (tags ASS `\t` + `\fscx`/`\fscy`), sin karaoke por palabra.
+- **Overlay (hook):** mismo mecanismo de W6, solo cambia el estilo
+  `tiktok_viral` — caja blanca con texto negro y esquinas redondeadas
+  simuladas (borde grueso del color de fondo en vez de un box real),
+  fuente normal negrita (no la cómic), 5 s, ~73 % del ancho.
+- **Pendiente para el editor:** `EditClipDrawer.tsx` tiene hardcodeado
+  `type SubtitleStyle = "tiktok_viral" | "clean" | "podcast"` — no ofrece
+  `tiktok_viral_v2` todavía. El backend/DB ya lo aceptan (CHECK actualizado
+  en `supabase/migrations/20260918230146_subtitulos_v2_check.sql`); falta
+  el cambio de frontend (fuera del alcance de este worker).
+- **Tests:** `worker/tests/test_subtitulos_v2.py`.
+
+### Encuadre vertical — Split/Fill/Fit (W5, `docs/PLAN_CALIDAD.md` §9 Fase 1)
+
+Motivación: `docs/ANALISIS_OPUS_CLIP.md` §2.5, §4 punto 3 — "la diferencia
+visual más grande de la captura" era el 16:9 original flotando centrado
+sobre fondo desenfocado, con las dos caras diminutas; Opus, sobre el mismo
+video, apila las dos caras a pantalla completa (layout `Split`, medido
+~48 %/45 % del ancho por cara).
+
+Alcance deliberadamente acotado (`docs/ANALISIS_OPUS_CLIP.md` §6 fila D):
+sin seguimiento cuadro a cuadro, sin TalkNet (hablante activo), sin YOLOX
+(paneles/objetos). Detección de escena + muestreo por escena + un layout
+FIJO por clip (no por escena).
+
+- **Módulo:** `worker/services/reframe.py` — aislado, no importa nada de
+  `services.*`; `clip_generator.py` lo consume (arma el filtro FFmpeg a
+  partir de un `LayoutPlan`), no al revés.
+- **Escenas** (`detect_scenes`): PySceneDetect `ContentDetector`
+  (threshold 27.0, el default de la librería); si scenedetect no está
+  instalado o falla, una sola escena que cubre todo el archivo.
+- **Caras** (`detect_faces`): OpenCV YuNet (`cv2.FaceDetectorYN`,
+  `worker/models/face_detection_yunet_2023mar.onnx`, ~230 KB, licencia
+  Apache-2.0 — ver `worker/models/README.md`). Nota: con
+  `opencv-python-headless` 5.x tira un warning ("Targets are not supported
+  by the new graph engine") pero detecta bien — el modelo es la variante
+  de input shape fijo, pensada para el motor DNN 4.x (ver README del
+  modelo); se mantuvo por ser la más chica y la más documentada.
+- **Análisis por escena** (`analyze_scene`): muestrea 5 frames repartidos
+  en la escena más larga del clip, agrupa detecciones por posición (misma
+  cara si los centros están a <15 % del ancho/alto), exige que una cara
+  aparezca en ≥3 de 5 muestras para contar como **estable**, y aplica una
+  heurística de panel de videollamada (dos mitades de brillo/color
+  distinto separadas por una línea vertical de alto contraste, a ±10 % del
+  centro).
+- **Decisión** (`choose_layout`, función pura — recibe datos, no video):
+  - **Split**: 2 caras estables en mitades horizontales distintas, o panel
+    detectado. Cada cara se recorta a 40-55 % del ancho original (según su
+    tamaño detectado) y se apila a pantalla completa (mitad superior =
+    cara más a la izquierda, mitad inferior = la otra; 640 px de alto cada
+    una en 720×1280).
+  - **Fill**: 1 cara estable → recorte 9:16 centrado en ella, con la cara
+    al ~38 % de la altura del recorte (zoom fijo del 72 % de la altura
+    original — no hay detección de hombros/torso, así que no es un valor
+    calculado).
+  - **Fit**: 0 caras, 3+, o 2 caras sin condiciones claras → el fondo
+    desenfocado de siempre, sin cambios (comportamiento anterior a W5).
+- **Render** (`clip_generator._build_reframe_filter`): arma el filtro
+  FFmpeg (fit = igual que siempre; fill = un `crop`+`scale`; split = dos
+  `crop`+`scale` apilados con `vstack`) en la MISMA pasada de siempre —
+  sin renders extra. `to_vertical_9_16` y `generate_clip` lo usan.
+- **Subtítulos en Split**: `tiktok_viral_v2` se corre de ~58 % de altura a
+  la costura (50 %, `MarginV=H//2`) para no tapar ninguna de las dos caras.
+- **Activación** (`REFRAME_MODE=off|auto`, default `off`): `generate_clip`
+  tiene un parámetro `layout: Optional[LayoutPlan] = None`. Si queda `None`
+  y `REFRAME_MODE=auto` y hay `video_path` local (no aplica al modo de
+  descarga selectiva por stream URLs), analiza automáticamente con
+  `reframe.plan_reframe_for_clip` sobre el mismo `video_path` que ya recibe
+  `generate_clip` en producción (`precut_path` en `main.py` — el segmento
+  ya descargado del clip, no el video completo). **No hace falta tocar
+  `main.py`**: con `REFRAME_MODE=off` (default) el comportamiento es
+  idéntico a antes de W5; para activarlo alcanza con setear la variable de
+  entorno en el servicio (Render/Docker).
+- **Costo medido:** ~1,2 s de CPU por clip (5 muestras/escena, clip de
+  30 s) en la validación — muy por debajo del presupuesto de 10 s, así que
+  se mantuvo el default de 5 muestras (no hizo falta bajar a 3).
+- **Dependencias** (`requirements.txt`, `Dockerfile`): `scenedetect`
+  declara `opencv-python` (con GUI) como dependencia dura; instalarlo
+  normal arrastraría una build de OpenCV que pisa los archivos de
+  `opencv-python-headless` (ambos exponen el mismo `cv2`, no pueden
+  convivir, y la build con GUI necesita `libGL.so.1`, ausente en la imagen
+  slim). Por eso `requirements.txt` solo trae `opencv-python-headless` +
+  las deps reales de scenedetect (`click`/`numpy`/`platformdirs`/`tqdm`), y
+  el `Dockerfile` instala `scenedetect` aparte con `pip install --no-deps`.
+  Verificado con `pip` real (no solo `uv`) en un venv limpio.
+- **Pendiente:** nada de frontend/editor para esta versión (el Encuadre no
+  es una opción manual del usuario, se decide solo); si más adelante se
+  quiere un override manual (`layout=speaker|blur` per job, mencionado en
+  la versión original de W5 en `PLAN_CALIDAD.md`), `generate_clip(layout=)`
+  ya acepta un `LayoutPlan` explícito — falta la UI y el wiring en
+  `main.py`/`clip_edit_processor.py`.
+- **Tests:** `worker/tests/test_reframe.py` (20 tests: `choose_layout` para
+  split/fill/fit/3+caras, agrupado de caras estables, snapshot de que
+  `layout=None` da el filtro de "fit" de siempre).
+
 ### Step 6: Finalización
 
 - `jobs.status` → `completed`
@@ -313,7 +490,7 @@ Cuando el usuario edita un clip en el frontend (`EditClipDrawer`):
 
 | Cache | Tabla | Evita |
 |-------|-------|-------|
-| Transcript | `transcription_cache` | Re-fetch Supadata mismo video |
+| Transcript | `transcription_cache` | Re-fetch Supadata mismo video; W4: `video_id:whisper_full:<modelo>` evita bajar el audio y Whisper |
 | Análisis IA | `analysis_cache` | Re-llamar Gemini mismo video |
 | Categoría | `category_cache` | Re-clasificar podcast/business |
 | Raw clip | R2 `raw_clips/` | Re-descargar segmento en re-edits |
@@ -366,6 +543,16 @@ modelo es `:free` o apunta a Gemini 2.0 (apagado jun 2026).
    desde el texto REAL del clip recortado. Corre antes de `generate_clip` para
    que el overlay quemado sea el final. Si el clip cae a fallback de YouTube,
    hay un "copy rescue" con el slice del transcript.
+   **Fidelidad (W6):** el prompt recibe la primera y la última oración reales
+   del clip (derivadas de `clip_text`; sin puntuación caen al texto completo)
+   y exige que el hook sea algo que se dice, no una promesa del tema. Después
+   se valida contra el texto real (`services/content_validators.py`: overlay
+   con al menos una palabra de los primeros ~8 s aproximados por cantidad de
+   palabras, hook por cobertura difusa de bolsa de palabras —sin exigir
+   orden, un parafraseo suele mover una cláusula— con 25% de tolerancia);
+   si falla se
+   regenera una vez y si persiste cae a un fallback determinístico + flag
+   (`overlay_no_fiel` / `hook_no_fiel`, ver abajo).
 
 Con `TWO_PASS_ANALYSIS=false` (o si la pasada A falla) se usa el mega-prompt
 legacy y su copy queda como borrador que la pasada B pisa.
@@ -391,6 +578,14 @@ legacy y su copy queda como borrador que la pasada B pisa.
 - `verification_failed` (bool): first Y last phrase no matchean el audio real
   — visible como badge "⚠ Verificar corte" en la card.
 - `sub_coverage` y `words_per_sec` se persisten como métricas de calidad.
+- `clip_quality_issues` (jsonb): `incomplete_tail`, `late_hook`,
+  `whisper_mismatch_first|last`, `clip_not_rendered`, `clip_generation_failed`
+  las guardas W3 `timestamps_suspect`, `bad_segment`, `min_duration_reverted`
+  y los cortes W1 `hook_not_found`, `payoff_not_found`, `margin_extended`,
+  `subs_disabled_timestamps` (ver `build_clip_quality_issues` en `services/validation.py`),
+  más los flags de fidelidad de copy (W6) `overlay_no_fiel` y `hook_no_fiel`
+  — `generate_moment_copy_full` los setea en `moment.clip_quality_issues` y
+  `main.py` los mergea con la lista local antes de `save_content_result`.
 - Migración histórica: `supabase/legacy/supabase_migration_ai_quality.sql`.
 
 ### Personalización (Fase 5)
@@ -407,12 +602,27 @@ python worker/eval/run_golden_set.py           # análisis-only
 python worker/eval/run_golden_set.py --tier full   # + pasada B + juez
 python worker/eval/run_golden_set.py --tier smoke  # pre-deploy (~1 video)
 python worker/eval/run_golden_set.py --json    # output para CI
+
+# Tier e2e: pipeline real por clip en dry-run (nada se persiste ni se sube)
+cd worker && EVAL_DRY_RUN=1 ENVIRONMENT=development \
+  python eval/run_golden_set.py --tier e2e --json \
+  2>eval/runs/<fecha>-<PROMPT_VERSION>.log >eval/runs/<fecha>-<PROMPT_VERSION>.json
+python eval/compare_runs.py eval/runs/<baseline>.json eval/runs/<nuevo>.json
 ```
 
-Ver **`worker/eval/README.md`** para tiers, plan de trabajo y comandos VPS.
+Ver **`worker/eval/README.md`** para tiers, plan de trabajo y comandos VPS, y
+**`worker/eval/runs/README.md`** para el historial de corridas e2e.
 
 Corre el golden set (`worker/eval/golden_set.json`) y sale con exit code 1 si
 alguna métrica queda bajo los `thresholds` — usable antes de deploy.
+
+**`EVAL_DRY_RUN=1`** (solo para el eval): `main.process_job` corre completo
+(descarga, Whisper, snap, Pasada B, juez, render FFmpeg) pero
+`services/supabase_client.py` no escribe `jobs` ni `content_results` (los
+acumula en `DRY_RUN_JOBS` / `DRY_RUN_RESULTS`), R2 devuelve `dryrun://…`, el
+crédito no se descuenta y `usage_tracker` no inserta eventos pero deja el
+rollup en `DRY_RUN_ROLLUPS`. Las lecturas y escrituras de cache siguen igual.
+Nunca lo actives en el worker de la cola.
 
 ---
 
@@ -517,7 +727,8 @@ worker/
 │   ├── yt_transcript.py       # Supadata + transcript cache
 │   ├── processor.py           # Clasificación + Gemini análisis
 │   ├── downloader.py          # yt-dlp, RapidAPI, partial download, proxies
-│   ├── transcriber.py         # Whisper Groq/OpenAI word-level
+│   ├── transcriber.py         # Whisper Groq/OpenAI word-level + audio completo por tramos (W4)
+│   ├── transcript_lines.py    # W4: puntuación sobre palabras, Líneas, silencios, wpm, [mm:ss]
 │   ├── clip_generator.py      # FFmpeg 9:16 + subtítulos + overlay
 │   ├── supabase_client.py     # DB, R2 upload, créditos, progress
 │   ├── usage_tracker.py       # job_usage_events + usage_summary

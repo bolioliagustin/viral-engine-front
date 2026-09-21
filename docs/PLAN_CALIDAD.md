@@ -129,6 +129,15 @@ Cada línea es un brief listo para un agente. **Contratos compartidos** (no se c
 - **Archivos:** `worker/main.py` (reordenar el loop por momento en dos fases: evaluar → renderizar), `worker/services/moment_selector.py` (`rank_and_prune_candidates` deja de podar por score propio), `worker/services/scorer.py`.
 - **Aceptación:** en el tier `e2e`, juez promedio de los 5 entregados ≥ el promedio del baseline + 1.5; ningún clip entregado con juez < 4 si existía un candidato mejor; costo por job ≤ US$0.15.
 - **Depende de:** W1 (ancla) para que el texto que juzga sea el del clip final; W0.
+- **Estado (18-sep-2026, rama `feat/juez-elige`):** implementado y con suite verde (211/211, 10 tests nuevos en `tests/test_seleccion.py`); **medición e2e pendiente** (frenada por pedido explícito de Agustín mientras corría la remedición de W6 — no se lanzó ninguna corrida que consuma APIs). `rank_and_prune_candidates` conserva `target + EVAL_POOL_EXTRA` (3) candidatos en vez de podar a `target`; `main.py` evalúa cada uno (`_prepare_moment_clip`: fuente + Whisper + ancla W1 + juez sin Pasada B) y `moment_selector.select_finalists` rankea por el juez con penalizaciones con nombre (`PENALTY_VERIFICATION_FAILED/DENSITY_OUT_OF_RANGE/BAD_SEGMENT/PAYOFF_NOT_FOUND/INSUFFICIENT_SOURCE`) y diversidad (solapamiento >30 % u hook casi idéntico); solo los finalistas pasan por `_deliver_moment` (Pasada B + render). Notas de todos los candidatos anotadas en `candidates_all`. `scorer.py` sin cambios — `judge_moment_scores` ya servía para juzgar sin copy.
+  - **`PROMPT_VERSION` v4→v5:** el prompt de la Pasada A (texto que ve el LLM, `get_selection_prompt`) **no cambió una letra**; el bump es porque el *shape* de lo que queda cacheado sí cambió (`rank_and_prune_candidates` ahora guarda `target+3` candidatos en vez de `target` en `viral_moments`). Sin el bump, `analyze_with_openrouter` pega en el cache viejo (ya podado a `target` bajo la lógica anterior) y W2 nunca se ejercita — es necesario para medir, no opcional. Efecto secundario: la corrida paga Pasada A real en los 4 videos (antes cacheada a costo ~0), así que el costo total **no es comparable 1:1** contra `2026-09-18-w1-cortes.json`; reportar el costo con y sin Pasada A por separado.
+  - **Medición pendiente — comando exacto para retomar** (desde `worker/`, con `.venv` y `.env` ya listos en este worktree):
+    ```bash
+    EVAL_DRY_RUN=1 ENVIRONMENT=development .venv/bin/python eval/run_golden_set.py --tier e2e --json \
+      2>eval/runs/2026-09-18-w2-juez-elige.log >eval/runs/2026-09-18-w2-juez-elige.json
+    .venv/bin/python eval/compare_runs.py eval/runs/2026-09-18-w1-cortes.json eval/runs/2026-09-18-w2-juez-elige.json
+    ```
+    Después: commitear `eval/runs/2026-09-18-w2-juez-elige.json` + línea en `eval/runs/README.md`, y calcular "cuántos finalistas no coinciden con el ranking viejo" (ya impreso en el log de la corrida, línea `📐 N/target finalistas no coinciden con el ranking viejo`) — es la medida directa de si W2 cambia algo. Recordar el umbral de ruido: un judge_avg que se mueve <0.3 no es señal (ver medición W1, 5.44→5.15 con el mismo código).
 
 ### W3 — Guardas de sanidad (agente "guardas") — **rápido, entra primero**
 
@@ -258,6 +267,29 @@ Decisiones nuevas para §7:
 
 Agustín aprobó el análisis completo (`ANALISIS_OPUS_CLIP.md`) y las dos decisiones de §8: **tope de duración 120 s** y **entrega tipo "todos los clips viables como preview, HD y copy al descargar"**. Este plan reordena las líneas W0–W8 y agrega W9–W11. La regla no cambia: cada cambio se mide en el tier `e2e` contra la corrida anterior, una medición a la vez.
 
+### Estado real de cada línea (20-sep-2026, fuente única para el PR de `integracion/fase-0`)
+
+Todas las líneas de código de la Fase 0 (W0–W11, más las que nacieron después: W9-A, F1, W1-C, P1, W9-B) están mergeadas en `integracion/fase-0` (INT-1 + INT-2 + INT-3), y la medición final ya corrió (INT-3, `eval/runs/2026-09-20-integracion-fase0.json`). Lo que queda pendiente por línea es una decisión de producto (activar un flag en el VPS, confirmar un ADR) o, para W8, que arranque — nunca código sin mergear ni medición sin intentar.
+
+| Línea | Qué era | Estado | En `integracion/fase-0` | Fecha | Nota |
+|---|---|---|---|---|---|
+| **W0** Eval e2e + baseline | Tier `e2e`, `compare_runs.py`, baseline | **Hecho y medido** | Sí | 17-sep | Es la infraestructura que mide a todas las demás |
+| **W1** Cortes anclados a frases | Corte por oración, no por `start_time`/`end_time` numérico | **Hecho y medido** | Sí | 18-sep | Run vs baseline v4 en `eval/runs/2026-09-18-w1-cortes.json` |
+| **W1-C** Arrancar en el inicio de la Línea | `compute_clip_bounds(lines=...)` alinea a Línea (W4) en vez de a la palabra citada; respaldo de partículas sin Líneas | **Hecho, medido, objetivo cumplido** | Sí | 20-sep (INT-3, métrica corregida INT-4/INT-5) | Hallazgo del agente de W4 (6/7 clips sin mayúscula arrancaban 1 palabra tarde). `line_aligned` se activa en 93% de los clips con `whisper_full`. La métrica original medía mal (INT-3: "45%", sobre la re-transcripción Whisper aislada, no la Línea que decidió el corte); corregida en INT-4 (por Línea, ±0,3s → 72,4%) y la tolerancia ajustada en INT-5 (±0,6s, porque `content_results.start_time` es `integer` — medio segundo de redondeo antes de cualquier imprecisión real): **mayúscula inicial real 93,1%, supera el objetivo de ≥90%**. Rastro completo (tres valores sobre la misma corrida) en `eval/runs/README.md` |
+| **W2 + W2-B + W2-C** El juez elige, tope 120 s, penalizaciones con nombre | Juez antes del render, ranking por juez con 3 niveles de penalización, tope 120 s | **Hecho y medido** | Sí | 18-sep (código), 20-sep (medición, INT-3) | `verification_failed` 0% en la medición de INT-3 (vs. 10% de `w2c-verificacion`) — cero `payoff_not_found`/`hook_not_found` en 29 clips. `judge_avg` sigue sin moverse de forma concluyente (dentro del ruido ±0.3) |
+| **W3** Guardas de sanidad | Plausibilidad de timestamps Whisper, segmento sin habla, duración mínima | **Hecho** | Sí | 18-sep | Entró junto con W1 (mismos archivos); tests de los casos reales (`1b1007c4 m=1`, "O R m Y TleK E") en verde |
+| **W4** Transcript puntuado (Whisper full) | `TRANSCRIPT_SOURCE=supadata\|whisper_full\|hybrid` | **Hecho, medido con el flag activo** | Sí | 18-sep (merge INT-1), 20-sep (medido, INT-3) | Default sigue en `supadata` (sin cambio de comportamiento en producción); la medición de INT-3 corrió con `whisper_full` explícito (pedido de Agustín) — activarlo por default en producción sigue siendo una decisión pendiente de Agustín |
+| **W5** Reencuadre vertical (Split/Fill/Fit) | Encuadre por escena en vez de fondo desenfocado fijo | **Hecho** | Sí | 19-sep (merge INT-1) | Verificado por el coordinador (278 tests, 2 renders reales) antes del merge; `REFRAME_MODE=off` default, activar `auto` en el VPS es decisión pendiente de Agustín (§11) |
+| **W6** Hook/overlay/copy fieles al clip | Hook y overlay validados contra el texto real del clip | **Hecho y medido** | Sí | 18-sep (merge INT-1), 20-sep (medición, INT-3) | `hook_no_fiel` 1/29 (3%) en la medición de INT-3, `overlay_no_fiel` 0/29 — consistente con la mejora ya vista en `2026-09-18-w6-copy.json` |
+| **W7** Feedback humano | Botones "lo publicaría/no", motivo, panel admin | **Hecho** | Sí | 18-sep (merge INT-1) | Es la fuente de verdad para calibrar el juez (§7 punto 1); sin datos reales todavía (la beta no está corriendo) |
+| **W8** Modelos y prompts | Experimentos de modelo/prompt calibrados contra W7 | **Pendiente** | No | — | Fase 2, explícitamente "recién después de W1–W3"; no arrancó |
+| **W9-A + W9-B** Galería + HD a pedido (producto + worker) | `/results/[jobId]` en galería, `POST /api/clips/:id/hd`, ADR 0008; mitad worker: más candidatos evaluados, entrega por umbral (no target fijo), preview real, HD real | **Hecho, medido — objetivo NO cumplido parejo** | Sí | 19-sep (W9-A) + 20-sep (W9-B + medición, INT-3) | Código completo — ver §10. Medido en `2026-09-20-integracion-fase0.json`: 29 clips en 4 videos (antes 20 fijos), pero **"≥8 clips por video de 60 min" no se cumple en 2 de los 3 videos largos** (6, 6 y 12 — el de 12 llegó al tope `DELIVERY_MAX_CLIPS`). Depende de cuántos candidatos superan `DELIVERY_JUDGE_MIN`, no solo de la duración — decisión para Agustín: ¿bajar el umbral, o es un resultado esperable? |
+| **W10** Copy por clip + score visible | Título/descripción/hashtags, score curvado con letras A-D | **Hecho** | Sí | 18-sep (merge INT-1) | Sin medición de juez (no cambia el ranking interno, es capa de presentación); revisión visual hecha en preview de Vercel antes del merge |
+| **W11** Subtítulos v2 | 1-3 palabras por bloque, palabra clave resaltada | **Hecho** | Sí | 18-sep (merge INT-1) | Gap de integración (b)/(c) cerrado con test (INT-1); gap de producto (`EditClipDrawer.tsx` sin `tiktok_viral_v2`) cerrado por P1 el 20-sep |
+| **F1** Fiabilidad de la beta | ADR 0005 (créditos reservados), tope 90 min, Telegram, Sentry | **Hecho** | Sí | 19-sep (merge INT-2) | Suite backend 98/98 en verde con Node 20 puro; nada pendiente de código |
+| **P1** Pantalla de progreso en dos fases | `current_step` de 7 pasos, `progress_detail` jsonb, `partial` en `GET /status`, migración `progreso_detalle` | **Hecho** | Sí | 20-sep (INT-3) | Contrato verificado contra lo que emite W9-B (mismo enum, mismo shape de `progress_detail`); nada pendiente de código |
+| **Medición final de la integración** | Tier `e2e` sobre `integracion/fase-0` completa (con `TRANSCRIPT_SOURCE=whisper_full`) vs `2026-09-18-w2c-verificacion.json` | **Hecho (20-sep, INT-3)** | Sí | 20-sep | `eval/runs/2026-09-20-integracion-fase0.json`, US$0.9401, 36 min. **No 1:1** (transcript, `PROMPT_VERSION` y entrega por umbral cambiaron a la vez) — lectura completa, con los dos agregados (todos los entregados y top-5 por juez), en `eval/runs/README.md`. El archivo que se pedía comparar contra, `2026-09-18-w4-whisper-full.json`, **no existe** en `eval/runs/` — nunca se commiteó |
+
 ### Fase 0 — esta semana, en paralelo (tres agentes)
 
 | Línea | Qué | Agente / rama | Mide contra |
@@ -272,7 +304,7 @@ Agustín aprobó el análisis completo (`ANALISIS_OPUS_CLIP.md`) y las dos decis
 | Línea | Qué | Depende de |
 |---|---|---|
 | **W11** Subtítulos v2 | 1–3 palabras por bloque (el modelo decide cortes por énfasis), mayúsculas, borde 12–16 px, palabra clave resaltada en color (1–2 por bloque, elegidas por el modelo en la Pasada B), sin texto en silencios; estilo `tiktok_viral_v2` por defecto, el actual queda como opción. | W4 (silencios) — puede arrancar con las palabras de Whisper actuales |
-| **W9** Muchos clips, ranking relativo, preview + HD a pedido | El worker evalúa todos los candidatos viables (objetivo ≥ 1 cada 2–3 min de video), renderiza **preview 480×854 `veryfast`** de todos y guarda el ranking; el HD 720p (y luego 1080p) y la Pasada B completa se generan **al descargar** (job de re-render, mecanismo ya existente de `clip_edits`); la card muestra la galería completa ordenada por score curvado; **crédito por job** (se cobra al encolar, ADR 0005) y HD ilimitado dentro del job. Requiere ADR 0008 (modelo de entrega y créditos). | W2 (ranking), W2-B (tope), W10 (presentación) |
+| **W9** Muchos clips, ranking relativo, preview + HD a pedido — **hecho (W9-A+W9-B, 20-sep), medición pendiente, ver §10** | El worker evalúa todos los candidatos viables (objetivo ≥ 1 cada 2–3 min de video), renderiza **preview 480×854 `veryfast`** de todos y guarda el ranking; el HD 720p (y luego 1080p) y la Pasada B completa se generan **al descargar** (job de re-render, mecanismo ya existente de `clip_edits`); la card muestra la galería completa ordenada por score curvado; **crédito por job** (se cobra al encolar, ADR 0005) y HD ilimitado dentro del job. Requiere ADR 0008 (modelo de entrega y créditos). | W2 (ranking), W2-B (tope), W10 (presentación) |
 | **W5** Encuadre por paneles/caras (acotado) | Por escena (PySceneDetect): detectar paneles (videollamada) y caras (YuNet/OpenCV, CPU, 2 fps); layouts `Split` (dos caras apiladas), `Fill` (una cara, recorte centrado con seguimiento suave por escena) y `Fit` (fondo desenfocado, el actual) como fallback; sin seguimiento cuadro a cuadro en v1. | nadie; rama larga |
 
 ### Fase 2 — después de la beta
@@ -285,6 +317,43 @@ Agustín aprobó el análisis completo (`ANALISIS_OPUS_CLIP.md`) y las dos decis
 - 100 % de clips terminan en fin de oración y ≥ 90 % arrancan con mayúscula (W4).
 - ≥ 8 clips entregados por video de 60 min (W9), 0 clips con `bad_segment` entregados.
 - Posteable ≥ 70 % en la etiqueta humana (W7), que sigue siendo la verdad.
+
+### Calibración del umbral de entrega (20-sep-2026, INT-5)
+
+Decisión pendiente #2 de Agustín (¿`DELIVERY_JUDGE_MIN`/`DELIVERY_MAX_CLIPS` están bien calibrados?), con datos y sin gastar en API: la medición final de INT-3 evaluó 99 candidatos (30+30+9+30 sobre los 4 videos, `TRANSCRIPT_SOURCE=whisper_full`) y guardó la nota del juez de **todos** en `analysis_cache.candidates_all` (W0), no solo de los entregados. `worker/eval/umbral_entrega.py` re-simula `moment_selector.select_finalists` sobre esas notas ya calculadas (`w2_score`, con las penalizaciones de W2-C ya aplicadas) para distintos valores de `DELIVERY_JUDGE_MIN`, sin volver a llamar a ningún LLM. Verificado contra la corrida real: a `DELIVERY_JUDGE_MIN=15`/`DELIVERY_MAX_CLIPS=12` (los defaults actuales) reproduce exactamente los mismos 6/12/5/6 clips por video que entregó la corrida de INT-3.
+
+| Umbral | Tope | Clips: business/podcast/claude/user_rec | Clips/hora (prom.) | Videos ≥8/h | Juez entregados | Juez top-5 | US$/job (prom.) |
+|---|---|---|---|---|---|---|---|
+| 15 (actual) | 12 (actual) | 6 / 12 / 5 / 6 | 8.05 | 2/4 | 5.52 | 5.65 | 0.2095 |
+| 14 | 12 | 9 / 12 / 6 / 8 | 9.61 | 2/4 | 5.37 | 5.65 | 0.2204 |
+| **13** | **12** | **12 / 12 / 7 / 10** | **11.17** | **3/4** | **5.22** | **5.65** | **0.2314** |
+| 13 | 15 | 13 / 15 / 7 / 10 | 11.92 | 3/4 | 5.19 | 5.65 | 0.2387 |
+| 12 | 12 | 12 / 12 / 7 / 12 | 11.45 | 3/4 | 5.16 | 5.65 | 0.2350 |
+| 12 | sin tope | 14 / 23 / 7 / 12 | 13.92 | 3/4 | 4.99 | 5.65 | 0.2587 |
+
+(Tabla completa de 12 a 21, con tope 12/15/20/sin tope, en la salida de `umbral_entrega.py` — no se pega entera acá por espacio.)
+
+**Hallazgo clave: el juez top-5 no se mueve — 5,65 en TODAS las filas, para cualquier umbral de 12 a 21 y cualquier tope.** Los 5 mejores candidatos de cada video ya superan cualquier umbral en este rango; bajar el umbral no baja la calidad de los mejores clips, solo decide cuántos clips *adicionales*, de menor nota, se entregan además de esos 5. La restricción "no bajar el juez top-5 más de 0,3" del pedido está satisfecha por construcción en todo el rango probado — el trade-off real es únicamente **cantidad/costo vs. juez promedio de TODOS los entregados** (que sí baja, de 5,65 a ~5,0-5,5, al incluir candidatos más débiles).
+
+**Recomendación: `DELIVERY_JUDGE_MIN=13` (bajar de 15), `DELIVERY_MAX_CLIPS` sin cambios en 12.** Con eso: 3 de 4 videos alcanzan ≥8 clips/hora (vs. 2 de 4 hoy), el juez top-5 no se mueve (5,65), el juez promedio de todos los entregados baja de 5,52 a 5,22 (una caída aceptable porque son clips extra, no un reemplazo de los mejores), y el costo sube de US$0,2095 a US$0,2314 por job (+10,5 %) — ambos ya por encima del techo histórico de US$0,15/job (§3), que quedó desactualizado desde que W9-B entrega más de 5 clips por defecto. Subir el tope a 15 (fila `13/15`) suma un clip más en `podcast_general_01` a un costo marginal (+US$0,007/job) y no cambia el resto — es opcional, no imprescindible.
+
+**Lo que ningún umbral de este rango arregla:** `user_recommended_01` (108 min) nunca llega a 8 clips/hora en el rango probado (10/1,81h ≈ 5,53/h en el mejor caso, `sin tope` no ayuda porque a umbral 13 el video no tiene más de 10 candidatos que pasen y sean diversos) — no es un problema de umbral sino de oferta: `candidate_count()` tope en 30 candidatos independientemente de la duración (`min(30, max(6, minutos // 2))`), así que un video de 108 min recibe los mismos 30 candidatos que uno de 60 min, con menos candidatos por hora de contenido de entrada. Subir el tope de `candidate_count()` para videos >90 min es un cambio de código, no de calibración — queda para otra tarea si a Agustín le importa ese caso.
+
+---
+
+## 10. W9 — Muchos clips, ranking relativo, preview + HD a pedido (estado 20-sep-2026)
+
+`docs/ANALISIS_OPUS_CLIP.md` §1 y §6 fila B: Opus entrega 42 clips de un video de 77 min como galería con preview liviano y HD a pedido; nosotros entregábamos 5 en HD directo. `feat/galeria-clips` (W9-A) hizo la mitad producto; `feat/galeria-worker` (W9-B) cerró la mitad worker. Código completo, entra en `integracion/fase-0` vía INT-2:
+
+- **Producto (W9-A):** `docs/adr/0008-entrega-galeria-y-creditos.md` (propuesta, pendiente de confirmación de Agustín) — crédito por job sin cambios, galería y HD ilimitados dentro del job. Backend: `POST /api/clips/:contentResultId/hd` (HD a pedido, reusa `clip_edits` con `edit_type='hd_upgrade'`, sin columnas de estado nuevas); `GET /status/:jobId` agrega `preview_url`, `hd_url`, `hd_status`. Frontend: `/results/[jobId]` pasa a galería (grilla + filtro Todos/Mejores, detalle al abrir una tarjeta). Migración `galeria_hd` (columna `content_results.preview_url`, columna `clip_edits.edit_type`).
+- **Worker (W9-B), docs/PROYECTO.md §5.5/§5.7/§11 tienen el detalle completo:**
+  1. `moment_selector.candidate_count()` pide `min(30, max(6, minutos // 2))` candidatos (antes `min(12, minutos)`) y `rank_and_prune_candidates` ya no trunca — **todos** se evalúan de verdad (`PROMPT_VERSION` v8, cambia el shape cacheado).
+  2. `select_finalists` entrega por umbral (`DELIVERY_JUDGE_MIN`, default 15/30) hasta `DELIVERY_MAX_CLIPS` (default **12**, no 30 — el costo de entregar 30 candidatos que pasan el umbral supera el tope de US$0.15/job, ver el cálculo en el commit de W9-B), con `target_moment_count()` (el 1/3/5 de siempre) y un piso absoluto de 3 como **piso mínimo garantizado**, no como cantidad exacta.
+  3. `_deliver_moment` renderiza un **preview 480×854 crf 28** (antes 720×1280 crf 23) y lo guarda en `content_results.preview_url` (mismo archivo que `clip_url` — compatibilidad total con jobs viejos, que siguen sin `preview_url`).
+  4. `clip_edit_processor.py`: `edit_type='hd_upgrade'` ya usaba 720×1280 (mismo pipeline que un edit de estilo) — con el preview de 480×854 de arriba, ese mismo render SÍ es ahora una mejora real de calidad, sin más cambios; se agregó una guarda de idempotencia (si la fila ya tiene `rendered_clip_url`, no vuelve a renderizar).
+  5. Gap (5) de INT-1/F1: un job con 0 clips MP4 (sin excepción) marcaba `completed` y no devolvía el crédito reservado (F1 lo dejó como nota pendiente explícita en la migración `creditos_reservados`) — ahora `main.py::_finalize_job_outcome` lo marca `failed` con `error='sin clips viables'`, lo que dispara el trigger de F1.
+  6. Sentry del worker: mismo fix que F1 ya había hecho en el backend, sin DSN hardcodeado de fallback.
+- **Medición: PENDIENTE DE CRÉDITO** (OpenRouter en saldo negativo) — las métricas que hay que revisar cuando se corra: clips entregados por video (objetivo ≥ 8 en 60 min), juez promedio de los entregados (no debe bajar más de 0.3 al entregar más, riesgo real: con más candidatos evaluados el promedio de LOS ENTREGADOS puede bajar aunque cada uno individualmente sea bueno, porque antes solo se entregaban los 5 mejores), costo por job (objetivo ≤ US$0.15), tiempo por job.
 
 ---
 

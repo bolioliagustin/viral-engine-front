@@ -230,6 +230,88 @@ router.get('/usage/jobs/:jobId', requireAuth, requireAdmin, async (req, res) => 
     }
 });
 
+/**
+ * GET /admin/usage/feedback — calibración juez vs humano (W7).
+ * Cruza clip_feedback con content_results.score_judge: si el juez y el
+ * humano coinciden, judge_avg_posteable debería ser claramente mayor que
+ * judge_avg_no_posteable.
+ */
+router.get('/usage/feedback', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const { from, to } = parseDateRange(req);
+
+        const { data, error } = await supabase
+            .from('clip_feedback')
+            .select(
+                'id, content_result_id, user_id, posteable, motivo, comentario, created_at, ' +
+                'content_results!inner(job_id, score_judge)'
+            )
+            .gte('created_at', from)
+            .lte('created_at', to)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Historial: un usuario puede re-etiquetar el mismo clip (clip_feedback
+        // guarda cada etiqueta). Para no inflar el conteo nos quedamos con la
+        // fila más reciente por content_result_id, igual que hace el GET de
+        // un solo clip en feedback.js.
+        const latestByClip = new Map();
+        for (const row of data || []) {
+            if (!latestByClip.has(row.content_result_id)) {
+                latestByClip.set(row.content_result_id, row);
+            }
+        }
+        const rows = Array.from(latestByClip.values());
+
+        const total = rows.length;
+        const posteableCount = rows.filter((r) => r.posteable).length;
+        const posteableRate = total ? round((posteableCount / total) * 100, 1) : null;
+
+        const byMotivo = {};
+        for (const r of rows) {
+            if (r.motivo) byMotivo[r.motivo] = (byMotivo[r.motivo] || 0) + 1;
+        }
+
+        const judgeAvgOf = (row) => {
+            const j = row.content_results?.score_judge;
+            if (!j) return null;
+            const vals = [j.hook, j.retention, j.shareability].filter((v) => typeof v === 'number');
+            return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+        };
+        const mean = (arr) => (arr.length ? round(arr.reduce((a, b) => a + b, 0) / arr.length, 2) : null);
+
+        const posteableJudgeAvgs = rows
+            .filter((r) => r.posteable)
+            .map(judgeAvgOf)
+            .filter((v) => v !== null);
+        const noPosteableJudgeAvgs = rows
+            .filter((r) => !r.posteable)
+            .map(judgeAvgOf)
+            .filter((v) => v !== null);
+
+        res.json({
+            period: { from, to },
+            total,
+            posteable_rate: posteableRate,
+            by_motivo: byMotivo,
+            judge_avg_posteable: mean(posteableJudgeAvgs),
+            judge_avg_no_posteable: mean(noPosteableJudgeAvgs),
+            rows: rows.map((r) => ({
+                content_result_id: r.content_result_id,
+                job_id: r.content_results?.job_id ?? null,
+                posteable: r.posteable,
+                motivo: r.motivo,
+                score_judge: r.content_results?.score_judge ?? null,
+                created_at: r.created_at,
+            })),
+        });
+    } catch (err) {
+        console.error('admin/usage/feedback error:', err.message);
+        res.status(500).json({ error: 'Failed to load feedback' });
+    }
+});
+
 /** GET /admin/usage/breakdown */
 router.get('/usage/breakdown', requireAuth, requireAdmin, async (req, res) => {
     try {

@@ -18,7 +18,41 @@ from services.supabase_client import get_supabase
 # Forzá invalidación global del cache. Ejemplo de bump: "v1" → "v2".
 # v2: pipeline two-pass (pasada A selección sin copy) + model tiers (Fase 1-2)
 # v4: migración modelos jul 2026 (gemini-3.5-flash analysis/copy, gpt-5.4-nano judge, flash-lite classifier)
-PROMPT_VERSION = "v4"
+# v5: W2 "el juez elige" (docs/PLAN_CALIDAD.md §4) — rank_and_prune_candidates
+#     ya no poda a `target`, conserva target+EVAL_POOL_EXTRA candidatos para
+#     que main.py los evalúe con el juez antes de descartar. El prompt de la
+#     Pasada A no cambió, pero el shape cacheado (cuántos viral_moments trae)
+#     sí, así que hace falta invalidar el cache viejo.
+# v6: W2-B (docs/PLAN_CALIDAD.md §8-9, análisis Opus Clip 18-sep-2026) — tope
+#     de duración del Momento 60 → 120 s (CLIP_MIN/MAX_DURATION_SEC en
+#     services/validation.py). Esta vez el TEXTO del prompt de la Pasada A sí
+#     cambió (moment_selector.get_selection_prompt: la guía de duración nueva).
+# v7: INT-1 (integración de la Fase 0) — W4 agregó una línea al prompt de la
+#     Pasada A (start_time/end_time SIEMPRE en segundos absolutos, conversión
+#     de marcas [mm:ss]) sin bumpear la versión, por acuerdo: se sube una sola
+#     vez acá, al cerrar la integración de las siete ramas.
+# v8: W9-B (docs/PLAN_CALIDAD.md §9 W9) — `candidate_count()` pasa de pedir
+#     hasta 12 candidatos a hasta 30 (`min(30, max(6, minutos // 2))`). El
+#     texto del prompt de la Pasada A no cambió, pero el shape de lo
+#     cacheado sí (hasta 30 `viral_moments` en vez de hasta 12), igual que
+#     el bump v4→v5 de W2: sin esto, un cache hit devolvería el pool viejo
+#     y chico, y W9-B (evaluar TODOS los candidatos) nunca se ejercitaría.
+PROMPT_VERSION = "v8"
+
+
+def effective_prompt_version(transcript_source: str | None = None) -> str:
+    """
+    Versión de prompt con la que se lee/escribe el cache. W4: la Pasada A
+    recibe un transcript distinto según la fuente (`TRANSCRIPT_SOURCE`), así
+    que el cache se separa por fuente sin bumpear `PROMPT_VERSION`:
+    `v5` (supadata, igual que siempre) / `v5+whisper_full` / `v5+hybrid`.
+    `transcript_source` explícito (lo que trae el transcript) pisa el env.
+    """
+    import os
+    source = (transcript_source or os.getenv("TRANSCRIPT_SOURCE") or "supadata").strip().lower()
+    if source in ("whisper_full", "hybrid"):
+        return f"{PROMPT_VERSION}+{source}"
+    return PROMPT_VERSION
 
 
 # ─── Analysis cache (resultado completo del análisis) ───────────────────────
@@ -26,6 +60,7 @@ def get_cached_analysis(
     video_id: str,
     model: str,
     tone: str = "profesional",
+    prompt_version: str | None = None,
 ) -> Optional[dict]:
     """
     Busca un AnalysisResult cacheado. Retorna el dict crudo o None.
@@ -41,7 +76,7 @@ def get_cached_analysis(
             .eq("video_id", video_id)
             .eq("model", model)
             .eq("tone", tone)
-            .eq("prompt_version", PROMPT_VERSION)
+            .eq("prompt_version", prompt_version or effective_prompt_version())
             .limit(1)
             .execute()
         )
@@ -59,6 +94,45 @@ def get_cached_analysis(
         return None
 
 
+def get_cached_analysis_row(
+    video_id: str,
+    model: str,
+    tone: str = "profesional",
+    prompt_version: str | None = None,
+) -> Optional[dict]:
+    """
+    Como `get_cached_analysis` pero devuelve la fila completa (`result` +
+    `category_detected`). La usa W2 (main.py) para reescribir `candidates_all`
+    con las notas del juez después de evaluar, sin pisar `category_detected`
+    con `None` en el upsert (`get_cached_analysis` descarta esa columna
+    porque `processor.py` solo necesita `result`).
+    """
+    supabase = get_supabase()
+    if not supabase:
+        return None
+    try:
+        res = (
+            supabase.table("analysis_cache")
+            .select("result, category_detected")
+            .eq("video_id", video_id)
+            .eq("model", model)
+            .eq("tone", tone)
+            .eq("prompt_version", prompt_version or effective_prompt_version())
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return None
+        row = res.data[0]
+        result = row["result"]
+        if isinstance(result, str):
+            result = json.loads(result)
+        return {"result": result, "category_detected": row.get("category_detected")}
+    except Exception as e:
+        print(f"   ⚠️ analysis_cache lookup (row) falló (no fatal): {e}")
+        return None
+
+
 def save_analysis(
     video_id: str,
     model: str,
@@ -66,10 +140,17 @@ def save_analysis(
     tone: str = "profesional",
     category_detected: Optional[str] = None,
     prompt_chars: Optional[int] = None,
+    prompt_version: str | None = None,
 ) -> bool:
     """
     Guarda un AnalysisResult al cache. Upsert por la unique key
     (video_id, model, tone, prompt_version).
+
+    `result` es el dict crudo de la Pasada A: además de `viral_moments`
+    (los finales) puede traer `candidates_all` (todos los candidatos con su
+    `rank_score`, ver moment_selector.rank_and_prune_candidates). Se guarda
+    tal cual dentro del JSON de `result`, sin cambio de esquema; al leerlo,
+    AnalysisResult(**cached) ignora la clave extra.
     """
     supabase = get_supabase()
     if not supabase:
@@ -80,7 +161,7 @@ def save_analysis(
             "video_id": video_id,
             "model": model,
             "tone": tone,
-            "prompt_version": PROMPT_VERSION,
+            "prompt_version": prompt_version or effective_prompt_version(),
             "result": json.dumps(result, ensure_ascii=False, default=str),
             "category_detected": category_detected,
             "prompt_chars": prompt_chars,

@@ -2,7 +2,16 @@
 Video validation utilities
 """
 import re
+import unicodedata
 from typing import Optional
+
+# Duración de un Momento (docs/PLAN_CALIDAD.md §8-9, análisis Opus Clip
+# 18-sep-2026, `docs/ANALISIS_OPUS_CLIP.md`): 7 de los 10 mejores clips de
+# Opus sobre nuestro propio golden set (podcast_general_01) duran más de
+# 60 s — su #1 dura 96 s y empieza donde el tope viejo nos obligaba a
+# cortar. Menos de 15 s no alcanza para plantear una idea.
+CLIP_MIN_DURATION_SEC = 15.0
+CLIP_MAX_DURATION_SEC = 120.0
 
 
 def validate_video_duration(duration_seconds: int, max_duration: int = 7200) -> None:
@@ -368,12 +377,830 @@ def hook_keyword_overlap(head_words: list[str], hook: str) -> float:
     return len(head_set & hook_set) / len(head_set)
 
 
+# ── Plausibilidad de la Transcripción del clip (guardas W3, PLAN_CALIDAD §1.3 C3) ──
+# Umbrales calibrados con dos casos reales:
+#  (a) job 1b1007c4 m=1: 73 palabras en 33 s (densidad 2.21, normal) pero
+#      amontonadas en los últimos ~9 s → densidad efectiva ~8 w/s. Timestamps
+#      corridos de whisper-1: el texto es bueno, los tiempos no.
+#  (b) job 4bb4561b m=5: "O R m Y TleK E" en 27 s (densidad 0.23), y clips con
+#      "en realidad los modelos están bastante bien en realidad los…" repetido:
+#      el segmento descargado no tiene habla (audio desincronizado o alucinación).
+# El habla real en español sostiene 2–4 palabras/s; >5 sostenidas es imposible.
+WHISPER_MAX_EFFECTIVE_DENSITY = 5.0     # palabras/s sobre el tramo con habla
+WHISPER_MIN_DENSITY = 1.2               # palabras/s sobre el clip entero
+WHISPER_MIN_UNIQUE_RATIO = 0.35         # palabras únicas / total
+WHISPER_MAX_REPEATED_RATIO = 0.40       # fracción del texto cubierta por una secuencia repetida
+WHISPER_MIN_UNIQUE_WORDS = 8
+WHISPER_MIN_SPEECH_SPAN_SEC = 1.0       # piso para no disparar con 2 palabras en 0.3 s
+WHISPER_REPEAT_MIN_NGRAM = 4
+
+
+def longest_repeated_run(tokens: list[str], min_len: int = WHISPER_REPEAT_MIN_NGRAM) -> int:
+    """
+    Longitud (en palabras) de la secuencia más larga de ≥ min_len palabras que
+    aparece verbatim al menos dos veces en `tokens`. 0 si no hay ninguna.
+
+    Detecta el patrón "frase repetida en loop" que deja Whisper cuando el
+    audio no tiene habla clara. O(n²) sobre ≤ unos cientos de palabras: barato.
+    """
+    n = len(tokens)
+    if n < min_len * 2:
+        return 0
+    best = 0
+    seen: dict[tuple, int] = {}
+    # Buscar el n-grama de tamaño min_len repetido y extender desde ahí.
+    for i in range(n - min_len + 1):
+        key = tuple(tokens[i:i + min_len])
+        if key in seen:
+            j = seen[key]
+            length = min_len
+            while i + length < n and tokens[j + length] == tokens[i + length]:
+                length += 1
+            best = max(best, length)
+        else:
+            seen[key] = i
+    return best
+
+
+def assess_whisper_words(words: list[dict], clip_duration: float) -> dict:
+    """
+    Evalúa si las palabras Whisper de un clip son plausibles como habla real
+    con timestamps reales. Devuelve métricas + `plausible` + `reasons`.
+
+    reasons ⊆ {"timestamps_suspect", "bad_segment"}:
+      - timestamps_suspect: el texto parece habla pero los tiempos están
+        comprimidos (densidad efectiva > 5 w/s). No hay que recortar por
+        "silencio" en base a esos tiempos.
+      - bad_segment: el segmento no tiene habla plausible (muy pocas palabras,
+        texto repetido o casi sin vocabulario). No sirve ni para subtítulos.
+    """
+    words = words or []
+    n = len(words)
+    duration = max(float(clip_duration or 0.0), 0.0)
+    tokens = [_normalize_phrase(w.get("word") or "") for w in words]
+    tokens = [t for t in tokens if t]
+
+    if n == 0 or duration <= 0:
+        return {
+            "n_words": n,
+            "density": 0.0,
+            "speech_span": 0.0,
+            "leading_gap": 0.0,
+            "effective_density": 0.0,
+            "unique_ratio": 0.0,
+            "unique_words": 0,
+            "repeated_run": 0,
+            "repeated_ratio": 0.0,
+            "timestamps_suspect": False,
+            "bad_segment": True,
+            "plausible": False,
+            "reasons": ["bad_segment"],
+        }
+
+    starts = [float(w.get("start", 0.0)) for w in words]
+    ends = [float(w.get("end", s)) for w, s in zip(words, starts)]
+    first_start = min(starts)
+    last_end = max(ends)
+    speech_span = max(0.0, last_end - first_start)
+    density = n / duration
+    effective_density = n / max(speech_span, WHISPER_MIN_SPEECH_SPAN_SEC)
+    unique_words = len(set(tokens))
+    unique_ratio = (unique_words / len(tokens)) if tokens else 0.0
+    repeated_run = longest_repeated_run(tokens)
+    repeated_ratio = (repeated_run / len(tokens)) if tokens else 0.0
+
+    reasons: list[str] = []
+    timestamps_suspect = effective_density > WHISPER_MAX_EFFECTIVE_DENSITY
+    bad_segment = (
+        density < WHISPER_MIN_DENSITY
+        or unique_ratio < WHISPER_MIN_UNIQUE_RATIO
+        or repeated_ratio > WHISPER_MAX_REPEATED_RATIO
+        or unique_words < WHISPER_MIN_UNIQUE_WORDS
+    )
+    if timestamps_suspect:
+        reasons.append("timestamps_suspect")
+    if bad_segment:
+        reasons.append("bad_segment")
+
+    return {
+        "n_words": n,
+        "density": round(density, 3),
+        "speech_span": round(speech_span, 3),
+        "leading_gap": round(first_start, 3),
+        "effective_density": round(effective_density, 3),
+        "unique_ratio": round(unique_ratio, 3),
+        "unique_words": unique_words,
+        "repeated_run": repeated_run,
+        "repeated_ratio": round(repeated_ratio, 3),
+        "timestamps_suspect": timestamps_suspect,
+        "bad_segment": bad_segment,
+        "plausible": not reasons,
+        "reasons": reasons,
+    }
+
+
+# ── Cortes anclados a las frases del modelo (W1, PLAN_CALIDAD §4; causas C1/C2) ──
+# La Pasada A elige start_time/end_time sobre bloques de captions de 3–30 s,
+# pero sus first_phrase_in_audio / last_phrase_in_audio son texto real. Acá
+# la verdad son las frases: se localizan en la Transcripción del segmento
+# ancho y el clip va de inicio de oración de la primera al fin de oración de
+# la última. El número es solo la pista de qué descargar.
+
+_SENTENCE_END_CHARS_V = (".", "?", "!", "…", "。", "؟")
+LOCATE_MIN_SCORE = 0.75          # tolera 1 de cada 4 palabras distinta
+# W2-C: frases largas (≥6 palabras) tienen más superficie para que UNA
+# palabra difiera por una transcripción distinta (Pasada A lee Supadata,
+# el matching corre sobre Whisper) sin que la frase deje de ser la misma
+# ("hantavirus" vs "antavirus"): tolerar 1 de cada 3 en vez de 1 de cada 4.
+# Frases cortas (<6 palabras) se quedan en LOCATE_MIN_SCORE — con pocas
+# palabras, relajar el umbral las vuelve ambiguas.
+LOCATE_LONG_PHRASE_WORDS = 6
+LOCATE_MIN_SCORE_LONG = round(2 / 3, 3)
+LOCATE_MAX_WORDS = 12            # ventana máxima de la frase a buscar
+_SENTENCE_MAX_LOOKBACK_SEC = 10.0   # oración "infinita" sin puntuación: no retroceder más
+_SENTENCE_MAX_LOOKAHEAD_SEC = 10.0
+
+
+_ES_NUMBER_WORDS = {
+    "0": "cero", "1": "uno", "2": "dos", "3": "tres", "4": "cuatro", "5": "cinco",
+    "6": "seis", "7": "siete", "8": "ocho", "9": "nueve", "10": "diez", "11": "once",
+    "12": "doce", "13": "trece", "14": "catorce", "15": "quince", "16": "dieciseis",
+    "17": "diecisiete", "18": "dieciocho", "19": "diecinueve", "20": "veinte",
+    "30": "treinta", "40": "cuarenta", "50": "cincuenta", "60": "sesenta",
+    "70": "setenta", "80": "ochenta", "90": "noventa", "100": "cien", "1000": "mil",
+}
+
+
+def _fold_token(text: str) -> str:
+    """
+    Minúsculas, sin acentos ni puntuación (Whisper y Gemini difieren en ambos);
+    los números chicos en cifra pasan a palabra ("5" → "cinco": Whisper escribe
+    "hack número 5" y el modelo cita "hack número cinco").
+
+    W2-C: la "h" inicial se cae (es muda en español y Whisper a veces la omite
+    o la inventa — "hantavirus" transcribe como "antavirus"), así que ambas
+    formas foldean igual y matchean.
+    """
+    norm = _normalize_phrase(text)
+    norm = unicodedata.normalize("NFD", norm)
+    norm = "".join(ch for ch in norm if unicodedata.category(ch) != "Mn")
+    norm = _ES_NUMBER_WORDS.get(norm, norm)
+    if len(norm) > 1 and norm[0] == "h":
+        norm = norm[1:]
+    return norm
+
+
+_ALNUM_SPLIT_RE = re.compile(r"^([a-z]+)(\d+)$")
+
+
+def _expand_alnum_token(tok: str) -> list[str]:
+    """
+    "r0" → ["r", "cero"]: sigla y número pegados sin espacio (común en
+    términos técnicos — R0, T1 — que Whisper y la Pasada A pueden tokenizar
+    distinto: "R0" en una transcripción, "R cero" en la otra). Sin el patrón,
+    devuelve el token tal cual (no-op para el resto de las palabras).
+    """
+    m = _ALNUM_SPLIT_RE.match(tok)
+    if not m:
+        return [tok]
+    letters, digits = m.groups()
+    number_word = _ES_NUMBER_WORDS.get(digits)
+    if not number_word:
+        return [tok]
+    return [letters, number_word]
+
+
+def _tokens_match(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    # "modelos" vs "modelo", "claude" vs "claudecode": prefijo compartido largo
+    if len(a) >= 4 and len(b) >= 4 and (a.startswith(b) or b.startswith(a)):
+        return True
+    return False
+
+
+def _window_alignment(target: list[str], window: list[str]) -> tuple[int, int]:
+    """
+    Alinea `target` contra `window` en orden (greedy, tolera inserciones).
+    Devuelve (matches, idx_último_match_en_window) — (0, -1) si nada matchea.
+    """
+    matches = 0
+    last_k = -1
+    k = 0
+    for t in target:
+        # buscar t desde k, pero sin saltar más de 2 palabras (inserción corta)
+        found = -1
+        for kk in range(k, min(len(window), k + 3)):
+            if _tokens_match(t, window[kk]):
+                found = kk
+                break
+        if found >= 0:
+            matches += 1
+            last_k = found
+            k = found + 1
+        else:
+            # palabra distinta: avanzar una posición igual (sustitución)
+            k += 1
+        if k > len(window):
+            break
+    return matches, last_k
+
+
+def locate_phrase(
+    words: list[dict],
+    phrase: str,
+    *,
+    prefer: str = "first",
+    start_idx: int = 0,
+    min_score: float | None = None,
+    max_words: int = LOCATE_MAX_WORDS,
+) -> Optional[dict]:
+    """
+    Busca `phrase` en las palabras Whisper (desde `start_idx`) con matching
+    fuzzy en orden: normaliza acentos/puntuación, tolera 1 de cada 4 palabras
+    distinta (1 de cada 3 en frases ≥ LOCATE_LONG_PHRASE_WORDS, W2-C) y hasta
+    2 palabras insertadas. Si la frase aparece más de una vez, prefer="first"
+    devuelve la primera aparición y "last" la última.
+
+    `min_score=None` (default) usa el umbral según la longitud de la frase;
+    pasar un valor explícito lo fija sin importar la longitud.
+
+    Returns: {"start_idx", "end_idx", "score"} (índices en `words`) o None.
+    """
+    if not words or not phrase:
+        return None
+    raw_target = [t for t in (_fold_token(t) for t in phrase.split()) if t]
+    target: list[str] = []
+    for t in raw_target:
+        target.extend(_expand_alnum_token(t))
+    if len(target) > max_words:
+        target = target[:max_words] if prefer == "first" else target[-max_words:]
+    n = len(target)
+    if n == 0:
+        return None
+    if min_score is None:
+        min_score = LOCATE_MIN_SCORE_LONG if n >= LOCATE_LONG_PHRASE_WORDS else LOCATE_MIN_SCORE
+    if n < 2:
+        min_score = 1.0
+
+    # `tokens` puede ser más largo que `words` (un token "r0" expande a dos:
+    # "r", "cero"); `token_word_idx` mapea cada posición de `tokens` de vuelta
+    # al índice real en `words` para que start_idx/end_idx sigan siendo
+    # índices de `words`, como siempre. Para el 99% de las palabras (sin el
+    # patrón letra+dígito pegado) es 1:1, igual que antes.
+    tokens: list[str] = []
+    token_word_idx: list[int] = []
+    for wi, w in enumerate(words):
+        folded = _fold_token(w.get("word") or "")
+        for sub in (_expand_alnum_token(folded) if folded else [folded]):
+            tokens.append(sub)
+            token_word_idx.append(wi)
+    total = len(tokens)
+    tok_start = next((i for i, wi in enumerate(token_word_idx) if wi >= start_idx), total)
+    slack = 2
+    candidates: list[tuple[int, int, float]] = []   # (tok_start, tok_end, score)
+    for i in range(tok_start, total):
+        window = tokens[i:i + n + slack]
+        if not window or not _tokens_match(target[0], window[0]):
+            # exigir que la primera palabra de la frase ancle la ventana evita
+            # matches "flotantes" en texto repetitivo
+            continue
+        matches, last_k = _window_alignment(target, window)
+        score = matches / n
+        if score >= min_score and last_k >= 0:
+            candidates.append((i, i + last_k, score))
+
+    if not candidates:
+        # Segundo intento: sin exigir la primera palabra (puede ser la distinta)
+        for i in range(tok_start, total):
+            window = tokens[i:i + n + slack]
+            if not window:
+                continue
+            matches, last_k = _window_alignment(target, window)
+            score = matches / n
+            if score >= min_score and last_k >= 0:
+                candidates.append((i, i + last_k, score))
+    if not candidates:
+        return None
+
+    # Agrupar candidatos solapados (ventanas vecinas de la misma aparición)
+    groups: list[list[tuple[int, int, float]]] = []
+    for c in candidates:
+        if groups and c[0] <= groups[-1][-1][1]:
+            groups[-1].append(c)
+        else:
+            groups.append([c])
+    group = groups[0] if prefer == "first" else groups[-1]
+    best = max(group, key=lambda c: (c[2], -c[0]))
+    return {
+        "start_idx": token_word_idx[best[0]],
+        "end_idx": token_word_idx[best[1]],
+        "score": round(best[2], 3),
+    }
+
+
+def _boundary_set(words: list[dict], segments: list[dict] | None) -> set[float]:
+    from services.clip_generator import detect_sentence_boundaries
+    return set(detect_sentence_boundaries(words, segments))
+
+
+def _sentence_start_indices(words: list[dict], boundaries: set[float]) -> list[int]:
+    """Índices de palabra donde empieza una oración (0 y las que siguen a un boundary)."""
+    starts = [0] if words else []
+    for k in range(len(words) - 1):
+        if round(float(words[k].get("end", 0)), 3) in boundaries:
+            starts.append(k + 1)
+    return starts
+
+
+def sentence_bounds_around(
+    words: list[dict],
+    idx: int,
+    segments: list[dict] | None = None,
+    *,
+    max_lookback_sec: float = _SENTENCE_MAX_LOOKBACK_SEC,
+    max_lookahead_sec: float = _SENTENCE_MAX_LOOKAHEAD_SEC,
+) -> tuple[int, int]:
+    """
+    (start_idx, end_idx) de la oración que contiene la palabra `idx`.
+
+    Retrocede hasta la palabra anterior que cierra oración (. ? ! …, gap
+    > 0,6 s o fin de segmento Whisper con puntuación — detect_sentence_boundaries)
+    y avanza hasta el cierre de la oración. Si no hay cierre en
+    `max_lookback_sec` / `max_lookahead_sec` (Whisper sin puntuación), se
+    queda en la palabra más lejana dentro de ese rango: una "oración" de 40 s
+    no es una oración.
+    """
+    if not words:
+        return 0, 0
+    idx = max(0, min(idx, len(words) - 1))
+    boundaries = _boundary_set(words, segments)
+    anchor_start = float(words[idx].get("start", 0))
+    anchor_end = float(words[idx].get("end", anchor_start))
+
+    start_idx = idx
+    k = idx - 1
+    while k >= 0:
+        if round(float(words[k].get("end", 0)), 3) in boundaries:
+            break
+        if anchor_start - float(words[k].get("start", 0)) > max_lookback_sec:
+            break
+        start_idx = k
+        k -= 1
+
+    end_idx = idx
+    k = idx
+    while k < len(words):
+        we = float(words[k].get("end", 0))
+        if we - anchor_end > max_lookahead_sec and k > idx:
+            break
+        end_idx = k
+        if round(we, 3) in boundaries:
+            break
+        k += 1
+    return start_idx, end_idx
+
+
+def _first_alpha_is_lower(text: str) -> bool:
+    for ch in text or "":
+        if ch.isalpha():
+            return ch.islower()
+    return False
+
+
+# ── W1-C: arrancar en el inicio de la Línea, no una palabra después ────────
+# docs/PLAN_CALIDAD.md (hallazgo del agente de W4, medido sobre 15 clips):
+# 6 de 7 clips que no arrancan con mayúscula arrancan EXACTAMENTE una palabra
+# después del inicio de la Línea ("Luego|tenemos otra skill") porque el
+# modelo cita first_phrase_in_audio sin el conector inicial y
+# sentence_bounds_around no puede retroceder: en las palabras del segmento
+# ancho (re-transcripción propia, sin relación 1 a 1 con las Líneas del
+# transcript completo) no hay puntuación ni gap antes de esa palabra. Las
+# Líneas (W4, transcript_lines.build_lines) sí conocen el límite real de la
+# oración porque se calculan sobre el audio completo con su propia lógica de
+# puntuación/pausas — son la fuente de verdad cuando existen.
+_LEADING_PARTICLES = frozenset({
+    "y", "pero", "luego", "para", "aqui", "entonces", "porque", "asi", "sea",
+})
+_PARTICLE_MAX_GAP_SEC = 0.6
+
+
+def _strip_accents(text: str) -> str:
+    norm = unicodedata.normalize("NFD", text or "")
+    return "".join(ch for ch in norm if unicodedata.category(ch) != "Mn")
+
+
+def _is_leading_particle(word_text: str) -> bool:
+    """Partícula inicial frecuente (y/pero/luego/para/aquí/entonces/porque/
+    así/sea), normalizada sin mayúsculas ni acentos ni puntuación."""
+    token = _strip_accents(_normalize_phrase(word_text))
+    return token in _LEADING_PARTICLES
+
+
+def _find_containing_line(lines: list[dict] | None, abs_time: float) -> dict | None:
+    """
+    Línea (tiempo absoluto de video) que contiene `abs_time`, con una
+    tolerancia chica porque las Líneas se calculan sobre el transcript
+    completo y `abs_time` sale de una re-transcripción Whisper aparte del
+    segmento ancho (mismo audio, timestamps aproximados, no idénticos). Si
+    ninguna la contiene exactamente, la más cercana que empieza antes.
+    """
+    best_before: dict | None = None
+    for ln in lines or []:
+        start = float(ln.get("start", 0.0))
+        end = float(ln.get("end", 0.0))
+        if start - 0.15 <= abs_time <= end + 0.15:
+            return ln
+        if start <= abs_time and (best_before is None or start > float(best_before["start"])):
+            best_before = ln
+    return best_before
+
+
+def _nearest_word_index(times: list[float], target: float) -> int:
+    """Índice en `times` (w_start o w_end del segmento ancho) más cercano a `target`."""
+    best_idx = 0
+    best_diff: float | None = None
+    for k, t in enumerate(times):
+        diff = abs(t - target)
+        if best_diff is None or diff < best_diff:
+            best_diff = diff
+            best_idx = k
+    return best_idx
+
+
+def compute_clip_bounds(
+    words: list[dict],
+    first_phrase: str | None,
+    last_phrase: str | None,
+    *,
+    seg_start_abs: float,
+    seg_end_abs: float,
+    video_duration: float,
+    min_s: float = CLIP_MIN_DURATION_SEC,
+    max_s: float = CLIP_MAX_DURATION_SEC,
+    hint_start_abs: float | None = None,
+    hint_end_abs: float | None = None,
+    segments: list[dict] | None = None,
+    hook: str = "",
+    overlay: str = "",
+    start_pad: float = 0.25,
+    end_pad: float = 0.40,
+    lines: list[dict] | None = None,
+) -> dict:
+    """
+    Decide los límites del Clip dentro del segmento ancho a partir de las
+    frases de Verificación del modelo. Función pura (sin FFmpeg ni red).
+
+    `lines` (W1-C, opcional): Líneas del transcript completo (W4,
+    `transcript_lines.build_lines`), en tiempo ABSOLUTO de video — vacío o
+    None con Supadata/jobs legacy (comportamiento sin cambios). Cuando están,
+    mandan sobre las palabras del segmento ancho para decidir dónde empieza y
+    termina el Clip: el inicio se alinea al inicio de la Línea que contiene
+    la primera palabra de la primera frase, el fin al fin de la Línea que
+    contiene la última palabra de la última frase (evidence["line_aligned"]).
+
+    `words` están en la línea de tiempo del segmento (0 = seg_start_abs).
+    `hint_start_abs` / `hint_end_abs` son el start_time / end_time numéricos
+    de la Pasada A (solo respaldo cuando una frase no aparece).
+
+    Los pads (0,25 s antes / 0,40 s después) nunca cruzan la palabra vecina:
+    con habla continua Whisper deja las palabras pegadas y el pad metería la
+    última sílaba de la oración anterior (o la primera de la siguiente).
+
+    Returns {"start_rel", "end_rel", "flags", "evidence"}; flags ⊆
+    {hook_not_found, payoff_not_found}; evidence incluye
+    `extend_recommended` (la última frase no está y el segmento no llega al
+    final del video: vale la pena re-descargar con más margen).
+    """
+    seg_duration = max(0.0, float(seg_end_abs) - float(seg_start_abs))
+    hint_start_rel = (
+        min(max(0.0, float(hint_start_abs) - seg_start_abs), seg_duration)
+        if hint_start_abs is not None else 0.0
+    )
+    hint_end_rel = (
+        min(max(0.0, float(hint_end_abs) - seg_start_abs), seg_duration)
+        if hint_end_abs is not None else seg_duration
+    )
+    flags: list[str] = []
+    evidence: dict = {
+        "first_found": False, "last_found": False,
+        "first_idx": None, "last_idx": None,
+        "first_score": None, "last_score": None,
+        "extend_recommended": False,
+        "start_source": None, "end_source": None,
+        "seg_duration": round(seg_duration, 3),
+    }
+
+    if not words:
+        # Sin palabras no hay oraciones: el numérico es lo único que hay
+        flags += ["hook_not_found", "payoff_not_found"]
+        evidence["start_source"] = evidence["end_source"] = "hint"
+        return {
+            "start_rel": hint_start_rel,
+            "end_rel": max(hint_end_rel, min(seg_duration, hint_start_rel + min_s)),
+            "flags": flags,
+            "evidence": evidence,
+        }
+
+    n = len(words)
+    boundaries = _boundary_set(words, segments)
+    sentence_starts = _sentence_start_indices(words, boundaries)
+    w_start = [float(w.get("start", 0)) for w in words]
+    w_end = [float(w.get("end", 0)) for w in words]
+    sentence_end_idxs = sorted(
+        {k for k in range(n) if round(w_end[k], 3) in boundaries} | {n - 1}
+    )
+
+    def _start_at(idx: int) -> float:
+        """Inicio del clip para arrancar en la palabra idx, sin pisar la anterior."""
+        t = w_start[idx] - start_pad
+        if idx > 0:
+            t = max(t, w_end[idx - 1])
+        return max(0.0, min(t, w_start[idx]))
+
+    def _end_at(idx: int) -> float:
+        """Fin del clip para terminar en la palabra idx, sin pisar la siguiente."""
+        t = w_end[idx] + end_pad
+        if idx + 1 < n:
+            nxt = w_start[idx + 1]
+            t = min(t, nxt) if nxt > w_end[idx] else w_end[idx]
+        return min(seg_duration, t)
+
+    # ── a) primera frase → inicio de oración ────────────────────────────────
+    fi = locate_phrase(words, first_phrase or "", prefer="first") if first_phrase else None
+    if fi:
+        # W1-C: con Líneas, alinear al inicio de la Línea que contiene la
+        # primera palabra de la frase citada — sentence_bounds_around no
+        # puede retroceder cuando el modelo citó sin el conector inicial
+        # ("Luego", "Para", "Aquí"...) porque en el segmento ancho no hay
+        # puntuación ni gap antes de esa palabra, pero la Línea sí conoce el
+        # límite real de la oración (se calculó sobre el audio completo).
+        line_start_idx = None
+        if lines:
+            first_abs = seg_start_abs + w_start[fi["start_idx"]]
+            line = _find_containing_line(lines, first_abs)
+            if line is not None:
+                line_start_rel = float(line["start"]) - seg_start_abs
+                if line_start_rel <= w_start[fi["start_idx"]] + 0.05:
+                    line_start_idx = _nearest_word_index(w_start, line_start_rel)
+        if line_start_idx is not None:
+            start_idx = line_start_idx
+            evidence["line_aligned"] = True
+        else:
+            s_idx, _ = sentence_bounds_around(words, fi["start_idx"], segments)
+            start_idx = s_idx
+        evidence.update(first_found=True, first_idx=fi["start_idx"],
+                        first_score=fi["score"], start_source="first_phrase")
+        evidence["first_phrase_rel_start"] = round(w_start[fi["start_idx"]], 3)
+        evidence["first_matched_text"] = " ".join(
+            (w.get("word") or "").strip() for w in words[fi["start_idx"]:fi["end_idx"] + 1]
+        )
+    else:
+        flags.append("hook_not_found")
+        start_idx = None
+        # Respaldo 1: ancla de hook/overlay cerca del start_time numérico
+        if hook or overlay:
+            win_lo = hint_start_rel - 3.0
+            win_hi = hint_start_rel + max(8.0, 0.4 * max(0.0, hint_end_rel - hint_start_rel))
+            window = [w for w in words if win_lo <= float(w.get("start", 0)) <= win_hi]
+            t = find_hook_start_in_words(
+                window, hook=hook, overlay=overlay, first_phrase="",
+                clip_duration=0.0, search_ratio=1.0,
+            ) if window else None
+            if t is not None:
+                idx = next(k for k in range(n) if abs(w_start[k] - t) < 1e-6)
+                start_idx, _ = sentence_bounds_around(words, idx, segments)
+                evidence["start_source"] = "hook_anchor"
+        # Respaldo 2: inicio de oración más cercano ≥ start_time − 3 s
+        if start_idx is None:
+            after = [k for k in sentence_starts if w_start[k] >= hint_start_rel - 3.0]
+            if after:
+                start_idx = after[0]
+                evidence["start_source"] = "sentence_after_hint"
+            else:
+                start_idx = sentence_starts[-1] if sentence_starts else 0
+                evidence["start_source"] = "last_sentence_start"
+
+    # ── g) nunca arrancar en minúscula si hay inicio de oración ≤ 2 s antes ──
+    if _first_alpha_is_lower(words[start_idx].get("word") or ""):
+        earlier = [
+            k for k in sentence_starts
+            if k < start_idx and 0.0 <= w_start[start_idx] - w_start[k] <= 2.0
+        ]
+        if earlier:
+            start_idx = earlier[-1]
+            evidence["lowercase_fix"] = True
+        elif not evidence.get("line_aligned") and start_idx > 0:
+            # W1-C: respaldo barato SIN Líneas (Supadata, jobs legacy) — si
+            # la palabra anterior es una partícula inicial frecuente pegada
+            # (<0,6s de gap), el modelo probablemente la citó sin ella.
+            # Retrocede UNA palabra, no más — el arreglo de verdad es (1),
+            # arriba, con Líneas.
+            prev = words[start_idx - 1]
+            gap = w_start[start_idx] - float(prev.get("end", 0.0))
+            if gap < _PARTICLE_MAX_GAP_SEC and _is_leading_particle(prev.get("word") or ""):
+                start_idx -= 1
+                evidence["particle_fix"] = True
+
+    start_rel = _start_at(start_idx)
+
+    # ── b) última frase, buscada solo DESPUÉS de la primera ─────────────────
+    search_from = (fi["end_idx"] + 1) if fi else start_idx
+    li = (
+        locate_phrase(words, last_phrase or "", prefer="last", start_idx=search_from)
+        if last_phrase else None
+    )
+    if li:
+        # W1-C: mismo criterio que el inicio — con Líneas, alinear al fin de
+        # la Línea que contiene la última palabra de la frase citada.
+        line_end_idx = None
+        if lines:
+            last_abs = seg_start_abs + w_end[li["end_idx"]]
+            line = _find_containing_line(lines, last_abs)
+            if line is not None:
+                line_end_rel = float(line["end"]) - seg_start_abs
+                if line_end_rel >= w_end[li["end_idx"]] - 0.05:
+                    line_end_idx = _nearest_word_index(w_end, line_end_rel)
+        if line_end_idx is not None:
+            end_idx = line_end_idx
+            evidence["line_aligned"] = True
+        else:
+            _, e_idx = sentence_bounds_around(words, li["end_idx"], segments)
+            end_idx = e_idx
+        end_rel = _end_at(end_idx)
+        evidence.update(last_found=True, last_idx=li["end_idx"],
+                        last_score=li["score"], end_source="last_phrase")
+        evidence["last_phrase_rel_end"] = round(w_end[li["end_idx"]], 3)
+        evidence["last_matched_text"] = " ".join(
+            (w.get("word") or "").strip() for w in words[li["start_idx"]:li["end_idx"] + 1]
+        )
+        payoff_end_rel = w_end[li["end_idx"]]
+    else:
+        flags.append("payoff_not_found")
+        payoff_end_rel = None
+        evidence["extend_recommended"] = bool(
+            last_phrase and float(seg_end_abs) < float(video_duration) - 0.5
+        )
+        # Fin de oración que deje [min_s, max_s] desde start, el primero en o
+        # después del end_time numérico (el remate suele estar justo después).
+        lo, hi = start_rel + min_s, start_rel + max_s
+        fitting = [k for k in sentence_end_idxs if lo <= _end_at(k) <= hi]
+        after_hint = [k for k in fitting if w_end[k] >= hint_end_rel - 0.5]
+        if after_hint:
+            end_idx = after_hint[0]
+            evidence["end_source"] = "sentence_after_hint"
+        elif fitting:
+            end_idx = fitting[-1]
+            evidence["end_source"] = "last_fitting_sentence"
+        else:
+            end_idx = None
+            evidence["end_source"] = "hint"
+        end_rel = _end_at(end_idx) if end_idx is not None else min(
+            seg_duration, max(hint_end_rel, start_rel + min_s)
+        )
+
+    # ── f) duración mínima: extender el fin al siguiente fin de oración ─────
+    if end_rel - start_rel < min_s:
+        for k in sentence_end_idxs:
+            cand = _end_at(k)
+            if cand > end_rel:
+                end_rel = cand
+                evidence["extended_for_min"] = True
+                if end_rel - start_rel >= min_s:
+                    break
+        if end_rel - start_rel < min_s and seg_duration - start_rel >= min_s:
+            end_rel = min(seg_duration, start_rel + min_s)
+            evidence["extended_for_min"] = True
+
+    # ── f) duración máxima ───────────────────────────────────────────────────
+    if end_rel - start_rel > max_s:
+        if payoff_end_rel is not None:
+            # Preferir mover el START al siguiente inicio de oración antes que
+            # perder el remate (decisión del brief W1): el primero que deje
+            # ≤ max_s. Si eso deja afuera la primera frase, se flaggea.
+            # W1-C: con Líneas, el candidato preferido es el inicio de la
+            # Línea siguiente (más confiable que los boundaries del segmento
+            # ancho); se suma a sentence_starts, no lo reemplaza.
+            phrase_start_idx = fi["start_idx"] if fi else start_idx
+            candidate_starts = sentence_starts
+            if lines:
+                line_idxs = []
+                for ln in lines:
+                    ln_start_rel = float(ln.get("start", 0.0)) - seg_start_abs
+                    if 0.0 <= ln_start_rel <= seg_duration:
+                        line_idxs.append(_nearest_word_index(w_start, ln_start_rel))
+                if line_idxs:
+                    candidate_starts = sorted(set(sentence_starts) | set(line_idxs))
+            for k in candidate_starts:
+                if k <= start_idx:
+                    continue
+                cand_start = _start_at(k)
+                if max_s >= end_rel - cand_start >= min_s:
+                    start_idx = k
+                    start_rel = cand_start
+                    evidence["start_moved_for_max"] = True
+                    if k > phrase_start_idx:
+                        evidence["hook_dropped_for_max"] = True
+                        if "hook_not_found" not in flags:
+                            flags.append("hook_not_found")
+                    break
+        if end_rel - start_rel > max_s:
+            limit = start_rel + max_s
+            fitting = [k for k in sentence_end_idxs if start_rel + min_s <= _end_at(k) <= limit]
+            if fitting:
+                end_rel = _end_at(fitting[-1])
+            else:
+                end_rel = min(seg_duration, limit)
+            evidence["end_cut_for_max"] = True
+            if payoff_end_rel is not None and payoff_end_rel > end_rel:
+                evidence["payoff_dropped_for_max"] = True
+                if "payoff_not_found" not in flags:
+                    flags.append("payoff_not_found")
+
+    start_rel = round(max(0.0, min(start_rel, seg_duration)), 3)
+    end_rel = round(max(start_rel, min(end_rel, seg_duration)), 3)
+    evidence["duration"] = round(end_rel - start_rel, 3)
+    return {"start_rel": start_rel, "end_rel": end_rel, "flags": flags, "evidence": evidence}
+
+
 def is_youtube_clip_fallback(clip_url: str | None) -> bool:
     """True si el clip_url es un deep-link de YouTube (no MP4 en R2)."""
     if not clip_url:
         return True
     u = clip_url.lower()
     return "youtube.com/watch" in u or "youtu.be/" in u
+
+
+# W2-C: `late_hook` es informativo (no integra verification_failed, ver
+# verification_failed_from_flags) y se mide en palabras además de segundos —
+# W1 ancla el clip al INICIO DE ORACIÓN de la primera frase, no a su primera
+# palabra, así que unas palabras/segundos de setup antes del hook citado son
+# normales, no un corte tardío. 12 palabras u 8 s (lo que se cumpla primero)
+# es bastante más que una oración de setup típica.
+LATE_HOOK_MAX_WORDS = 12
+LATE_HOOK_MAX_SEC = 8.0
+
+
+def hook_delay_metrics(
+    words: list[dict] | None,
+    start_rel: float,
+    first_phrase_rel_start: float | None,
+) -> tuple[Optional[float], Optional[int]]:
+    """
+    Segundos y palabras entre el inicio del clip (`start_rel`, en la línea de
+    tiempo del segmento ancho) y la primera palabra de `first_phrase_in_audio`
+    (`first_phrase_rel_start`, misma línea de tiempo — evidence de
+    compute_clip_bounds). (None, None) si la frase no se ancló.
+    """
+    if first_phrase_rel_start is None:
+        return None, None
+    delay_sec = float(first_phrase_rel_start) - float(start_rel)
+    words_before = sum(
+        1 for w in (words or [])
+        if float(start_rel) <= float(w.get("start", 0)) < float(first_phrase_rel_start)
+    )
+    return delay_sec, words_before
+
+
+def is_late_hook(
+    delay_sec: float | None,
+    words_before: int | None,
+    *,
+    max_words: int = LATE_HOOK_MAX_WORDS,
+    max_sec: float = LATE_HOOK_MAX_SEC,
+) -> bool:
+    """True si el hook citado tarda demasiado en aparecer (W2-C: informativo,
+    no forma parte de verification_failed)."""
+    if delay_sec is None:
+        return False
+    return delay_sec > max_sec or (words_before is not None and words_before > max_words)
+
+
+def verification_failed_from_flags(hook_not_found: bool, payoff_not_found: bool) -> bool:
+    """
+    Verificación (CONTEXT.md): el clip contiene lo que dice contener —
+    `first_phrase_in_audio` y `last_phrase_in_audio` están dentro de él.
+
+    W2-C (docs/PLAN_CALIDAD.md §9): antes `verification_failed` también se
+    disparaba con `incomplete_tail` y `late_hook`, pero esas dos ya no
+    significan "corte roto" desde W1: el clip ancla al INICIO DE ORACIÓN de
+    la primera frase, no a su primera palabra, así que 3-8 s de contexto
+    antes del hook citado es normal (no tardío), y la cola post-snap puede
+    quedar "incompleta" por diseño cuando el remate se ancló bien. Con la
+    semántica vieja, un candidato bien cortado perdía puntos en el ranking
+    de W2 contra uno peor cortado por señales que no medían lo que decían
+    medir (caso real: podcast_general_01, candidato 1010-1050s, mismo tema
+    que el clip mejor puntuado de Opus Clip sobre este video).
+
+    Ahora `verification_failed` es SOLO `hook_not_found or payoff_not_found`
+    (alguna de las dos frases no se pudo anclar ni con el matching difuso de
+    `locate_phrase`, o quedó afuera al ajustar la duración) — eso sí es "el
+    clip no tiene lo que dice tener". `incomplete_tail`/`late_hook` siguen
+    persistiendo como flags informativos en `clip_quality_issues`.
+    """
+    return bool(hook_not_found or payoff_not_found)
 
 
 def build_clip_quality_issues(
@@ -383,13 +1210,68 @@ def build_clip_quality_issues(
     late_hook: bool = False,
     clip_not_rendered: bool = False,
     clip_generation_error: str | None = None,
+    timestamps_suspect: bool = False,
+    bad_segment: bool = False,
+    min_duration_reverted: bool = False,
+    payoff_not_found: bool = False,
+    hook_not_found: bool = False,
+    margin_extended: bool = False,
+    margin_extension_failed: bool = False,
+    subs_disabled_timestamps: bool = False,
+    line_aligned: bool = False,
 ) -> list[str]:
-    """Lista de flags de calidad para persistir en content_results."""
+    """
+    Lista de flags de calidad para persistir en content_results.clip_quality_issues.
+
+    Flags: incomplete_tail, late_hook, whisper_mismatch_first, whisper_mismatch_last,
+    clip_not_rendered, clip_generation_failed, y las guardas W3:
+      - timestamps_suspect: Whisper devolvió texto normal con tiempos comprimidos;
+        el snap por silencio se omitió (ver assess_whisper_words).
+      - bad_segment: el segmento descargado no tiene habla plausible; el clip se
+        renderizó sin subtítulos aunque se reintentó la descarga.
+      - min_duration_reverted: el refinamiento dejó el clip < 15 s y se
+        volvió a límites anteriores (ver enforce_min_duration).
+    Cortes anclados a frases (W1, compute_clip_bounds):
+      - hook_not_found: first_phrase_in_audio no apareció en el segmento; el
+        inicio se decidió por ancla de hook o por el start_time numérico.
+      - payoff_not_found: last_phrase_in_audio no apareció (ni tras extender el
+        margen) o no entró en los 120 s; el fin es un fin de oración de respaldo.
+      - margin_extended: se re-descargó el segmento con +25 s al final para
+        buscar la última frase.
+      - margin_extension_failed: la última frase no aparece y la re-descarga
+        con +25 s no consiguió más video (sin proxy/estrategia disponible);
+        se siguió con el mejor segmento ya descargado en vez de perder el clip.
+      - subs_disabled_timestamps: los dos proveedores Whisper dieron timestamps
+        sospechosos; el clip se renderizó sin subtítulos.
+      - line_aligned (W1-C): el inicio y/o el fin del clip se alinearon al
+        borde de una Línea del transcript completo (`compute_clip_bounds`,
+        `evidence["line_aligned"]`) en vez de a los boundaries del segmento
+        ancho — informativo, para contarlo en el eval junto a
+        capitalized_start_rate.
+    """
     issues: list[str] = []
     if incomplete_tail:
         issues.append("incomplete_tail")
     if late_hook:
         issues.append("late_hook")
+    if timestamps_suspect:
+        issues.append("timestamps_suspect")
+    if bad_segment:
+        issues.append("bad_segment")
+    if min_duration_reverted:
+        issues.append("min_duration_reverted")
+    if hook_not_found:
+        issues.append("hook_not_found")
+    if payoff_not_found:
+        issues.append("payoff_not_found")
+    if margin_extended:
+        issues.append("margin_extended")
+    if margin_extension_failed:
+        issues.append("margin_extension_failed")
+    if subs_disabled_timestamps:
+        issues.append("subs_disabled_timestamps")
+    if line_aligned:
+        issues.append("line_aligned")
     if verification_info:
         if not verification_info.get("first_ok", True):
             issues.append("whisper_mismatch_first")
@@ -455,8 +1337,8 @@ def _snap_end_to_segment_boundary(
 
 def validate_durations(
     viral_moments: list,
-    min_duration: int = 10,
-    max_duration: int = 60,
+    min_duration: float = CLIP_MIN_DURATION_SEC,
+    max_duration: float = CLIP_MAX_DURATION_SEC,
     transcript: dict = None,
 ) -> list:
     """
