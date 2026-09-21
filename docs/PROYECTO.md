@@ -268,7 +268,7 @@ Entry point: [`worker/main.py`](../worker/main.py). Documentación previa del au
 - `ThreadPoolExecutor(max_workers=MAX_WORKERS)`; default en código 2, en `docker-compose*.yml` 3.
 - Cada 3 s (`POLL_INTERVAL`): si hay slots libres, `SELECT id, video_url, user_id, tone FROM jobs WHERE status='pending' ORDER BY created_at LIMIT slots`; por cada uno, `UPDATE jobs SET status='processing' WHERE id=? AND status='pending'`; si el UPDATE no devuelve fila, otro worker lo ganó y se salta.
 - Después de los jobs, reclama **como máximo una** edición (`claim_next_clip_edit`) por iteración.
-- Timeout por job: 30 min (`threading.Timer` + `check_timeout()` entre pasos). No mata el hilo: el job sigue hasta el siguiente checkpoint.
+- Timeout por job: dinámico según la duración del video (W14 addendum, `compute_job_timeout_sec`): piso 30 min con la duración aún desconocida, se re-arma apenas se conoce (15 min base + 0,6 min por minuto de video, techo 75 min) — `threading.Timer` + `check_timeout()` entre pasos, no mata el hilo, el job sigue hasta el siguiente checkpoint. Antes era un fijo de 30 min; no cerraba para videos largos con el pipeline de Fase 0 (job real 4c6e4410, 21-sep-2026: murió en `evaluating` al minuto 30).
 - No hay afinidad de worker: dos workers contra la misma base se reparten los jobs (por eso dev usa su propio proyecto Supabase, §15).
 
 ### 5.3 Pasos de un job (`_process_job_inner`)
@@ -384,7 +384,7 @@ Cada llamada LLM (vía `log_llm_usage`), cada Whisper, cada fase de descarga y c
 | Constante | Valor | Dónde |
 |---|---|---|
 | Poll de la cola | 3 s | `main.py` |
-| Timeout por job | 30 min | `main.py` |
+| Timeout por job | dinámico: piso 30 min, 15 min + 0,6 min/min de video, techo 75 min (W14 addendum) | `main.py::compute_job_timeout_sec` |
 | Job zombie | `processing` >20 min al arrancar → `failed` | `main.py` |
 | Limpieza de archivos | >24 h | `main.py` |
 | Momentos finales | 1 / 3 / 5 según duración | `moment_selector.py` |
@@ -557,10 +557,10 @@ Plantilla completa en [`.env.example`](../.env.example). Un solo `.env` en la ra
 | Backend | `PORT=3000`, `NODE_ENV`, `FRONTEND_URL` (CORS y redirecciones), `LOG_LEVEL`, `SENTRY_DSN_BACKEND` (sin ella, Sentry no se inicializa — **F1**), `ADMIN_USER_IDS`/`ADMIN_EMAILS`, `LEMONSQUEEZY_API_KEY/STORE_ID/VARIANT_ID/WEBHOOK_SECRET`, `MAX_VIDEO_MINUTES=90` (**F1**, tope de duración de la beta), `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (**F1**, alertas — sin ellas `lib/telegram.js::notify` es no-op) | Sí (LS solo para cobrar; Telegram y `MAX_VIDEO_MINUTES` recomendadas) |
 | Frontend | `NEXT_PUBLIC_API_URL` | Sí |
 | Worker: IA | `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `MODEL_*`, `MODEL_*_REASONING`, `LOG_LLM_USAGE`, `TWO_PASS_ANALYSIS`, `COMPACT_TRANSCRIPT`, `ENABLE_ENTERTAINMENT_CATEGORY` | Las dos primeras sí |
-| Worker: YouTube | `SUPADATA_API_KEY`, `RAPIDAPI_KEY`, `USE_RAPIDAPI_DOWNLOAD`, `WEBSHARE_PROXY_FILE|LIST|URL`, `YOUTUBE_COOKIES`, `DOWNLOAD_*`, `CLIP_*`, `STRICT_SYNC_VALIDATION`, `YTDLP_CLIP_FALLBACK`, `USE_APIFY_FALLBACK`, `APIFY_TOKEN` | En producción: Supadata, RapidAPI y proxies |
+| Worker: YouTube | `SUPADATA_API_KEY`, `RAPIDAPI_KEY`, `USE_RAPIDAPI_DOWNLOAD`, `WEBSHARE_PROXY_FILE|LIST|URL`, `YOUTUBE_COOKIES`, `DOWNLOAD_*`, `CLIP_*`, `STRICT_SYNC_VALIDATION`, `YTDLP_CLIP_FALLBACK`, `USE_APIFY_FALLBACK`, `APIFY_TOKEN`, `AUDIO_SPEED_PROBE_SEC`/`AUDIO_MIN_SPEED_KBPS`/`AUDIO_DOWNLOAD_ATTEMPTS` (W14: abandonar y reintentar con otro proxy la descarga del audio completo si está lenta) | En producción: Supadata, RapidAPI y proxies |
 | Worker: transcript (W4) | `TRANSCRIPT_SOURCE=supadata\|whisper_full\|hybrid` (default `supadata`; fuente del Transcript que ve la Pasada A, §5.3), `TRANSCRIPT_PUNCTUATE_FALLBACK=true` (puntuar con el modelo barato los tramos que Whisper dejó sin puntuar), `TRANSCRIPT_LINE_STYLE=seconds\|mmss` (formato de la marca de tiempo por Línea en el prompt de la Pasada A) | No |
 | Worker: salida | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Sí para clips |
-| Worker: runtime | `ENVIRONMENT` (`production` cambia defaults de descarga), `MAX_WORKERS`, `FFMPEG_PATH`/`FFPROBE_PATH` (opcional), `LOG_LEVEL`, `LOG_FORMAT`, `WORKER_LOG_DIR`, `SENTRY_DSN_WORKER` (**W9-B**: sin ella, Sentry no se inicializa — ya no hay DSN de fallback), `PERSIST_USAGE_EVENTS`, `PRICING_OVERRIDES_JSON`, `PORT` (solo Render), `REFRAME_MODE=off\|auto` (W5, default `off` — con `auto`, `generate_clip` analiza caras/paneles por escena y elige Split/Fill/Fit; ver §5.5 punto 9) | No |
+| Worker: runtime | `ENVIRONMENT` (`production` cambia defaults de descarga), `MAX_WORKERS`, `FFMPEG_PATH`/`FFPROBE_PATH` (opcional), `LOG_LEVEL`, `LOG_FORMAT`, `WORKER_LOG_DIR`, `SENTRY_DSN_WORKER` (**W9-B**: sin ella, Sentry no se inicializa — ya no hay DSN de fallback), `PERSIST_USAGE_EVENTS`, `PRICING_OVERRIDES_JSON`, `PORT` (solo Render), `REFRAME_MODE=off\|auto` (W5, default `off` — con `auto`, `generate_clip` analiza caras/paneles por escena y elige Split/Fill/Fit; ver §5.5 punto 9), `JOB_TIMEOUT_BASE_SEC`/`JOB_TIMEOUT_PER_VIDEO_MIN_SEC`/`JOB_TIMEOUT_MIN_SEC`/`JOB_TIMEOUT_MAX_SEC` (W14 addendum: timeout del job dinámico según la duración del video — piso 30 min, techo 75 min; antes fijo en 30 min) | No |
 | Worker: rankeo | `RANKER` (`llm` por defecto, `jev` usa TypeSafe System One solo para ORDENAR candidatos), `TYPESAFE_API_KEY`, `TYPESAFE_TIMEOUT_SEC`, `TYPESAFE_MAX_ATTEMPTS` | No |
 | Worker: entrega por umbral y preview (W9-B, `docs/PLAN_CALIDAD.md` §9 W9) | `DELIVERY_JUDGE_MIN` (default `15`, sobre 30 — nota mínima del juez para entregar un candidato), `DELIVERY_MAX_CLIPS` (default `12`, no `30`: con `candidate_count()` pidiendo hasta 30 candidatos por video, entregar los 30 pasaría el tope de costo de US$0.15/job — ver el cálculo en el commit/PR de W9-B), `PREVIEW_WIDTH`/`PREVIEW_HEIGHT` (default `480`/`854`), `PREVIEW_CRF` (default `28`, el HD a pedido sigue en `23`) | No |
 

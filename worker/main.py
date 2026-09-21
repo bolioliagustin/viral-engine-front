@@ -226,8 +226,28 @@ def recover_stale_jobs(max_age_minutes: int = 20) -> None:
         print(f"⚠️ Stale job recovery failed: {e}")
 
 
-JOB_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 FULL_YTDLP_MAX_DURATION_SEC = 3600  # >1h: evitar descarga completa (OOM / bandwidth)
+
+# Addendum W14 (docs/PLAN_CALIDAD.md): timeout dinámico según la duración del
+# video — el job 4c6e4410 (21-sep-2026) murió a los 30 min fijos llegando a
+# `evaluating`, con el pipeline de Fase 0 (transcript completo, hasta 30
+# candidatos, previews) un fijo no cierra para videos largos.
+JOB_TIMEOUT_BASE_SEC = float(os.getenv("JOB_TIMEOUT_BASE_SEC", str(15 * 60)))
+JOB_TIMEOUT_PER_VIDEO_MIN_SEC = float(os.getenv("JOB_TIMEOUT_PER_VIDEO_MIN_SEC", "36"))
+JOB_TIMEOUT_MIN_SEC = float(os.getenv("JOB_TIMEOUT_MIN_SEC", str(30 * 60)))
+JOB_TIMEOUT_MAX_SEC = float(os.getenv("JOB_TIMEOUT_MAX_SEC", str(75 * 60)))
+
+
+def compute_job_timeout_sec(video_duration_sec: float | None) -> float:
+    """
+    Timeout del job, función pura (testeada en tests/test_job_timeout.py):
+    `piso ≤ base + por_minuto × minutos_del_video ≤ techo`. Con duración
+    desconocida (None o 0) devuelve el piso. Ejemplos con los defaults
+    (min video → min timeout): 14→30 (piso), 54→47, 77→61, 90→69.
+    """
+    video_minutes = max(0.0, (video_duration_sec or 0.0) / 60.0)
+    raw = JOB_TIMEOUT_BASE_SEC + JOB_TIMEOUT_PER_VIDEO_MIN_SEC * video_minutes
+    return max(JOB_TIMEOUT_MIN_SEC, min(JOB_TIMEOUT_MAX_SEC, raw))
 
 
 def _resolve_video_duration(video_info: dict, transcript: dict, viral_moments) -> float:
@@ -257,7 +277,6 @@ def _resolve_video_duration(video_info: dict, transcript: dict, viral_moments) -
     return 7200.0
 
 
-JOB_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 FULL_YTDLP_MAX_DURATION_SEC = 3600  # >1h: evitar descarga completa (OOM / bandwidth)
 FULL_YTDLP_SHORT_MAX_SEC = 1800  # ≤30 min: candidato a yt-dlp full
 VALID_DOWNLOAD_STRATEGIES = frozenset({
@@ -2101,30 +2120,48 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
     muxed_video_path = None  # se setea solo en path B (partial download fallback)
     muxed_avail_end = None   # hasta qué segundo absoluto llega el muxeado (W1)
     timed_out = threading.Event()  # C5: timeout flag
-    
+    job_start_time = time.time()
+    job_timeout_sec = JOB_TIMEOUT_MIN_SEC  # piso; se re-arma al conocer la duración (addendum W14)
+
     # C5: Start a timeout timer (Windows-compatible, using threading instead of signal)
     def _on_timeout():
         timed_out.set()
-        print(f"⏰ Job {job_id} exceeded {JOB_TIMEOUT_SECONDS // 60} minute timeout!")
-    
-    timeout_timer = threading.Timer(JOB_TIMEOUT_SECONDS, _on_timeout)
+        print(f"⏰ Job {job_id} exceeded {job_timeout_sec / 60:.0f} minute timeout!")
+
+    timeout_timer = threading.Timer(job_timeout_sec, _on_timeout)
     timeout_timer.daemon = True
     timeout_timer.start()
-    
+
+    # W14: seam de progreso (services/progress.py) — downloader.py y
+    # transcriber.py reportan avance sin conocer Supabase; acá es el único
+    # lugar que sabe job_id y cómo escribir en la base.
+    from services.progress import set_progress_hook, transcribing_percentage
+
+    def _on_transcribing_progress(step: str, current: int, total: int, message: str) -> None:
+        from services.supabase_client import update_job_progress as _ujp
+        _ujp(
+            job_id,
+            current_step="transcribing",
+            progress_percentage=transcribing_percentage(step, current, total),
+            progress_detail={"current": current, "total": total, "message": message, "clips_ready": 0},
+        )
+
+    set_progress_hook(_on_transcribing_progress)
+
     print(f"\n{'='*60}")
     print(f"🎬 Processing job: {job_id}")
     print(f"📺 Video URL: {video_url}")
     print(f"{'='*60}\n")
-    
+
     try:
         # Update status to processing
         update_job_status(job_id, "processing")
-        
+
         # C5: Check timeout between each major step
         def check_timeout():
             if timed_out.is_set():
-                raise TimeoutError(f"Job exceeded {JOB_TIMEOUT_SECONDS // 60} minute limit")
-        
+                raise TimeoutError(f"Job exceeded {job_timeout_sec / 60:.0f} minute limit")
+
         # Steps 1+2: Get transcript via YouTube Transcript API (no download needed)
         # This bypasses yt-dlp bot detection entirely.
         set_phase("transcript")
@@ -2135,6 +2172,19 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         from services.yt_transcript import get_youtube_transcript
         transcript, video_info = get_youtube_transcript(video_url)
         video_id = video_info["id"]
+
+        # Addendum W14: recién acá se conoce la duración real del video —
+        # re-armamos el timeout dinámico (hasta ahora corría con el piso).
+        job_timeout_sec = compute_job_timeout_sec(video_info.get("duration"))
+        remaining = max(1.0, job_timeout_sec - (time.time() - job_start_time))
+        timeout_timer.cancel()
+        timeout_timer = threading.Timer(remaining, _on_timeout)
+        timeout_timer.daemon = True
+        timeout_timer.start()
+        print(
+            f"⏱️ Timeout del job: {job_timeout_sec / 60:.0f} min "
+            f"(video de {(video_info.get('duration') or 0) / 60:.0f} min)"
+        )
 
         update_job_status(job_id, "processing", video_info["title"])
         update_job_progress(job_id, current_step="classifying", progress_percentage=compute_progress_percentage("classifying"))
@@ -2565,6 +2615,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
     finally:
         finalize_job_usage(job_id)
         clear_job_context()
+        set_progress_hook(None)  # W14: no dejar el hook de este job para el siguiente
         # C5: Cancel timeout timer
         timeout_timer.cancel()
 

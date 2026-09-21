@@ -576,11 +576,20 @@ def transcribe_full_audio(
     results: List[Dict | None] = [None] * len(chunks)
 
     def _one(idx: int, lang: str | None) -> Dict:
+        from services.progress import report as _report_progress
+
         path, offset = chunks[idx]
         print(f"🎙️ Tramo {idx + 1}/{len(chunks)} (offset {offset/60:.1f} min)...")
-        return transcribe_with_whisper_openrouter(
+        result = transcribe_with_whisper_openrouter(
             path, prompt=prompt, language=lang, provider=provider, usage_task=usage_task,
         )
+        # W14: progreso por tramo (no sabemos el orden de finalización real
+        # con el pool paralelo, pero cada tramo que termina reporta el suyo).
+        _report_progress(
+            "transcribe_tramos", idx + 1, len(chunks),
+            f"Transcribiendo: tramo {idx + 1} de {len(chunks)}",
+        )
+        return result
 
     try:
         lang = iso_language_code(language)
