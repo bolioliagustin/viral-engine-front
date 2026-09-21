@@ -410,12 +410,27 @@ def evaluate_video_e2e(
     if video_duration_sec:
         result["video_duration_sec"] = video_duration_sec
 
+    # W12 (docs/PLAN_CALIDAD.md §2/§5): si este video del golden set apunta a
+    # un job REAL ya etiquetado (`real_job_id` — el dry-run de acá nunca
+    # llega a un usuario, así que nunca se etiqueta solo), adjunta la
+    # etiqueta "posteable" de cada Momento por moment_index. Sin
+    # `real_job_id`, o sin Supabase, o sin filas: `por_momento` queda vacío
+    # y todos los clips salen sin etiqueta (degradación grácil).
+    por_momento: dict = {}
+    real_job_id = video.get("real_job_id")
+    if real_job_id:
+        from etiquetas import fetch_etiquetas
+        _, por_momento = fetch_etiquetas()
+
     rows = [r for r in sbc.DRY_RUN_RESULTS if r.get("job_id") == job_id]
     by_moment: dict[int, list[dict]] = {}
     for r in rows:
         by_moment.setdefault(int(r.get("moment_index") or 0), []).append(r)
     clips = [
-        build_e2e_clip_record(video, by_moment[mi], lines=lines)
+        build_e2e_clip_record(
+            video, by_moment[mi], lines=lines,
+            etiqueta=por_momento.get((real_job_id, mi)) if real_job_id else None,
+        )
         for mi in sorted(by_moment)
     ]
     result["clips"] = clips

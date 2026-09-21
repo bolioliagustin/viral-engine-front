@@ -162,7 +162,18 @@ Registrar en cada run: `models` del summary JSON + fecha.
 - [x] Métricas por clip y agregadas (juez, flags, densidad, cortes, costo, tiempo)
 - [x] `compare_runs.py` y carpeta `eval/runs/` con el baseline
 - [x] `analysis_cache` guarda `candidates_all` (todos los candidatos de la Pasada A con `rank_score`)
-- [ ] Etiquetas humanas "posteable" por clip del golden set (W7) para calibrar el juez
+- [x] Etiquetas humanas "posteable" por clip (W7, tabla `clip_feedback`) leídas por `eval/etiquetas.py`
+
+### Fase 4.5 — `posteable` como métrica principal (hecho, W12, 21-sep-2026)
+
+El juez resultó casi ciego al criterio real del usuario (ver
+`docs/PLAN_CALIDAD.md` §5 para los números). Desde W12:
+
+- [x] `eval/etiquetas.py`: lee `clip_feedback`, resuelve `(job_id, moment_index)` → última etiqueta por usuario. Sin Supabase/tabla/filas → vacío, no rompe nada.
+- [x] `eval_metrics.aggregate_e2e_results` calcula, **solo sobre clips con etiqueta**: `posteable_rate` (métrica principal del tier), `motivos_rechazo`, `judge_posteable_avg`/`judge_no_posteable_avg`/`judge_gap`, `judge_humano_corr`, `precision_at_3/5/10`.
+- [x] `golden_set.json` (tier e2e): `thresholds.posteable_rate_min = 0.70`; un video puede declarar `real_job_id` (uuid de un job real ya etiquetado) para que `run_golden_set.py` le pegue las etiquetas reales por `moment_index`. Hoy ningún video del golden set lo declara, así que `posteable_rate` da `null` con `posteable_labeled_n=0` — correcto: el tier e2e corre en dry-run y nunca llega a un usuario real, no puede autoetiquetarse.
+- [x] `compare_runs.py`: nuevas métricas en la tabla (dirección correcta: posteable ↑, motivos de rechazo ↓) y tabla aparte de `motivos_rechazo`; marca **"sin datos"** (no `0`) cuando una corrida no tiene etiquetas.
+- [x] `eval/calibracion.py`: compara cualquier rankeador (Juez, Jev, o futuro) contra las etiquetas reales — ver sección propia más abajo.
 
 ### Fase 5 — CI
 
@@ -204,19 +215,67 @@ Registrar en cada run: `models` del summary JSON + fecha.
 | `clips_rendered_rate` | — | Clips con MP4 (no deep-link de YouTube) |
 | `total_cost_usd` / `total_seconds` | — | Costo (rollup de `usage_tracker`) y tiempo de reloj |
 
+### Métricas `posteable` (W12 — solo sobre clips con etiqueta humana)
+
+| Métrica | Umbral | Significado |
+|---------|--------|-------------|
+| `posteable_labeled_n` | — | Cuántos clips de la corrida tienen etiqueta; con pocos, el resto de esta tabla no significa nada |
+| `posteable_rate` | ≥ 0.70 — **métrica principal del tier** | Fracción de los clips etiquetados que el usuario publicaría tal cual |
+| `motivos_rechazo` | — (menos es mejor) | Conteo por motivo de rechazo (`arranca_mal`, `termina_mal`, `momento_flojo`, `subtitulos_mal`, `se_ve_mal`, `copy_malo`, `otro`) — dice **dónde** está el problema |
+| `judge_posteable_avg` / `judge_no_posteable_avg` / `judge_gap` | informativo | Promedio del juez en cada grupo y su diferencia; si el gap no crece, el juez sigue sin servir |
+| `judge_humano_corr` | informativo | Correlación punto-biserial entre el puntaje del juez y `posteable` |
+| `precision_at_3` / `_5` / `_10` | informativo (mide al **rankeador**, no al juez en sí) | De los k mejores según el ranking, cuántos son posteables |
+
+Hallazgo que motivó este cambio (21-sep-2026, 20 clips reales etiquetados de
+dos jobs sobre el mismo video, uno rankeado con el Juez y otro con Jev):
+`judge_gap = +0.29` sobre 30, `judge_humano_corr = 0.06` — el juez no
+discrimina lo que el usuario publicaría. Sí hay señal en el extremo superior:
+`precision@3 = precision@5 = 1.0`, cayendo a `0.83` en `@6` y `0.70` en
+`@10`. Detalle completo reproducible con `eval/calibracion.py` (ver abajo) y
+en `eval/runs/2026-09-21-calibracion-posteable.json`.
+
+### `eval/calibracion.py` — decidir entre rankeadores
+
+Herramienta para responder "¿este rankeador (Juez con tal modelo, Jev, lo que
+sea) sirve para predecir qué publicaría el usuario?" usando las etiquetas
+reales de `clip_feedback`, sin correr el pipeline:
+
+```bash
+cd worker
+python eval/calibracion.py --job <job_id_1> --job <job_id_2> --k 3 5 10 --json
+```
+
+Reporta, sobre los clips etiquetados de los jobs dados: `posteable_rate`,
+promedio de puntaje en posteables vs no posteables y el gap, correlación
+punto-biserial, `precision_at_k` para cada `k` pedido, y los peores **falsos
+negativos** (posteable=sí, puntaje bajo) y **falsos positivos** (posteable=no,
+puntaje alto) con el texto reconstruido del clip para poder leerlos. Es
+genérica por diseño: `--score-field` elige qué campo del clip usar como
+puntaje (`score_judge_sum` por defecto), así que el mismo cálculo aplica a
+cualquier rankeador futuro sin tocar el script.
+
+Limitación conocida: el puntaje crudo de Jev por candidato **no se persiste**
+fuera de la corrida en memoria (`main.py` solo guarda `judge_scores`,
+`w2_score` y `w2_selected`/`w2_discard_reason` en `candidates_all`), así que
+hoy `calibracion.py` solo puede evaluar retroactivamente al Juez sobre jobs
+históricos; evaluar Jev "de verdad" requeriría correr el pipeline de nuevo o
+tocar `main.py` para persistir su score — ninguna de las dos entra en W12.
+
 ---
 
 ## Archivos
 
 | Archivo | Rol |
 |---------|-----|
-| `golden_set.json` | Videos, tiers, umbrales |
+| `golden_set.json` | Videos, tiers, umbrales (incluye `real_job_id` opcional por video) |
 | `run_golden_set.py` | CLI (todos los tiers, incluido `e2e`) |
-| `eval_metrics.py` | Agregación y chequeo de umbrales; registro por clip del tier e2e |
-| `compare_runs.py` | Delta entre dos corridas e2e |
+| `eval_metrics.py` | Agregación y chequeo de umbrales; registro por clip del tier e2e; métricas `posteable` (W12) |
+| `compare_runs.py` | Delta entre dos corridas e2e, incluidas las métricas `posteable` y `motivos_rechazo` |
+| `etiquetas.py` | Lee `clip_feedback` (posteable/motivo) por `content_result_id` y por `(job_id, moment_index)` (W12) |
+| `calibracion.py` | Compara cualquier rankeador contra las etiquetas reales: precision@k, correlación, peores errores (W12) |
 | `runs/` | Corridas e2e versionadas + `README.md` con el historial |
 | `services/validation.py` | `phrase_anchor_in_clip`, `evaluate_moment_phrase_metrics` |
 
 ---
 
-*Última actualización: septiembre 2026 (tier e2e)*
+*Última actualización: septiembre 2026 (W12 — `posteable` como métrica principal del tier e2e)*

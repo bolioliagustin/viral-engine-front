@@ -184,28 +184,53 @@ Cada línea es un brief listo para un agente. **Contratos compartidos** (no se c
 
 ## 5. La rueda de mejora continua
 
+**W12 (21-sep-2026) — la rueda gira sobre `posteable`, no sobre el juez.** El
+21-sep Agustín etiquetó por primera vez 20 clips reales de dos jobs
+(`9e739c7b`, con el Juez; `c7ea4108`, con Jev — ambos sobre el mismo video):
+Juez promedio de los que publicaría **16,67/30**, de los que descartó
+**16,38/30** (gap +0,29), correlación punto-biserial **0,06** — el Juez es
+prácticamente ciego al criterio del usuario. Matiz: eligiendo los 6 mejores
+según el Juez se acierta 5/6 (precision@6 = 0,833, contra ~3,6/6 al azar), así
+que hay algo de señal en los extremos, pero muy poca en el resto (precision@10
+= 0,7). Calibración completa, reproducible con `worker/eval/calibracion.py`,
+en `worker/eval/runs/2026-09-21-calibracion-posteable.json`.
+
+Consecuencia práctica: el tier `e2e` y `compare_runs.py` reportan
+`posteable_rate` como métrica PRINCIPAL (objetivo ≥ 0,70, §3) y las del Juez
+quedan informativas — ver `worker/eval/eval_metrics.py::aggregate_e2e_results`.
+El Juez sigue corriendo en todo job (decide el copy, y hasta que se recalibre
+sigue siendo el rankeador de W2), pero ya no es la vara con la que se mide si
+un cambio del pipeline mejoró algo: esa vara es `posteable`, con el tamaño de
+muestra siempre a la vista (`posteable_labeled_n`) porque con pocas etiquetas
+un `posteable_rate` no significa nada.
+
 ```
       ┌──────────────── jobs reales de la beta ────────────────┐
       │  content_results (juez, flags, densidad, duraciones)   │
       │  clip_feedback (posteable sí/no + motivo)  ← W7        │
       └──────────────┬─────────────────────────────────────────┘
                      ▼
-   ┌─── golden set (4 → 8 videos, con etiquetas humanas por clip) ───┐
+   ┌─── golden set (4 → 8 videos; posteable real vía `real_job_id` ───┐
+   │   cuando un video apunta a un job ya etiquetado, W12) ──────────┤
    │   tier e2e: baseline.json  ← W0                                  │
    └──────────────┬───────────────────────────────────────────────────┘
                   ▼
    cambio (una variable: corte, guarda, prompt, modelo)  →  PROMPT_VERSION++
                   ▼
-   run e2e  →  compare_runs(baseline, nuevo)  →  ¿sube juez y posteable, no sube costo?
-                  ▼ sí                                   ▼ no
+   run e2e  →  compare_runs(baseline, nuevo)  →  ¿sube posteable_rate sin bajar
+                  ▼ sí                             precision@k, sin subir costo?  ▼ no
    PR + deploy al VPS                              descartar, anotar en eval/runs/README
                   ▼
    una semana de jobs reales  →  panel admin (% posteable, juez, flags)  →  nuevo baseline
+                  ▼
+   ¿algún rankeador nuevo (otro MODEL_JUDGE, Jev, lo que sea)?
+                  ▼
+   calibracion.py contra las etiquetas reales  →  ¿sube precision@k / gap?  →  decisión de rankeador
 ```
 
-Cadencia propuesta: **una iteración por semana**. Lunes: baseline y elección de la variable; miércoles: run e2e y decisión; viernes: deploy y lectura de jobs reales. Cada run queda en `worker/eval/runs/` con fecha, `PROMPT_VERSION`, modelos y resultado, y un `README.md` con una línea por experimento (qué se cambió, qué pasó). El golden set crece con los clips que los usuarios etiquetan: cada clip con feedback humano es un caso de prueba nuevo.
+Cadencia propuesta: **una iteración por semana**. Lunes: baseline y elección de la variable; miércoles: run e2e y decisión; viernes: deploy y lectura de jobs reales. Cada run queda en `worker/eval/runs/` con fecha, `PROMPT_VERSION`, modelos y resultado, y un `README.md` con una línea por experimento (qué se cambió, qué pasó). El golden set crece con los clips que los usuarios etiquetan: cada clip con feedback humano es un caso de prueba nuevo — y, desde W12, cada tanda de etiquetas reales es además una corrida de `calibracion.py` para revisar si el rankeador vigente sigue sirviendo.
 
-Regla de oro de la rueda: **no se cambia nada del pipeline de IA sin un run del tier e2e antes y después.** Lo que no se mide no se toca.
+Regla de oro de la rueda: **no se cambia nada del pipeline de IA sin un run del tier e2e antes y después, mirando `posteable_rate` primero.** Lo que no se mide no se toca — y lo que se mide contra el juez en vez de contra el usuario, no mide lo que importa.
 
 ---
 
