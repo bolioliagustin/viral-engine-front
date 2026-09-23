@@ -4,6 +4,8 @@
 
 Complementa a [`PROYECTO.md`](PROYECTO.md) (§5 pipeline, §6 IA, §15 plan de etapa). Vocabulario en [`../CONTEXT.md`](../CONTEXT.md).
 
+> **23-sep-2026:** el trabajo nuevo (W18 en adelante) está en [`PLAN_MEJORA.md`](PLAN_MEJORA.md). Este documento queda como historia y como estado de las líneas W0–W17.
+
 ---
 
 ## 0. Resumen ejecutivo
