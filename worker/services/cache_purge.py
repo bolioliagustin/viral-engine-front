@@ -49,10 +49,15 @@ def purge_video_cache(
     *,
     dry_run: bool = False,
     downloads_dir: Path | None = None,
+    include_supabase: bool = True,
 ) -> dict:
     """
     Borra (o con `dry_run` solo lista) las cachés del video. Nunca lanza: un
     error de Supabase queda en `errors` y la purga sigue con lo demás.
+
+    `include_supabase=False` purga solo los archivos locales: lo usa el
+    Cortacircuitos cuando el job corre en dry-run (medición del golden set),
+    que nunca escribe cachés de producción (PLAN_MEJORA §4.1).
 
     Returns {"supabase": {tabla: [claves]}, "files": [rutas], "errors": [...],
     "dry_run": bool}.
@@ -64,8 +69,10 @@ def purge_video_cache(
         return report
     verb = "borraría" if dry_run else "borrado"
 
-    supabase = get_supabase()
-    if not supabase:
+    supabase = get_supabase() if include_supabase else None
+    if not include_supabase:
+        print("   ℹ️ Purga solo local: Supabase queda sin tocar")
+    elif not supabase:
         report["errors"].append("Supabase no configurado (faltan SUPABASE_URL / SUPABASE_SERVICE_KEY)")
     else:
         for table_name, op, value in _supabase_targets(video_id):

@@ -2783,7 +2783,9 @@ def _process_job_inner(
             )
             try:
                 from services.cache_purge import purge_video_cache
-                purge_video_cache(video_id)
+                from services.supabase_client import is_dry_run
+                # En dry-run (golden set) no se tocan las cachés de Supabase.
+                purge_video_cache(video_id, include_supabase=not is_dry_run())
             except Exception as e_purge:
                 print(f"   ⚠️ Purga del cortacircuitos falló (sigo con el reintento): {e_purge}")
             realign_needed = True

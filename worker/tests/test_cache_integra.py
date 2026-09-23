@@ -590,7 +590,7 @@ class TestCortacircuitos:
         h = _JobHarness(broken_by_attempt=[True, True]).run()
         assert h.transcripts == 2 and h.analyses == 2, "transcript y Pasada A se rehacen una vez"
         assert h.prepared_per_attempt == [4, 4], "corta a los 4 rotos, sin evaluar los 8"
-        h.mocks["purge"].assert_called_once_with("B60BHDNFNxM")
+        h.mocks["purge"].assert_called_once_with("B60BHDNFNxM", include_supabase=True)
         h.mocks["error"].assert_called_once_with("job-w18", main.CORTACIRCUITOS_ERROR)
         assert ("job-w18", "completed") not in [c.args[:2] for c in h.mocks["status"].call_args_list]
         assert h.mocks["log"].call_count == 2
@@ -625,3 +625,20 @@ class TestCortacircuitos:
         assert not any(r["video_id"].startswith("B60BHDNFNxM") for r in db.tables["transcription_cache"])
         assert not (tmp_path / "B60BHDNFNxM_audio_only.m4a").exists()
         assert not (tmp_path / "B60BHDNFNxM_transcript_whisper_full_m.json").exists()
+
+
+    def test_en_dry_run_la_purga_no_toca_supabase(self):
+        with patch("services.supabase_client.is_dry_run", return_value=True):
+            h = _JobHarness(broken_by_attempt=[True, False]).run()
+        h.mocks["purge"].assert_called_once_with("B60BHDNFNxM", include_supabase=False)
+
+    def test_purga_solo_local(self, tmp_path):
+        from services import cache_purge
+
+        db = _db_con_video()
+        _archivos(tmp_path)
+        with patch.object(cache_purge, "get_supabase", return_value=db):
+            report = cache_purge.purge_video_cache("B60BHDNFNxM", downloads_dir=tmp_path, include_supabase=False)
+        assert report["supabase"] == {} and not report["errors"]
+        assert len(db.tables["transcription_cache"]) == 3
+        assert not (tmp_path / "B60BHDNFNxM_audio_only.m4a").exists()
