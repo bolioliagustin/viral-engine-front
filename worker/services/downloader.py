@@ -41,6 +41,16 @@ CLIP_MARGIN_AFTER_DEFAULT_SEC = 20.0
 AUDIO_SPEED_PROBE_SEC = float(os.getenv("AUDIO_SPEED_PROBE_SEC", "25"))
 AUDIO_MIN_SPEED_KBPS = float(os.getenv("AUDIO_MIN_SPEED_KBPS", "200"))
 AUDIO_DOWNLOAD_ATTEMPTS = int(os.getenv("AUDIO_DOWNLOAD_ATTEMPTS", "3"))
+# W17: YouTube dobla videos con IA y sirve el doblaje como pista POR DEFECTO
+# (`audioTrack.isAutoDubbed`, `audioIsDefault`). Medido el 23-sep-2026 en
+# B60BHDNFNxM, un programa argentino: la pista default era "English (US)"
+# auto-dubbed y la original "Spanish (US) original". Bajar la default nos dio
+# transcripts y clips en inglés (jobs 88d6a444, 1ea90b15, 88eeca7a). Vacío =
+# se prefiere igual la pista original sobre cualquier doblaje.
+AUDIO_TRACK_LANGUAGE = (
+    os.getenv("AUDIO_TRACK_LANGUAGE") or os.getenv("TRANSCRIPT_LANGUAGE") or ""
+).strip().lower()
+
 AUDIO_MIN_BITRATE_BPS = 48_000  # piso de calidad para Whisper (W14, RapidAPI)
 # W14-B: si TODOS los intentos de AUDIO_DOWNLOAD_ATTEMPTS resultan lentos
 # (medido el 21-sep-2026: 5/5 proxies de Webshare a ~30 KB/s contra este
@@ -299,6 +309,48 @@ def has_youtube_cookies() -> bool:
     return _get_cookies_path() is not None
 
 
+def _ydl_audio_filter() -> str:
+    """
+    Filtro de formato de yt-dlp para quedarse con el audio original (W17).
+
+    yt-dlp expone el idioma de cada pista en `language`; el doblaje de YouTube
+    viene con el del doblaje (`en`), así que pedir el idioma del video evita
+    bajar el audio sintético. Sin `AUDIO_TRACK_LANGUAGE` no se filtra nada.
+    """
+    return f"[language^={AUDIO_TRACK_LANGUAGE}]" if AUDIO_TRACK_LANGUAGE else ""
+
+
+def _prefer_original_audio_track(audio_formats: list[dict]) -> list[dict]:
+    """
+    Deja solo las pistas del audio ORIGINAL del video (W17).
+
+    YouTube dobla con IA y marca el doblaje como pista por defecto, así que
+    "el mejor audio" puede ser un inglés sintético: un programa argentino
+    terminó con transcript y clips en inglés. Se prefiere, en orden:
+
+    1. pista de `AUDIO_TRACK_LANGUAGE` que no sea doblaje,
+    2. cualquier pista que no sea doblaje (la original, en el idioma que sea),
+    3. lo que haya (videos sin `audioTrack`: la mayoría).
+    """
+    def _track(f: dict) -> dict:
+        t = f.get("audioTrack")
+        return t if isinstance(t, dict) else {}
+
+    no_dubbed = [f for f in audio_formats if not _track(f).get("isAutoDubbed")]
+    if AUDIO_TRACK_LANGUAGE:
+        wanted = [
+            f for f in no_dubbed
+            if (_track(f).get("id") or "").lower().startswith(AUDIO_TRACK_LANGUAGE)
+        ]
+        if wanted:
+            print(f"   🔉 Pista de audio: {_track(wanted[0]).get('displayName')}")
+            return wanted
+    if no_dubbed and len(no_dubbed) < len(audio_formats):
+        print(f"   🔉 Pista de audio original: {_track(no_dubbed[0]).get('displayName')} "
+              f"(se descartaron {len(audio_formats) - len(no_dubbed)} dobladas)")
+    return no_dubbed or audio_formats
+
+
 def _pick_rapidapi_formats(
     data: dict,
     max_height: int = 720,
@@ -338,10 +390,10 @@ def _pick_rapidapi_formats(
     # W14: para transcribir no hace falta el audio de mayor bitrate — de las
     # opciones disponibles, la de MENOR bitrate que supere el piso (menos MB,
     # misma calidad útil para Whisper). Si solo hay una, se usa esa.
-    audio_formats = [
+    audio_formats = _prefer_original_audio_track([
         f for f in formats
         if "audio/mp4" in f.get("mimeType", "") and f.get("url")
-    ]
+    ])
     aud = None
     if len(audio_formats) == 1:
         aud = audio_formats[0]
@@ -974,7 +1026,9 @@ def download_audio_only(
 
     # A. audio DASH — para Whisper no hace falta más de 64 kbps (W14):
     # menos MB, mismo texto (medido, ver docs/PLAN_CALIDAD.md).
+    _lang = _ydl_audio_filter()
     found = _ytdlp(
+        f'bestaudio{_lang}[abr<=64]/bestaudio{_lang}/'
         'bestaudio[abr<=64][ext=m4a]/bestaudio[abr<=64]/bestaudio[ext=m4a]/bestaudio',
         'bestaudio ≤64kbps',
     )
@@ -1115,11 +1169,17 @@ def download_clip_ytdlp(
     # Usar un stem sin extensión y dejar que yt-dlp la maneje
     out_stem = str(Path(output_path).with_suffix(''))
 
+    _lang = _ydl_audio_filter()
     ydl_opts = _build_ydl_opts({
         # Cascada de formatos: preferimos AVC1+m4a (compatible con todo),
         # luego cualquier 720p, luego cualquier 480p, y como último recurso
         # el mejor video + mejor audio disponibles (VP9/AV1 también).
         'format': (
+            # W17: la pista original primero — el audio por defecto puede ser
+            # el doblaje con IA de YouTube (clips en inglés de un video en
+            # español). Si el video no tiene doblaje, el filtro no cambia nada.
+            f'bestvideo[height<=720][vcodec^=avc1]+bestaudio{_lang}[acodec^=mp4a]/'
+            f'bestvideo[height<=720]+bestaudio{_lang}/'
             'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
             'bestvideo[height<=720]+bestaudio/'
             'bestvideo[height<=480]+bestaudio/'
@@ -1663,11 +1723,14 @@ def _get_stream_urls_ytdlp(video_url: str, video_id: str = None, *, only_proxy: 
     proxies_to_try = proxies if proxies else [None]
 
     last_err: Exception | None = None
+    _lang = _ydl_audio_filter()
     for proxy in proxies_to_try:
         for clients in client_cascades:
             try:
                 ydl_opts = _build_ydl_opts({
                     'format': (
+                        f'bestvideo[height<=720][vcodec^=avc1]+bestaudio{_lang}[acodec^=mp4a]/'
+                        f'bestvideo[height<=720]+bestaudio{_lang}/'
                         'bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/'
                         'bestvideo[height<=720]+bestaudio'
                     ),
