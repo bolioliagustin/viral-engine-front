@@ -183,30 +183,30 @@
     },
     {
       "id": "charla_humor_02",
-      "url": "",
-      "youtube_id": "",
-      "enabled": false,
+      "url": "https://www.youtube.com/watch?v=Nn0kxFXDfX4",
+      "youtube_id": "Nn0kxFXDfX4",
+      "enabled": true,
       "tiers": [
         "analysis",
         "full",
         "seleccion"
       ],
       "formato": "charla",
-      "note": "PENDIENTE (A6): stream/charla de humor de 60–90 min de un potencial usuario; lo eligen el coordinador y Agustín.",
+      "note": "Blender, 'Pachu Peña y Josema sin filtro' (BAT completo 03/10), 86 min, charla/humor. Provisorio (A6) hasta que Agustín confirme.",
       "expected_category": "podcast"
     },
     {
       "id": "monologo_coach_01",
-      "url": "",
-      "youtube_id": "",
-      "enabled": false,
+      "url": "https://www.youtube.com/watch?v=oeGWtyMAbKk",
+      "youtube_id": "oeGWtyMAbKk",
+      "enabled": true,
       "tiers": [
         "analysis",
         "full",
         "seleccion"
       ],
       "formato": "monólogo",
-      "note": "PENDIENTE (A6): monólogo/coach de 30–60 min de un potencial usuario; lo eligen el coordinador y Agustín.",
+      "note": "Emilio Duró, 'La clave de todo es tener un sentido de vida' (AprendemosJuntos), 57,7 min, monólogo/coach. Provisorio (A6) hasta que Agustín confirme.",
       "expected_category": "business"
     },
     {

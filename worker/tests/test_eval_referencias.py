@@ -239,3 +239,37 @@ class TestMarkdown:
         md = refs.generar_markdown(d).replace("- nucleo: 100 – 160", "- nucleo: 200 – 160")
         with pytest.raises(ValueError, match="no valida"):
             refs.aplicar_validacion(d, md, validador="agustin")
+
+
+# ─── Borrador asistido (sin red) ─────────────────────────────────────────────
+
+class TestBorrador:
+    def test_extraer_json_con_prosa_y_backticks(self):
+        import borrador_referencias as br
+        texto = 'Acá va:\n```json\n{"momentos": [{"inicio": 1}], "excluir": []}\n```\nListo.'
+        assert br.extraer_json(texto) == {"momentos": [{"inicio": 1}], "excluir": []}
+
+    def test_extraer_json_cortado_se_repara(self):
+        import borrador_referencias as br
+        data = br.extraer_json('{"momentos": [{"inicio": 1, "fin": 2}, {"inicio": 3')
+        assert data["momentos"][0] == {"inicio": 1, "fin": 2}
+
+    def test_normalizar(self):
+        import borrador_referencias as br
+        crudos = [
+            {"inicio": 110, "fin": 150, "nucleo_inicio": 100, "nucleo_fin": 140, "tipo": "Anécdota",
+             "calidad": "a", "por_que": "x"},                                   # tramo se estira
+            {"inicio": 0, "fin": 10, "nucleo_inicio": 5, "nucleo_fin": 6, "tipo": "dato"},  # < 3 s
+            {"nucleo_inicio": "x", "nucleo_fin": 9},                             # inválido
+            {"nucleo_inicio": 200, "nucleo_fin": 230, "tipo": "chicana", "calidad": "Z"},
+        ]
+        out, avisos = br.normalizar_propuestos(crudos, duracion=1000, autor="borrador:m", fecha="2026-09-23")
+        assert len(out) == 2 and len(avisos) == 2
+        assert (out[0]["inicio"], out[0]["tipo"], out[0]["calidad"]) == (100, "anécdota", "A")
+        assert (out[1]["tipo"], out[1]["calidad"], out[1]["validado_por"]) == ("opinión", "B", None)
+
+    def test_formato_transcript_y_rango(self):
+        import borrador_referencias as br
+        assert br.formatear_transcript([{"start": 12.7, "text": " Hola. "}, {"start": 20, "text": ""}]) == "[12] Hola."
+        assert br.rango_pedido(19 * 60) == (12, 20)
+        assert br.rango_pedido(110 * 60) == (20, 30)
