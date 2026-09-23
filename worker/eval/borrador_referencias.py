@@ -40,6 +40,8 @@ MODELO_DEFAULT = "anthropic/claude-sonnet-5"
 # USD por 1M tokens, por si OpenRouter no devuelve el costo en `usage`.
 PRECIOS_FALLBACK = {"anthropic/claude-sonnet-5": (2.0, 10.0)}
 RUBRICA_VERSION = "r1"
+MAX_TOKENS = 24000
+RAZONAMIENTO_MAX_TOKENS = 8000
 CRUDOS_DIR = WORKER_DIR / "downloads" / "eval_borradores"
 
 RUBRICA = """Sos la persona que edita los clips de este creador y conoce a su audiencia. Vas a leer la transcripción COMPLETA de un episodio y marcar los momentos que vos publicarías como clip vertical corto (TikTok, Reels, Shorts), para armar una lista de referencia contra la que después se va a evaluar un sistema automático.
@@ -166,9 +168,12 @@ def pedir_borrador(lines: list[dict], video_info: dict, duracion: float, modelo:
             {"role": "system", "content": RUBRICA.format(n_min=n_min, n_max=n_max)},
             {"role": "user", "content": user},
         ],
-        max_tokens=16000,
+        # El razonamiento consume max_tokens (AGENTS.md): sin tope, en un video
+        # de 110 min se comió los 16k y la respuesta salió cortada. Se acota y
+        # se deja margen para ~30 momentos de salida visible.
+        max_tokens=MAX_TOKENS,
         temperature=0.3,
-        extra_body={"usage": {"include": True}},
+        extra_body={"usage": {"include": True}, "reasoning": {"max_tokens": RAZONAMIENTO_MAX_TOKENS}},
     )
     crudo = resp.choices[0].message.content or ""
     # La respuesta cruda queda local (gitignored) para poder auditar el parseo
@@ -186,6 +191,7 @@ def pedir_borrador(lines: list[dict], video_info: dict, duracion: float, modelo:
         "tokens": {
             "entrada": getattr(resp.usage, "prompt_tokens", None),
             "salida": getattr(resp.usage, "completion_tokens", None),
+            "razonamiento": getattr(getattr(resp.usage, "completion_tokens_details", None), "reasoning_tokens", None),
         },
     }
 
@@ -204,6 +210,11 @@ def main() -> int:
     p.add_argument("--modelo", default=os.getenv("MODEL_REFERENCIAS", MODELO_DEFAULT))
     p.add_argument("--forzar-familia", action="store_true", help="permitir un modelo de la misma familia que la Pasada A")
     p.add_argument("--forzar", action="store_true", help="correr aunque el markdown de validación tenga cambios sin aplicar")
+    p.add_argument(
+        "--solo-propuesta", action="store_true",
+        help="guardar la propuesta en eval/referencias/propuestas/ sin tocar el JSON ni el markdown "
+             "(para cuando hay una validación en curso); se suma con referencias_cli.py fusionar",
+    )
     p.add_argument("--dry-run", action="store_true", help="no llama al modelo: muestra el tamaño del prompt")
     args = p.parse_args()
 
@@ -227,10 +238,11 @@ def main() -> int:
     print(f"📝 {video['id']} ({yt}): {len(lines)} Líneas, {duracion / 60:.1f} min, modelo {args.modelo}")
     md = refs.VALIDAR_DIR / f"{yt}.md"
     previo = refs.cargar_referencias(yt)
-    if previo and md.exists() and md.read_text(encoding="utf-8") != refs.generar_markdown(previo, lines) and not args.forzar:
+    if (previo and md.exists() and md.read_text(encoding="utf-8") != refs.generar_markdown(previo, lines)
+            and not args.forzar and not args.solo_propuesta):
         # Hay una validación en curso: sumar momentos ahora rompería el `aplicar`
         print(f"❌ {md} tiene cambios sin aplicar (validación en curso). Aplicalos primero "
-              f"(referencias_cli.py aplicar) o usá --forzar.")
+              f"(referencias_cli.py aplicar), usá --solo-propuesta o --forzar.")
         return 2
     if args.dry_run:
         print(f"   prompt ≈ {len(formatear_transcript(lines)) + len(RUBRICA)} caracteres")
@@ -243,28 +255,31 @@ def main() -> int:
     )
     for a in avisos:
         print(f"   ⚠️ {a}")
+    propuesta = {
+        "youtube_id": yt, "video_id": video["id"], "duracion_sec": duracion,
+        "transcript": {
+            "source": transcript.get("source"), "model": transcript.get("model"),
+            "lineas": len(lines), "idioma": transcript.get("language"),
+        },
+        "borrador": {
+            "modelo": args.modelo, "rubrica": RUBRICA_VERSION, "fecha": fecha,
+            "costo_usd": r["costo_usd"], "segundos": r["segundos"], "tokens": r["tokens"],
+            "propuestos": len(propuestos),
+        },
+        "momentos": propuestos,
+        "excluir": [
+            {"inicio": float(e["inicio"]), "fin": float(e["fin"]), "motivo": (e.get("motivo") or "").strip() or None}
+            for e in r["data"].get("excluir") or []
+            if isinstance(e, dict) and _es_rango(e)
+        ],
+    }
+    if args.solo_propuesta:
+        ruta = refs.guardar_propuesta(propuesta)
+        print(f"✅ {len(propuestos)} propuestos, guardados sin fusionar | ${r['costo_usd']:.4f} | {r['segundos']:.0f}s\n"
+              f"   {ruta}\n   Fusionar cuando termine la validación: python eval/referencias_cli.py fusionar {yt}")
+        return 0
 
-    doc = refs.cargar_referencias(yt) or refs.documento_vacio(yt, video["id"], duracion)
-    doc["video_id"] = doc.get("video_id") or video["id"]
-    doc["duracion_sec"] = doc.get("duracion_sec") or duracion
-    doc.setdefault("transcript", {
-        "source": transcript.get("source"), "model": transcript.get("model"),
-        "lineas": len(lines), "idioma": transcript.get("language"),
-    })
-    conteo = refs.fusionar_momentos(doc, propuestos, fuente=f"borrador:{args.modelo}")
-    # Exclusiones propuestas: se suman las que no se solapan con las existentes
-    for e in r["data"].get("excluir") or []:
-        try:
-            ei, ef = float(e["inicio"]), float(e["fin"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if ef > ei and not any(min(ef, x["fin"]) > max(ei, x["inicio"]) for x in doc.get("excluir") or []):
-            doc.setdefault("excluir", []).append({"inicio": ei, "fin": ef, "motivo": (e.get("motivo") or "").strip() or None, "autor": f"borrador:{args.modelo}"})
-    doc.setdefault("borradores", []).append({
-        "modelo": args.modelo, "rubrica": RUBRICA_VERSION, "fecha": fecha,
-        "costo_usd": r["costo_usd"], "segundos": r["segundos"], "tokens": r["tokens"],
-        "propuestos": len(propuestos), **conteo,
-    })
+    doc = refs.fusionar_propuesta(refs.cargar_referencias(yt), propuesta)
     errores = refs.validar_documento(doc)
     if errores:
         print("❌ El documento no valida:\n  " + "\n  ".join(errores))
@@ -272,9 +287,17 @@ def main() -> int:
     ruta = refs.guardar_referencias(doc)
     md.parent.mkdir(parents=True, exist_ok=True)
     md.write_text(refs.generar_markdown(doc, lines), encoding="utf-8")
+    conteo = doc["borradores"][-1]
     print(f"✅ {len(propuestos)} propuestos → {conteo['nuevos']} nuevos, {conteo['duplicados']} ya estaban | "
           f"${r['costo_usd']:.4f} | {r['segundos']:.0f}s\n   {ruta}\n   {md}")
     return 0
+
+
+def _es_rango(e: dict) -> bool:
+    try:
+        return float(e["fin"]) > float(e["inicio"])
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 if __name__ == "__main__":

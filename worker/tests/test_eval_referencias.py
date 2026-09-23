@@ -273,3 +273,18 @@ class TestBorrador:
         assert br.formatear_transcript([{"start": 12.7, "text": " Hola. "}, {"start": 20, "text": ""}]) == "[12] Hola."
         assert br.rango_pedido(19 * 60) == (12, 20)
         assert br.rango_pedido(110 * 60) == (20, 30)
+
+
+class TestPropuesta:
+    def test_fusionar_propuesta_crea_y_registra(self):
+        prop = {
+            "youtube_id": "VID9", "video_id": "v9", "duracion_sec": 1000.0,
+            "borrador": {"modelo": "anthropic/x", "costo_usd": 0.2},
+            "momentos": [_ref("D00", 100, 160), _ref("D01", 105, 150), _ref("D02", 400, 430)],
+            "excluir": [{"inicio": 10, "fin": 40, "motivo": "aviso"}],
+        }
+        doc = refs.fusionar_propuesta(None, prop)
+        assert [m["id"] for m in doc["momentos"]] == ["R01", "R02"]
+        assert doc["borradores"][-1] == {"modelo": "anthropic/x", "costo_usd": 0.2, "nuevos": 2, "duplicados": 1}
+        assert doc["excluir"][0]["autor"] == "borrador:anthropic/x"
+        assert refs.validar_documento(doc) == []

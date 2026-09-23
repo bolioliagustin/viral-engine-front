@@ -31,4 +31,12 @@ Presupuesto de API de W19: US$6. Una línea por gasto.
 | Fecha | Qué | Archivo | Costo US$ | Nota |
 |---|---|---|---|---|
 | 2026-09-23 | Transcripts `whisper_full` de `Nn0kxFXDfX4` (86,2 min) y `oeGWtyMAbKk` (57,7 min), Groq + puntuación de respaldo | `downloads/eval_transcripts/` (local) | 0,097 | Supabase apuntado a URL muerta; nada se escribió en la base. yt-dlp bloqueado como bot, bajó por el camino de respaldo. |
-| 2026-09-23 | Borrador de Referencias de `B60BHDNFNxM` con `anthropic/claude-sonnet-5` (intento 1) | — (descartado) | 0,281 | Devolvió 2 momentos: respuesta cortada, casi seguro por el tope de crédito de OpenRouter (quedaban US$0,35; la llamada siguiente dio 402). No se guardó. |
+| 2026-09-23 | Borrador de Referencias de `B60BHDNFNxM` con `anthropic/claude-sonnet-5` (intento 1) | — (descartado) | 0,281 | Devolvió 2 momentos: respuesta cortada porque el razonamiento de Sonnet 5 (~11k tokens) se comió `max_tokens=16000`. Se subió a 24000 con el razonamiento acotado. No se guardó. |
+| 2026-09-23 | Borrador `KXKzgeHOr7A` (19,3 min): 14 momentos | `../referencias/KXKzgeHOr7A.json` | 0,157 | 11k tokens de salida, 9k de razonamiento |
+| 2026-09-23 | Borrador `oeGWtyMAbKk` (57,7 min): 28 momentos | `../referencias/oeGWtyMAbKk.json` | 0,237 | desde acá `max_tokens=24000` |
+| 2026-09-23 | Borrador `Lqq78q17jDY` (88,8 min): 20 propuestos, 19 momentos | `../referencias/Lqq78q17jDY.json` | 0,130 | |
+| 2026-09-23 | Borrador `XxoVRjTySsM` (77,3 min): 23 momentos | `../referencias/XxoVRjTySsM.json` | 0,148 | |
+| 2026-09-23 | Borrador `MaXgAEI4Vm8` (108,5 min): 22 momentos | `../referencias/MaXgAEI4Vm8.json` | 0,153 | |
+| 2026-09-23 | Borrador `Nn0kxFXDfX4` (86,2 min): 27 momentos | `../referencias/Nn0kxFXDfX4.json` | 0,264 | |
+| 2026-09-23 | Borrador `B60BHDNFNxM` (110,7 min), intento 2, `--solo-propuesta`: 28 propuestos, **16 coinciden con la semilla** (12 de las 15 A) y 12 son nuevos | `../referencias/propuestas/B60BHDNFNxM.json` | 0,331 | Se fusiona cuando Agustín termine de validar la semilla (`referencias_cli.py fusionar`) |
+| | **Total W19 hasta acá** | | **1,80** | de US$6 |

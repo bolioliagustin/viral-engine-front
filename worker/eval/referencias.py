@@ -20,6 +20,7 @@ from typing import Any
 EVAL_DIR = Path(__file__).resolve().parent
 REFERENCIAS_DIR = EVAL_DIR / "referencias"
 VALIDAR_DIR = REFERENCIAS_DIR / "validar"
+PROPUESTAS_DIR = REFERENCIAS_DIR / "propuestas"
 
 ESQUEMA_VERSION = 1
 
@@ -183,6 +184,39 @@ def fusionar_momentos(doc: dict, propuestos: list[dict], *, fuente: str) -> dict
         existentes.append(nuevo)
         nuevos += 1
     return {"nuevos": nuevos, "duplicados": duplicados}
+
+
+def guardar_propuesta(propuesta: dict, base: Path | None = None) -> Path:
+    """Propuesta de un borrador sin fusionar (validación en curso)."""
+    ruta = (base or PROPUESTAS_DIR) / f"{propuesta['youtube_id']}.json"
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(propuesta, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    return ruta
+
+
+def fusionar_propuesta(doc: dict | None, propuesta: dict) -> dict:
+    """
+    Suma la propuesta de un borrador al documento (lo crea si no existe):
+    momentos sin duplicar, exclusiones que no se solapan con las existentes y
+    el registro del borrador (modelo, costo, conteos) en `borradores[]`.
+    """
+    yt = propuesta["youtube_id"]
+    doc = doc or documento_vacio(yt, propuesta.get("video_id"), propuesta.get("duracion_sec"))
+    doc["video_id"] = doc.get("video_id") or propuesta.get("video_id")
+    doc["duracion_sec"] = doc.get("duracion_sec") or propuesta.get("duracion_sec")
+    if propuesta.get("transcript"):
+        doc.setdefault("transcript", propuesta["transcript"])
+    info = propuesta.get("borrador") or {}
+    fuente = f"borrador:{info.get('modelo') or '?'}"
+    conteo = fusionar_momentos(doc, propuesta.get("momentos") or [], fuente=fuente)
+    for e in propuesta.get("excluir") or []:
+        ei, ef = float(e["inicio"]), float(e["fin"])
+        if ef > ei and not any(min(ef, float(x["fin"])) > max(ei, float(x["inicio"])) for x in doc.get("excluir") or []):
+            doc.setdefault("excluir", []).append({"inicio": ei, "fin": ef, "motivo": e.get("motivo"), "autor": fuente})
+    doc.setdefault("borradores", []).append({**info, **conteo})
+    return doc
 
 
 # ─── Markdown de validación ─────────────────────────────────────────────────
