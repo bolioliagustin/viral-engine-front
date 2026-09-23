@@ -203,6 +203,7 @@ def main() -> int:
     p.add_argument("video", help="id del golden set o youtube_id")
     p.add_argument("--modelo", default=os.getenv("MODEL_REFERENCIAS", MODELO_DEFAULT))
     p.add_argument("--forzar-familia", action="store_true", help="permitir un modelo de la misma familia que la Pasada A")
+    p.add_argument("--forzar", action="store_true", help="correr aunque el markdown de validación tenga cambios sin aplicar")
     p.add_argument("--dry-run", action="store_true", help="no llama al modelo: muestra el tamaño del prompt")
     args = p.parse_args()
 
@@ -224,6 +225,13 @@ def main() -> int:
     lines = transcript.get("lines") or []
     duracion = float(transcript.get("duration") or video_info.get("duration") or 0)
     print(f"📝 {video['id']} ({yt}): {len(lines)} Líneas, {duracion / 60:.1f} min, modelo {args.modelo}")
+    md = refs.VALIDAR_DIR / f"{yt}.md"
+    previo = refs.cargar_referencias(yt)
+    if previo and md.exists() and md.read_text(encoding="utf-8") != refs.generar_markdown(previo, lines) and not args.forzar:
+        # Hay una validación en curso: sumar momentos ahora rompería el `aplicar`
+        print(f"❌ {md} tiene cambios sin aplicar (validación en curso). Aplicalos primero "
+              f"(referencias_cli.py aplicar) o usá --forzar.")
+        return 2
     if args.dry_run:
         print(f"   prompt ≈ {len(formatear_transcript(lines)) + len(RUBRICA)} caracteres")
         return 0
@@ -262,7 +270,6 @@ def main() -> int:
         print("❌ El documento no valida:\n  " + "\n  ".join(errores))
         return 1
     ruta = refs.guardar_referencias(doc)
-    md = refs.VALIDAR_DIR / f"{yt}.md"
     md.parent.mkdir(parents=True, exist_ok=True)
     md.write_text(refs.generar_markdown(doc, lines), encoding="utf-8")
     print(f"✅ {len(propuestos)} propuestos → {conteo['nuevos']} nuevos, {conteo['duplicados']} ya estaban | "
