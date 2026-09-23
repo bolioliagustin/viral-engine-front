@@ -244,3 +244,49 @@ class TestTierE2E:
         salida = json.loads(capsys.readouterr().out)
         assert salida["aislamiento"]["activo"] is True
         assert salida["aislamiento"]["intentos_bloqueados"]["save_analysis"] == 1
+
+
+class TestRutasW18:
+    """Rutas nuevas de W18 (huella, purga, captions): ninguna escritura llega a Supabase."""
+
+    def test_extremo_a_extremo_rutas_w18(self, fake_sb, monkeypatch, tmp_path):
+        import main
+        from services import analysis_cache as ac
+        from services import cache_purge as cp
+        from services import processor
+        from services import transcript_cache as tc
+
+        monkeypatch.setattr(processor, "OpenAI", _FakeOpenAI)
+        monkeypatch.setattr(aislamiento, "EVAL_TRANSCRIPTS_DIR", tmp_path / "tr")
+        monkeypatch.setattr(cp, "DOWNLOADS_DIR", tmp_path / "downloads")
+        monkeypatch.setattr(cp, "get_supabase", lambda: fake_sb)
+        (tmp_path / "downloads").mkdir()
+        (tmp_path / "downloads" / "VIDX_transcript_whisper_full.json").write_text("{}")
+        transcript = _transcript()
+        aislamiento.guardar_transcript_local("VIDX", transcript, {"id": "VIDX"})
+
+        with aislamiento.sin_cache_de_produccion() as intentos:
+            # Huella: la consulta con fingerprint=… tampoco sale
+            huella = tc.transcript_fingerprint(transcript)
+            assert ac.get_cached_analysis("VIDX", "m", "profesional", fingerprint=huella) is None
+            assert ac.get_cached_analysis_row("VIDX", "m", "profesional", fingerprint=huella) is None
+            # Pasada A completa (usa la huella por dentro)
+            processor.analyze_with_openrouter(transcript, {"id": "VIDX", "title": "t", "duration": 1500})
+            # Paso S3 de main: captions a la clave pelada
+            main._save_captions_transcript("VIDX", {"segments": [], "source": "supadata", "language": "es"}, {"duration": 1500})
+            # Cortacircuitos: purga con los defaults (include_supabase=True)
+            reporte = cp.purge_video_cache("VIDX")
+            # Después de la purga, la copia local del eval no se sirve…
+            assert tc.get_cached_transcript("VIDX", source="whisper_full", model="whisper-large-v3-turbo") is None
+            # …hasta que el transcript rehecho se guarda (solo local)
+            tc.save_transcript("VIDX", transcript, source="whisper_full", model="whisper-large-v3-turbo")
+            assert tc.get_cached_transcript("VIDX", source="whisper_full", model="whisper-large-v3-turbo") is not None
+            intentos = dict(intentos)
+
+        escrituras = [(t, op) for t, op in fake_sb.registro if op != "select"]
+        assert escrituras == []
+        assert not {t for t, _ in fake_sb.registro} & {"analysis_cache", "category_cache"}
+        assert reporte["supabase"] == {}
+        assert not (tmp_path / "downloads" / "VIDX_transcript_whisper_full.json").exists()  # la purga local sí corre
+        assert intentos["purge_video_cache"] == 1
+        assert intentos["save_transcript"] == 2

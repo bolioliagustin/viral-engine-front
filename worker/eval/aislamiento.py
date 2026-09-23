@@ -11,7 +11,10 @@ misma clase de bug que `fb287cba`). Por eso, en los tiers `seleccion` y
 - `save_transcript` no escribe en `transcription_cache`: el transcript se
   guarda **solo localmente** en `downloads/eval_transcripts/`;
 - los transcripts sí se leen (solo lectura): primero la copia local del
-  eval, después la caché de Supabase.
+  eval, después la caché de Supabase;
+- `cache_purge.purge_video_cache` (W18, la llama el Cortacircuitos) purga
+  solo archivos locales, nunca Supabase, y la copia local del eval de ese
+  video deja de servirse hasta que se guarde una nueva.
 
 Todos los imports de esas funciones en el worker son perezosos (dentro de la
 función que las usa), así que parchear el atributo del módulo alcanza.
@@ -86,7 +89,11 @@ def sin_cache_de_produccion(activo: bool | None = None) -> Iterator[dict[str, in
         return
 
     from services import analysis_cache as ac
+    from services import cache_purge as cp
     from services import transcript_cache as tc
+
+    purge_original = getattr(cp, "purge_video_cache", None)
+    purgados: set[str] = set()
 
     get_transcript_original = tc.get_cached_transcript
 
@@ -102,17 +109,24 @@ def sin_cache_de_produccion(activo: bool | None = None) -> Iterator[dict[str, in
         _contar("save_transcript")
         if source and source != "supadata":
             guardar_transcript_local(video_id, transcript, origen=f"generado en eval ({source}:{model})")
+            purgados.discard(video_id)
             return True
         return False
 
     def _get_transcript(video_id, source=None, model=None):
         # Lectura permitida; primero la copia local del eval (sirve con la
         # base caída), después la caché de producción en solo lectura.
-        if source and source != "supadata":
+        if source and source != "supadata" and video_id not in purgados:
             local = leer_transcript_local(video_id)
             if local:
                 return local[0]
         return get_transcript_original(video_id, source=source, model=model)
+
+    def _purge(video_id, *args, **kwargs):
+        _contar("purge_video_cache")
+        purgados.add(video_id)
+        kwargs["include_supabase"] = False
+        return purge_original(video_id, *args, **kwargs)
 
     reemplazos = {
         (ac, "get_cached_analysis"): _nada("get_cached_analysis", None),
@@ -123,6 +137,7 @@ def sin_cache_de_produccion(activo: bool | None = None) -> Iterator[dict[str, in
         (ac, "delete_cached_analysis"): _nada("delete_cached_analysis", 0),
         (tc, "save_transcript"): _save_transcript_local,
         (tc, "get_cached_transcript"): _get_transcript,
+        (cp, "purge_video_cache"): _purge,
     }
     # Si otra línea renombra o saca alguna función, se parchea lo que exista;
     # el test de aislamiento (tabla por tabla contra un Supabase falso) es la
