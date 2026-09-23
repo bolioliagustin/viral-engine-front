@@ -78,6 +78,14 @@ _Avoid_: score (a secas, para el visible), score curvado, curved score
 Etiqueta que pone una persona a un clip cuando lo publicaría tal cual, sin editar. Es la fuente de verdad de calidad; el score del Juez es su aproximación automática.
 _Avoid_: bueno, aprobado, viral, válido
 
+**Referencia**:
+Momento de un video del golden set que una persona publicaría, validado por un humano, con su Núcleo, tipo, calidad (A = lo publicaría seguro; B = probablemente) y por qué. Es la verdad humana contra la que se mide offline la selección (tier `seleccion`) y la entrega (tier `e2e`), sin renderizar ni etiquetar clips. Vive en `worker/eval/referencias/<youtube_id>.json`; un borrador sin validar no cuenta como Referencia.
+_Avoid_: ground truth, momento ideal, highlight
+
+**Núcleo**:
+Lo mínimo que un clip tiene que contener para que la Referencia funcione: del planteo al remate, en segundos absolutos. Un candidato o clip "contiene" la Referencia si arranca antes del inicio del Núcleo y termina después de su fin (±2 s).
+_Avoid_: core, centro, punchline
+
 ### Pipeline de IA
 
 **Transcript**:

@@ -32,6 +32,7 @@ La métrica **`phrase_anchor_pass_rate`** reemplaza el antiguo `verification_pas
 | **analysis** | ~10-20 min | 4 enabled | No | CI / cambio de `MODEL_ANALYSIS` |
 | **full** | ~30-60 min | 4 enabled | Sí | Cambio de copy, juez, o release |
 | **e2e** | ~15-30 min | 4 enabled (el de 108 min al final) | Sí, sobre el clip real | Antes y después de **cualquier** cambio del pipeline de IA (regla de oro de `docs/PLAN_CALIDAD.md` §5) |
+| **seleccion** | ~5-15 min | los que tienen Referencias validadas | No | Cualquier cambio de la Pasada A (W21–W23): mide cobertura contra Referencias, 3 reps |
 
 ### Comandos
 
@@ -88,8 +89,10 @@ por cada video habilitado con `"e2e"` en `tiers`, con `EVAL_DRY_RUN=1`:
   `upload_clip_to_storage` / `upload_raw_clip_to_storage` devuelven
   `dryrun://<job>/<n>.mp4`, `deduct_credit` no descuenta y `usage_tracker` no
   inserta en `job_usage_events` (pero mantiene el rollup → `DRY_RUN_ROLLUPS`).
-  Las caches (`analysis_cache`, `category_cache`, `transcription_cache`)
-  se leen y escriben como siempre.
+  Desde W19 las cachés de producción quedan aisladas: `analysis_cache` y
+  `category_cache` no se leen ni se escriben, y `transcription_cache` solo
+  se lee (ver "No contaminar producción" más abajo). Con Referencias, cada
+  video suma `recall@entregados` y `captura_de_lo_mejor`.
 - Cada video tiene un **presupuesto de reloj** (`--video-budget-sec`, default
   25 min): si se agota, el video queda `timed_out` y se sigue con el resto.
 - Sentry queda apagado durante el eval (`SENTRY_DSN_WORKER=""` si no está
@@ -127,6 +130,135 @@ que vale.
 
 Cada corrida se guarda en `eval/runs/<fecha>-<PROMPT_VERSION>[-nota].json`
 y se anota en `eval/runs/README.md` (el `.log` no se versiona: `*.log` está en `.gitignore`).
+
+---
+
+## Tier `seleccion` y Referencias (W19)
+
+Mide la **selección** (clasificador + Pasada A) contra **Referencias**:
+momentos validados por un humano con su **Núcleo** (ver `CONTEXT.md`). Corre
+en minutos y por centavos, sin descargar, renderizar ni etiquetar clips.
+
+```bash
+cd worker
+python eval/run_golden_set.py --tier seleccion --reps 3 --json \
+  2>eval/runs/$(date +%F)-seleccion.log >eval/runs/$(date +%F)-seleccion.json
+python eval/run_golden_set.py --tier seleccion --video charla_humor_01 --reps 1
+# Recalcular métricas de una corrida guardada con las Referencias actuales (gratis):
+python eval/run_golden_set.py --tier seleccion --recalcular eval/runs/<corrida>.json
+```
+
+- Corre `processor.analyze_with_openrouter` (el camino de producción, con el
+  código de la rama y sus flags) sobre el transcript `whisper_full` de cada
+  video habilitado con `"seleccion"` en `tiers` **y** Referencias validadas.
+- `--reps N` (default del tier: 3) hace N llamadas independientes y reporta
+  media y desvío por métrica. Las corridas van en paralelo (`--workers`,
+  default 8).
+- `--incluir-borradores` mide también contra momentos sin validar; el JSON lo
+  marca (`incluir_borradores: true`) y el resumen lo avisa.
+- El JSON guarda los candidatos de cada repetición (inicio, fin,
+  `rank_score`), la categoría, el costo y el tiempo, así que `--recalcular`
+  rehace las métricas sin llamar a la API cuando cambian las Referencias.
+
+### No contaminar producción (PLAN_MEJORA §4.1)
+
+El `.env` de la raíz apunta a la base de la beta. En los tiers `seleccion` y
+`e2e` (y en `analysis`/`full` con `--sin-cache`), `eval/aislamiento.py`:
+
+- **no lee ni escribe** `analysis_cache` ni `category_cache`;
+- **no escribe** `transcription_cache`: si un transcript no está cacheado, se
+  genera y se guarda **solo localmente** en `worker/downloads/eval_transcripts/`
+  (gitignored);
+- lee transcripts en solo lectura: primero la copia local del eval, después
+  Supabase;
+- en `seleccion`, el costo se acumula en memoria (`EVAL_DRY_RUN=1`): nada va a
+  `job_usage_events`.
+
+Lo controla **`EVAL_CACHE_PRODUCCION`**: sin definir (default) = aislado.
+`EVAL_CACHE_PRODUCCION=1` vuelve al comportamiento viejo (lee y escribe las
+cachés): no usarlo apuntado a la beta. El JSON de cada corrida trae
+`aislamiento.intentos_bloqueados` (qué intentó hacer el pipeline contra las
+cachés y se cortó). Probado con `SUPABASE_URL=http://127.0.0.1:9`: la corrida
+no depende de la base.
+
+### Esquema de Referencia (contrato para W21–W25)
+
+Un archivo por video: `eval/referencias/<youtube_id>.json`.
+
+```jsonc
+{
+  "esquema": 1,
+  "video_id": "charla_humor_01",          // id del golden set
+  "youtube_id": "B60BHDNFNxM",
+  "duracion_sec": 6640.7,
+  "transcript": {"source": "whisper_full", "model": "whisper-large-v3-turbo", "lineas": 2457, "idioma": "es"},
+  "borradores": [{"modelo": "...", "rubrica": "r1", "fecha": "...", "costo_usd": 0.0, "propuestos": 0, "nuevos": 0, "duplicados": 0}],
+  "excluir": [{"inicio": 3100, "fin": 3168, "motivo": "publicidad (aviso de DiDi)"}],
+  "momentos": [{
+    "id": "R01",
+    "inicio": 521, "fin": 628,                  // tramo: el clip ideal completo
+    "nucleo_inicio": 557, "nucleo_fin": 626,    // Núcleo: del planteo al remate
+    "tipo": "anécdota",       // anécdota | opinión | frase citable | cruce con el público | imitación | dato | explicación
+    "calidad": "A",           // A = lo publicaría seguro; B = probablemente
+    "titulo": "Caniggia y el auto en Italia 90",
+    "por_que": "Bilardo manda a tirar piedritas al auto de Caniggia; remate absurdo",
+    "autor": "claude-anexo-b", // quién lo propuso: persona o borrador:<modelo>
+    "validado_por": null,      // "agustin" cuando lo valida; null = borrador (no cuenta para medir)
+    "fecha": "2026-09-23"
+    // opcionales: tipo_original, cita_inicio, cita_fin, tambien_propuesto_por, corregido_por, fecha_validacion
+  }],
+  "descartados": []            // momentos que el validador borró (no se re-proponen)
+}
+```
+
+Tiempos en segundos absolutos del transcript `whisper_full`. Se cumple
+`inicio ≤ nucleo_inicio < nucleo_fin ≤ fin` (`referencias.validar_documento`).
+
+### Armar y validar Referencias
+
+1. **Borrador asistido** (US$0,05–0,3 por video):
+   `python eval/borrador_referencias.py <video_id|youtube_id>`. Pide 20–30
+   momentos (12–20 en videos < 40 min) a un modelo de **otra familia** que la
+   Pasada A (`anthropic/claude-sonnet-5` por default; `--modelo` o
+   `MODEL_REFERENCIAS`; se niega a usar la familia de `MODEL_ANALYSIS`), con
+   una rúbrica propia (no el prompt de la Pasada A, que inflaría el recall).
+   Se fusiona con lo que ya hay sin duplicar (núcleos solapados ≥ 50 %: gana
+   lo existente) y queda con `validado_por: null`. La respuesta cruda queda en
+   `downloads/eval_borradores/`.
+2. **Validación humana**: el borrador regenera
+   `eval/referencias/validar/<youtube_id>.md` (o
+   `python eval/referencias_cli.py markdown`): un bloque por momento con links
+   `youtu.be/<id>?t=<seg>` al tramo y al núcleo, el texto del núcleo y los
+   campos editables. En cada bloque: `decision: si | no | pendiente`, y
+   corregir `tramo`, `nucleo` (segundos o m:ss), `calidad`, `tipo`,
+   `por_que`. Para agregar, un bloque `### NUEVO`. Publicidad:
+   `- EXCLUIR <inicio>–<fin> | motivo`.
+3. **Aplicar**: `python eval/referencias_cli.py aplicar eval/referencias/validar/<youtube_id>.md --validador agustin`.
+   `si` valida, `no` pasa a `descartados`, `pendiente` solo aplica
+   correcciones. Si un bloque desaparece o un tiempo queda inválido, no se
+   aplica nada. `python eval/referencias_cli.py estado` muestra el avance.
+
+### Métricas contra Referencias (`eval_metrics.py`)
+
+Todas son funciones puras sobre intervalos; "Referencias" = las validadas
+(o todas con `--incluir-borradores`).
+
+| Métrica | Definición |
+|---|---|
+| `recall_completo@candidatos` (`recall_completo`) | Fracción de Referencias **A** cuyo núcleo queda contenido en algún candidato: `inicio ≤ nucleo_inicio + 2 s` y `fin ≥ nucleo_fin − 2 s`. `recall_completo_ab`: lo mismo sobre A+B. |
+| `recall_parcial@candidatos` (`recall_parcial`, `_ab`) | Algún candidato cubre ≥ 50 % del núcleo. |
+| `historias_partidas` | Referencias (A+B) que ningún candidato contiene, pero cuyo núcleo queda cubierto ≥ 80 % por la unión de 2 o más candidatos. Lista en `historias_partidas_ids`. |
+| `candidatos_por_cuarto` / `min_cuarto` | Candidatos por cuarto de la duración del video (por punto medio); `min_cuarto` = candidatos del cuarto más pobre / total. |
+| `candidatos_en_exclusion` | Candidatos que se solapan > 50 % de su duración con un tramo `excluir`. |
+| `precision_ref@k` (k = 5, 10) | De los k mejores candidatos según el ranking del pipeline (`rank_score` de la Pasada A), fracción que coincide (≥ 50 % del núcleo) con alguna Referencia. |
+| `estado_por_referencia` / `completa_en_reps` | Por Referencia: completa / partida / parcial / ausente, y en cuántas repeticiones quedó completa (estabilidad). |
+| `recall@entregados` (tier `e2e`) | Las mismas métricas sobre los clips **entregados** (`results[].referencias`, agregado en `referencias`). |
+| **`captura_de_lo_mejor`** (métrica norte, PLAN_MEJORA §3) | Referencias A cuyo núcleo está contenido en un clip **entregado y etiquetado posteable** (`clip_feedback`). Sin etiquetas, se reporta la versión "contenido en un entregado" y `captura_tipo = contenido_en_entregado_sin_etiquetas`. |
+
+Por video se reporta media y desvío entre repeticiones; el agregado es el
+promedio macro de las medias por video. Los umbrales del tier
+(`recall_completo_min` 0,7, `min_cuarto_min` 0,15) son las metas de la Ola 2 y
+no bloquean.
 
 ---
 
@@ -267,9 +399,15 @@ tocar `main.py` para persistir su score — ninguna de las dos entra en W12.
 
 | Archivo | Rol |
 |---------|-----|
-| `golden_set.json` | Videos, tiers, umbrales (incluye `real_job_id` opcional por video) |
+| `golden_set.json` | Videos, tiers, umbrales, `formato` (entrevista / charla / monólogo / clase) y `real_job_id` opcional por video |
+| `referencias/<youtube_id>.json` | Referencias por video (esquema arriba); `referencias/validar/*.md`, el markdown para validarlas |
+| `referencias.py` | Esquema, validación, fusión, markdown de validación y aplicación de correcciones (W19) |
+| `borrador_referencias.py` | Borrador asistido de Referencias con un modelo de otra familia (W19) |
+| `referencias_cli.py` | `markdown` / `aplicar` / `estado` de la validación humana (W19) |
+| `seleccion.py` | Tier `seleccion`: Pasada A × reps, métricas y `--recalcular` (W19) |
+| `aislamiento.py` | Tiers que no contaminan producción (`EVAL_CACHE_PRODUCCION`) y almacén local de transcripts (W19) |
 | `run_golden_set.py` | CLI (todos los tiers, incluido `e2e`) |
-| `eval_metrics.py` | Agregación y chequeo de umbrales; registro por clip del tier e2e; métricas `posteable` (W12) |
+| `eval_metrics.py` | Agregación y chequeo de umbrales; registro por clip del tier e2e; métricas `posteable` (W12); métricas contra Referencias y `captura_de_lo_mejor` (W19) |
 | `compare_runs.py` | Delta entre dos corridas e2e, incluidas las métricas `posteable` y `motivos_rechazo` |
 | `etiquetas.py` | Lee `clip_feedback` (posteable/motivo) por `content_result_id` y por `(job_id, moment_index)` (W12) |
 | `calibracion.py` | Compara cualquier rankeador contra las etiquetas reales: precision@k, correlación, peores errores (W12) |
@@ -278,4 +416,4 @@ tocar `main.py` para persistir su score — ninguna de las dos entra en W12.
 
 ---
 
-*Última actualización: septiembre 2026 (W12 — `posteable` como métrica principal del tier e2e)*
+*Última actualización: septiembre 2026 (W19 — Referencias y tier `seleccion`)*
