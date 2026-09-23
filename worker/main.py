@@ -892,10 +892,34 @@ def _refine_bounds_legacy(
 
     Returns dict con precut_path, clip_duration, clip_words,
     clip_segments_whisper, snap_trim_start, tail_snapped_by_sentence,
-    min_duration_reverted.
+    min_duration_reverted, anchor_failed.
+
+    W18 (hallazgo H5): si el momento SÍ trae frases de Verificación, llegar
+    acá significa que el anclaje W1 no se pudo hacer (la fuente no cubría el
+    momento o falló el Whisper del segmento ancho). Entonces no se recorta
+    nada por palabras (ni silencio, ni oración, ni "Head filler trim" por el
+    hook, que le sacó el planteo a los clips 4 y 5 de fb287cba): se
+    conservan los límites originales y `anchor_failed=True` marca el
+    candidato como roto. El refinamiento numérico queda solo para momentos
+    sin frases de Verificación (jobs legacy).
     """
     snap_trim_start = 0.0
     min_duration_reverted = False
+    if any(_moment_phrases(moment)):
+        print(
+            f"   🚩 Anclaje W1 no disponible y el momento trae frases de Verificación — "
+            f"conservo los límites originales ({clip_duration:.1f}s), sin recorte por palabras"
+        )
+        return {
+            "precut_path": precut_path,
+            "clip_duration": clip_duration,
+            "clip_words": clip_words,
+            "clip_segments_whisper": clip_segments_whisper,
+            "snap_trim_start": 0.0,
+            "tail_snapped_by_sentence": False,
+            "min_duration_reverted": False,
+            "anchor_failed": True,
+        }
     # Fase A: snap trim silencio + refinamiento a oración
     from services.validation import (
         verify_phrases_after_snap,
@@ -1076,6 +1100,7 @@ def _refine_bounds_legacy(
         "snap_trim_start": snap_trim_start,
         "tail_snapped_by_sentence": tail_snapped_by_sentence,
         "min_duration_reverted": min_duration_reverted,
+        "anchor_failed": False,
     }
 
 
@@ -1507,6 +1532,10 @@ def _prepare_moment_clip(
                     clip_segments_whisper = refined["clip_segments_whisper"]
                     snap_trim_start = refined["snap_trim_start"]
                     min_duration_reverted = refined["min_duration_reverted"]
+                    if refined["anchor_failed"]:
+                        # W18: Verificación no lograda → candidato roto
+                        # (no completa el piso de select_finalists).
+                        hook_not_found = True
                     subs_words = clip_words
                     subs_segments = clip_segments_whisper
 
@@ -1544,6 +1573,9 @@ def _prepare_moment_clip(
                     if late_hook:
                         moment.verification_failed = True
                         reasons.append("late hook")
+                    if hook_not_found:
+                        moment.verification_failed = True
+                        reasons.append("anchor failed")
                 info_reasons = []
                 if incomplete_tail:
                     info_reasons.append("incomplete_tail")
@@ -2007,7 +2039,7 @@ def _deliver_moment(
 
 def _annotate_candidates_all_with_judge(
     video_id: str,
-    tone: str,
+    transcript: dict,
     candidates: list,
     selected_idx: set,
 ) -> None:
@@ -2020,13 +2052,25 @@ def _annotate_candidates_all_with_judge(
     cercano porque `validate_durations` puede haber ajustado los tiempos
     entre la Pasada A cruda y el momento que llegó acá; si no hay match
     razonable o falla el guardado, no rompe el job.
+
+    W18: `candidates_all` solo existe en un análisis de la Pasada A, que se
+    guarda con el tono centinela (`PASADA_A_TONE`), la versión efectiva de
+    la fuente del transcript y su huella: se lee y se reescribe esa misma
+    fila, y solo si la huella coincide con la del transcript del job.
     """
     try:
-        from services.analysis_cache import get_cached_analysis_row, save_analysis
+        from services.analysis_cache import (
+            get_cached_analysis_row, save_analysis, effective_prompt_version, PASADA_A_TONE,
+        )
+        from services.transcript_cache import transcript_fingerprint
         from config.model_tiers import get_model
 
         model = get_model("analysis")
-        row = get_cached_analysis_row(video_id, model, tone)
+        prompt_version = effective_prompt_version(transcript.get("source"))
+        row = get_cached_analysis_row(
+            video_id, model, PASADA_A_TONE,
+            prompt_version=prompt_version, fingerprint=transcript_fingerprint(transcript),
+        )
         if not row or not isinstance((row.get("result") or {}).get("candidates_all"), list):
             return
         result = row["result"]
@@ -2049,11 +2093,42 @@ def _annotate_candidates_all_with_judge(
                 best_entry["w2_selected"] = cand.index in selected_idx
                 best_entry["w2_discard_reason"] = cand.discard_reason
         save_analysis(
-            video_id, model, result, tone=tone,
+            video_id, model, result, tone=PASADA_A_TONE,
             category_detected=row.get("category_detected"),
+            prompt_version=prompt_version,
         )
     except Exception as e:
         print(f"   ⚠️ No se pudo anotar candidates_all con las notas del juez (no fatal): {e}")
+
+
+# Claves que agrega el Transcript completo (W4) sobre los captions.
+_FULL_TRANSCRIPT_KEYS = ("lines", "words", "wpm", "source", "model", "provider", "fingerprint")
+
+
+def _save_captions_transcript(video_id: str, transcript: dict, video_info: dict) -> None:
+    """
+    S3: guarda los captions bajo la clave pelada `video_id`.
+
+    W18: la clave pelada es solo para captions. Un transcript `whisper_full`
+    ya se guardó bajo su clave compuesta (`yt_transcript`) y no se escribe
+    acá; de un `hybrid` se guardan solo sus captions (sin las Líneas del
+    Whisper completo).
+    """
+    from services.transcript_cache import save_transcript
+
+    source = (transcript.get("source") or "supadata").strip().lower()
+    if source == "whisper_full":
+        return
+    captions = transcript
+    if source == "hybrid":
+        captions = {k: v for k, v in transcript.items() if k not in _FULL_TRANSCRIPT_KEYS}
+    save_transcript(
+        video_id=video_id,
+        transcript=captions,
+        language=transcript.get("language"),
+        duration_seconds=video_info.get("duration"),
+    )
+    print(f"💾 Transcript cached for video {video_id}")
 
 
 def _finalize_job_outcome(
@@ -2216,14 +2291,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         check_timeout()  # C5
 
         # S3: Save transcript to cache
-        from services.transcript_cache import save_transcript
-        save_transcript(
-            video_id=video_id,
-            transcript=transcript,
-            language=transcript.get("language"),
-            duration_seconds=video_info.get("duration"),
-        )
-        print(f"💾 Transcript cached for video {video_id}")
+        _save_captions_transcript(video_id, transcript, video_info)
         
         # Step 3: Analyze transcript with AI (via OpenRouter)
         set_phase("analyze")
@@ -2567,7 +2635,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
 
         # Trazabilidad (W0 candidates_all): notas del juez de todos los
         # candidatos, elegidos y descartados, con el motivo del descarte.
-        _annotate_candidates_all_with_judge(video_id, job_tone, candidates, selected_idx)
+        _annotate_candidates_all_with_judge(video_id, transcript, candidates, selected_idx)
 
         # Los descartados no se entregan: limpiar su precut. Los finalistas
         # reutilizan el suyo en _deliver_moment — no se vuelve a descargar
