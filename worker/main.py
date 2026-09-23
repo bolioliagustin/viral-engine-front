@@ -4,6 +4,7 @@ Sondea la tabla `jobs` de Supabase (la cola), procesa cada job (transcript,
 IA, descarga, clips, copy) y sube los resultados a R2 y Supabase.
 """
 import gc
+import math
 import os
 import sys
 import json
@@ -248,6 +249,44 @@ def compute_job_timeout_sec(video_duration_sec: float | None) -> float:
     video_minutes = max(0.0, (video_duration_sec or 0.0) / 60.0)
     raw = JOB_TIMEOUT_BASE_SEC + JOB_TIMEOUT_PER_VIDEO_MIN_SEC * video_minutes
     return max(JOB_TIMEOUT_MIN_SEC, min(JOB_TIMEOUT_MAX_SEC, raw))
+
+
+# W20 (docs/briefs/W20-operacion-purga-y-tope.md, decisión A5): tope real de
+# duración. El backend lo aplica "fail open" (si no logra leer la duración,
+# deja pasar el video: así entró uno de 111 min con el tope en 90); el worker
+# es la autoridad porque después del transcript conoce la duración real. El
+# default del worker es 150 min: el ICP publica episodios de 1–2 h.
+MAX_VIDEO_MINUTES_DEFAULT = 150.0
+
+
+def max_video_minutes() -> float:
+    """`MAX_VIDEO_MINUTES` (default 150). Un valor inválido o ≤ 0 cae al default."""
+    raw = (os.getenv("MAX_VIDEO_MINUTES") or "").strip()
+    try:
+        value = float(raw) if raw else MAX_VIDEO_MINUTES_DEFAULT
+    except ValueError:
+        print(f"⚠️ MAX_VIDEO_MINUTES={raw!r} no es un número; uso {MAX_VIDEO_MINUTES_DEFAULT:.0f}")
+        return MAX_VIDEO_MINUTES_DEFAULT
+    return value if value > 0 else MAX_VIDEO_MINUTES_DEFAULT
+
+
+def video_too_long_message(duration_sec: float | None, max_minutes: float | None = None) -> str | None:
+    """
+    Mensaje de error si el video supera el tope, o None si entra. Con
+    duración desconocida (None/0) no bloquea: se loguea y el job sigue.
+    Función pura (testeada en tests/test_tope_duracion.py).
+    """
+    limit = max_minutes if max_minutes is not None else max_video_minutes()
+    if not duration_sec or duration_sec <= 0:
+        print(f"⚠️ Duración del video desconocida: no se aplica el tope de {limit:.0f} min")
+        return None
+    if duration_sec <= limit * 60:
+        return None
+    return f"El video dura {math.ceil(duration_sec / 60)} min; el máximo es {limit:.0f} min"
+
+
+class VideoTooLongError(Exception):
+    """El video supera `MAX_VIDEO_MINUTES` (W20). El mensaje es para el usuario."""
 
 
 def _resolve_video_duration(video_info: dict, transcript: dict, viral_moments) -> float:
@@ -2198,6 +2237,11 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         early_duration = get_video_metadata(early_video_id).get("duration") if early_video_id else 0
         if early_duration:
             _rearm_timeout(compute_job_timeout_sec(early_duration), early_duration / 60, "HTML, antes de la descarga")
+            # W20: si la página ya dice que se pasa del tope, no se baja ni se
+            # transcribe nada. Sin duración temprana decide el chequeo post-transcript.
+            too_long = video_too_long_message(early_duration)
+            if too_long:
+                raise VideoTooLongError(too_long)
 
         transcript, video_info = get_youtube_transcript(video_url)
         video_id = video_info["id"]
@@ -2209,6 +2253,12 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         refined_duration = video_info.get("duration")
         if refined_duration:
             _rearm_timeout(compute_job_timeout_sec(refined_duration), refined_duration / 60, "refinado post-transcript")
+
+        # W20: tope real de duración, con la duración que dejó el transcript.
+        # Falla antes de la Pasada A; update_job_error devuelve el crédito (F1).
+        too_long = video_too_long_message(refined_duration or transcript.get("duration"))
+        if too_long:
+            raise VideoTooLongError(too_long)
 
         update_job_status(job_id, "processing", video_info["title"])
         update_job_progress(job_id, current_step="classifying", progress_percentage=compute_progress_percentage("classifying"))
