@@ -171,6 +171,9 @@ El `.env` de la raíz apunta a la base de la beta. En los tiers `seleccion` y
   (gitignored);
 - lee transcripts en solo lectura: primero la copia local del eval, después
   Supabase;
+- la purga del Cortacircuitos (`cache_purge.purge_video_cache`, W18) borra
+  solo archivos locales, nunca en Supabase, y la copia local del eval de
+  ese video deja de servirse hasta que se guarde el transcript rehecho;
 - en `seleccion`, el costo se acumula en memoria (`EVAL_DRY_RUN=1`): nada va a
   `job_usage_events`.
 
