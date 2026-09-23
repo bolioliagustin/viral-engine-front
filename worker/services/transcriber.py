@@ -593,15 +593,30 @@ def transcribe_full_audio(
 
     try:
         lang = iso_language_code(language)
-        start_idx = 0
+        muestras: list[int] = []
         if not lang:
-            results[0] = _one(0, None)
-            detected = results[0].get("language") or None
-            lang = iso_language_code(detected)
-            start_idx = 1
-            print(f"   🌐 Idioma detectado en el tramo 1: {detected!r} → {lang or 'sin fijar'}")
+            # W16: detectar sobre 3 tramos repartidos (25/50/75%) y decidir por
+            # mayoría. Con el tramo 1 solo, una intro con música y gritos hacía
+            # que Whisper "detectara" inglés y TRADUJERA el video entero (job
+            # 88d6a444: un programa argentino salió en inglés).
+            n = len(chunks)
+            muestras = sorted({n // 4, n // 2, (3 * n) // 4}) if n >= 4 else [0]
+            votos: dict[str, int] = {}
+            for i in muestras:
+                results[i] = _one(i, None)
+                code = iso_language_code(results[i].get("language") or None)
+                if code:
+                    votos[code] = votos.get(code, 0) + 1
+            lang = max(votos, key=votos.get) if votos else None
+            print(f"   🌐 Idioma por mayoría en los tramos {[i + 1 for i in muestras]}: "
+                  f"{votos or 'sin datos'} → {lang or 'sin fijar'}")
+            # Un tramo transcripto con el idioma equivocado ensucia el
+            # transcript: los que no votaron por el ganador se rehacen.
+            for i in muestras:
+                if iso_language_code((results[i] or {}).get("language") or None) != lang:
+                    results[i] = None
 
-        pending = list(range(start_idx, len(chunks)))
+        pending = [i for i in range(len(chunks)) if results[i] is None]
         if pending:
             # El contexto del job no se hereda en los hilos del pool: sin
             # `in_current_context`, `usage_tracker` descarta los eventos de los

@@ -55,15 +55,16 @@ class TestReadWithSpeedGuard:
         sock = _FakeSocket(total_bytes=5 * (1 << 20), bytes_per_sec=50 * 1024)
         out = tmp_path / "audio.m4a"
         t0 = time.time()
-        with pytest.raises(downloader.SlowProxyError):
-            downloader._read_with_speed_guard(sock, out, want_bytes=sock.total, label="audio completo")
+        with open(out, "wb") as f, pytest.raises(downloader.SlowProxyError):
+            downloader._read_with_speed_guard(sock, f, want_bytes=sock.total, label="audio completo")
         # Aborta enseguida — no espera los 30 s reales que motivaron W14.
         assert time.time() - t0 < 5.0
 
     def test_caudal_alto_descarga_completa(self, tmp_path):
         sock = _FakeSocket(total_bytes=1 << 20, bytes_per_sec=5 * (1 << 20))  # 5 MB/s
         out = tmp_path / "audio.m4a"
-        downloader._read_with_speed_guard(sock, out, want_bytes=sock.total, label="audio completo")
+        with open(out, "wb") as f:
+            downloader._read_with_speed_guard(sock, f, want_bytes=sock.total, label="audio completo")
         assert out.stat().st_size == sock.total
 
     def test_lento_pero_ya_80_por_ciento_no_aborta(self, tmp_path):
@@ -72,14 +73,15 @@ class TestReadWithSpeedGuard:
         # bajó >80%, así que NO debe abortar — conviene terminar.
         sock = _FakeSocket(total_bytes=18_000, bytes_per_sec=51_200, block=4096)
         out = tmp_path / "audio.m4a"
-        downloader._read_with_speed_guard(sock, out, want_bytes=sock.total, label="audio completo")
+        with open(out, "wb") as f:
+            downloader._read_with_speed_guard(sock, f, want_bytes=sock.total, label="audio completo")
         assert out.stat().st_size == sock.total
 
 
 class TestDownloadAudioOnlyReintenta:
     def test_primer_proxy_lento_reintenta_con_otro_y_termina_bien(self, tmp_path, monkeypatch):
         monkeypatch.setattr(downloader, "DOWNLOADS_DIR", tmp_path)
-        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid: None)
+        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid, expected_duration_sec=None: None)
         monkeypatch.setattr(downloader, "_get_proxy_list", lambda: ["http://proxy1", "http://proxy2"])
 
         # Estrategias A/C (yt-dlp) fallan siempre — solo queda la B (stream URLs).
@@ -118,7 +120,7 @@ class TestDownloadAudioOnlyReintenta:
         monkeypatch.setattr(downloader, "DOWNLOADS_DIR", tmp_path)
         monkeypatch.setattr(downloader, "AUDIO_DOWNLOAD_ATTEMPTS", 3)
         monkeypatch.setattr(downloader, "AUDIO_MAX_DOWNLOAD_SEC", 1500.0)
-        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid: None)
+        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid, expected_duration_sec=None: None)
         monkeypatch.setattr(downloader, "_get_proxy_list", lambda: ["http://p1", "http://p2", "http://p3"])
 
         mock_ydl = MagicMock()
@@ -161,7 +163,7 @@ class TestDownloadAudioOnlyReintenta:
         monkeypatch.setattr(downloader, "DOWNLOADS_DIR", tmp_path)
         monkeypatch.setattr(downloader, "AUDIO_DOWNLOAD_ATTEMPTS", 3)
         monkeypatch.setattr(downloader, "AUDIO_MAX_DOWNLOAD_SEC", 1500.0)
-        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid: None)
+        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid, expected_duration_sec=None: None)
         monkeypatch.setattr(downloader, "_get_proxy_list", lambda: ["http://p1", "http://p2", "http://p3"])
 
         mock_ydl = MagicMock()
@@ -193,7 +195,7 @@ class TestDownloadAudioOnlyReintenta:
         final lista los N intentos — no explota a mitad del loop)."""
         monkeypatch.setattr(downloader, "DOWNLOADS_DIR", tmp_path)
         monkeypatch.setattr(downloader, "AUDIO_DOWNLOAD_ATTEMPTS", 2)
-        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid: None)
+        monkeypatch.setattr(downloader, "find_local_full_media", lambda vid, expected_duration_sec=None: None)
         monkeypatch.setattr(downloader, "_get_proxy_list", lambda: ["http://proxy1", "http://proxy2"])
 
         mock_ydl = MagicMock()
