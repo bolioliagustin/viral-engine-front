@@ -412,7 +412,9 @@ def _get_transcript_via_whisper_full(
         return cached, video_info
 
     from services.downloader import download_audio_only
-    audio_path = download_audio_only(video_url, video_id)
+    audio_path = download_audio_only(
+        video_url, video_id, expected_duration_sec=float(video_info.get("duration") or 0),
+    )
 
     lang = (language or "").strip().lower() or None
     if lang and len(lang) > 2:

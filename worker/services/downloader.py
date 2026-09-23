@@ -51,6 +51,11 @@ AUDIO_MIN_BITRATE_BPS = 48_000  # piso de calidad para Whisper (W14, RapidAPI)
 # 30 min: el caso medido (50 MB a 30 KB/s ≈ 28,5 min) tiene que entrar; un
 # video de 54 min tiene 47 min de timeout, así que sobran ~18 min para el resto.
 AUDIO_MAX_DOWNLOAD_SEC = float(os.getenv("AUDIO_MAX_DOWNLOAD_SEC", str(30 * 60)))
+# W16: googlevideo ESTRANGULA a ~velocidad de reproducción cuando se le pide el
+# archivo entero en un solo Range (medido el 23-sep-2026 desde el VPS, audio de
+# 136 kbps: 27 KB/s pidiendo todo contra 2236 KB/s pidiendo tramos de 4 MB —
+# 83× más rápido por el MISMO proxy). El pool nunca fue el problema.
+AUDIO_RANGE_CHUNK_BYTES = int(os.getenv("AUDIO_RANGE_CHUNK_BYTES", str(8 << 20)))
 
 
 class SlowProxyError(RuntimeError):
@@ -487,15 +492,21 @@ def _probe_stream_info_for_proxy(
 
 def _read_with_speed_guard(
     resp,
-    out_path: Path,
+    out_file,
     want_bytes: int,
     *,
     label: str,
     progress_step: str | None = None,
     enforce_speed_guard: bool = True,
+    state: dict | None = None,
 ) -> None:
     """
-    Vuelca `resp` a `out_path` en bloques de 1 MB, midiendo el caudal.
+    Vuelca `resp` en el archivo abierto `out_file` en bloques de 1 MB,
+    midiendo el caudal.
+
+    `state` acumula el progreso ENTRE tramos Range (W16), porque la descarga
+    de un audio completo son muchas requests y el caudal hay que medirlo
+    sobre el total, no sobre cada tramo.
 
     Si después de `AUDIO_SPEED_PROBE_SEC` el promedio queda por debajo de
     `AUDIO_MIN_SPEED_KBPS`, aborta con `SlowProxyError` (con el caudal y los
@@ -508,47 +519,46 @@ def _read_with_speed_guard(
     """
     from services.progress import report as _report_progress
 
+    if state is None:
+        state = {}
     chunk_size = 1 << 20
-    t0 = time.time()
-    downloaded = 0
-    checked_speed = False
-    last_report_t = t0
-    last_report_pct = -1
+    t0 = state.setdefault("t0", time.time())
+    state.setdefault("downloaded", 0)
+    state.setdefault("checked_speed", False)
+    state.setdefault("last_report_t", t0)
+    state.setdefault("last_report_pct", -1)
 
-    with open(out_path, "wb") as f:
-        while True:
-            chunk = resp.read(chunk_size)
-            if not chunk:
-                break
-            f.write(chunk)
-            downloaded += len(chunk)
-            now = time.time()
-            elapsed = now - t0
+    while True:
+        chunk = resp.read(chunk_size)
+        if not chunk:
+            break
+        out_file.write(chunk)
+        state["downloaded"] += len(chunk)
+        downloaded = state["downloaded"]
+        now = time.time()
+        elapsed = now - t0
 
-            if enforce_speed_guard and not checked_speed and elapsed >= AUDIO_SPEED_PROBE_SEC:
-                checked_speed = True
-                speed_kbps = (downloaded / 1024) / max(elapsed, 0.01)
-                pct_done = downloaded / max(want_bytes, 1)
-                if speed_kbps < AUDIO_MIN_SPEED_KBPS and pct_done < 0.8:
-                    raise SlowProxyError(
-                        f"{label}: {speed_kbps:.0f} KB/s tras {elapsed:.0f}s "
-                        f"(< {AUDIO_MIN_SPEED_KBPS:.0f} KB/s piso, {pct_done*100:.0f}% bajado)",
-                        speed_kbps=speed_kbps, want_bytes=want_bytes,
-                    )
-                print(f"   🚦 {label}: caudal OK ({speed_kbps:.0f} KB/s tras {elapsed:.0f}s)")
+        if enforce_speed_guard and not state["checked_speed"] and elapsed >= AUDIO_SPEED_PROBE_SEC:
+            state["checked_speed"] = True
+            speed_kbps = (downloaded / 1024) / max(elapsed, 0.01)
+            pct_done = downloaded / max(want_bytes, 1)
+            if speed_kbps < AUDIO_MIN_SPEED_KBPS and pct_done < 0.8:
+                raise SlowProxyError(
+                    f"{label}: {speed_kbps:.0f} KB/s tras {elapsed:.0f}s "
+                    f"(< {AUDIO_MIN_SPEED_KBPS:.0f} KB/s piso, {pct_done*100:.0f}% bajado)",
+                    speed_kbps=speed_kbps, want_bytes=want_bytes,
+                )
+            print(f"   🚦 {label}: caudal OK ({speed_kbps:.0f} KB/s tras {elapsed:.0f}s)")
 
-            if progress_step:
-                pct_now = round((downloaded / max(want_bytes, 1)) * 100)
-                if now - last_report_t >= 2.0 or pct_now >= last_report_pct + 5:
-                    _report_progress(
-                        progress_step, downloaded, want_bytes,
-                        f"Descargando audio: {downloaded // (1 << 20)} de {want_bytes // (1 << 20)} MB",
-                    )
-                    last_report_t = now
-                    last_report_pct = pct_now
-
-    if downloaded < want_bytes:
-        raise RuntimeError(f"{label}: descarga incompleta ({downloaded} de {want_bytes} bytes)")
+        if progress_step:
+            pct_now = round((downloaded / max(want_bytes, 1)) * 100)
+            if now - state["last_report_t"] >= 2.0 or pct_now >= state["last_report_pct"] + 5:
+                _report_progress(
+                    progress_step, downloaded, want_bytes,
+                    f"Descargando audio: {downloaded // (1 << 20)} de {want_bytes // (1 << 20)} MB",
+                )
+                state["last_report_t"] = now
+                state["last_report_pct"] = pct_now
 
 
 def _download_bytes_sequential(
@@ -564,14 +574,19 @@ def _download_bytes_sequential(
     enforce_speed_guard: bool = True,
 ) -> None:
     """
-    Descarga secuencial (1 conexión) vía proxy sticky.
+    Descarga secuencial por tramos Range vía proxy sticky.
 
-    googlevideo rechaza chunks paralelos en URLs de RapidAPI; una sola conexión
-    Range bytes=0-N por la misma IP que resolvió/probeó funciona de forma fiable.
+    googlevideo rechaza chunks PARALELOS en URLs de RapidAPI, pero pedir el
+    archivo entero en UN solo Range hace que lo estrangule a la velocidad de
+    reproducción (W16: 27 KB/s contra 2236 KB/s pidiendo tramos de 4 MB por el
+    mismo proxy). Así que se pide en tramos de `AUDIO_RANGE_CHUNK_BYTES`, uno
+    detrás del otro y siempre por la misma IP.
+
     Aborta temprano con `SlowProxyError` si el proxy está lento (W14, ver
     `_read_with_speed_guard`; `enforce_speed_guard=False` lo desactiva para el
     intento paciente de W14-B); `progress_step` reporta avance sin conocer
-    Supabase (`services.progress`).
+    Supabase (`services.progress`). Si falla, NO deja el archivo a medias
+    (W16: un parcial de 1 MB se colaba después como "audio completo").
     """
     if known_total and known_total > 0 and sticky_proxy:
         total = known_total
@@ -591,18 +606,32 @@ def _download_bytes_sequential(
     )
 
     opener = build_opener(ProxyHandler({"http": sticky_proxy, "https": sticky_proxy}))
-    hdrs = {**_YT_MEDIA_HEADERS, "Range": f"bytes=0-{effective_end}"}
+    state: dict = {}
     t0 = time.time()
-    with opener.open(Request(url, headers=hdrs), timeout=600) as resp:
-        _read_with_speed_guard(
-            resp, out_path, want, label=label, progress_step=progress_step,
-            enforce_speed_guard=enforce_speed_guard,
-        )
+    try:
+        with open(out_path, "wb") as f:
+            start = 0
+            while start <= effective_end:
+                stop = min(start + AUDIO_RANGE_CHUNK_BYTES - 1, effective_end)
+                hdrs = {**_YT_MEDIA_HEADERS, "Range": f"bytes={start}-{stop}"}
+                with opener.open(Request(url, headers=hdrs), timeout=120) as resp:
+                    _read_with_speed_guard(
+                        resp, f, want, label=label, progress_step=progress_step,
+                        enforce_speed_guard=enforce_speed_guard, state=state,
+                    )
+                if state.get("downloaded", 0) <= start:
+                    raise RuntimeError(f"{label}: tramo vacío en el byte {start}")
+                start = stop + 1
+        got = out_path.stat().st_size
+        if got < want:
+            raise RuntimeError(f"{label}: descarga incompleta ({got} de {want} bytes)")
+    except BaseException:
+        # Un parcial en disco después pasa por "audio completo" (W16).
+        out_path.unlink(missing_ok=True)
+        raise
     elapsed = time.time() - t0
-    got = out_path.stat().st_size
-    if got <= 0:
-        raise RuntimeError(f"{label}: descarga secuencial vacía")
-    print(f"   ✅ {label}: {got // (1 << 20)}MB en {elapsed:.1f}s ({got // (1 << 20) / max(elapsed, 0.01):.1f}MB/s)")
+    print(f"   ✅ {label}: {got // (1 << 20)}MB en {elapsed:.1f}s "
+          f"({got / 1024 / max(elapsed, 0.01):.0f} KB/s)")
 
 
 def _parallel_download(url: str, out_path: Path, num_chunks: int = 8, label: str = "",
@@ -848,23 +877,44 @@ def _download_video_ytdlp(video_url: str, video_id: str = None) -> str:
     return str(video_path)
 
 
-def find_local_full_media(video_id: str) -> str | None:
+MEDIA_MIN_DURATION_RATIO = 0.9  # un archivo con menos del 90% del audio no sirve
+
+
+def find_local_full_media(video_id: str, expected_duration_sec: float | None = None) -> str | None:
     """
-    Si ya hay un archivo local con el audio completo del video (audio solo,
+    Si ya hay un archivo local con el audio COMPLETO del video (audio solo,
     video completo o muxeado de una descarga previa), devuelve su path para
     no volver a YouTube. Lo usa el Transcript completo de W4.
+
+    Con `expected_duration_sec` se descarta lo que esté cortado: un archivo
+    que no llega al `MEDIA_MIN_DURATION_RATIO` de esa duración no es el audio
+    completo (W16 — un parcial de 1 MB que había quedado de una descarga
+    abortada se coló como "audio completo" y el job transcribió 64 s de un
+    video de 111 min, job 1ea90b15 del 23-sep-2026).
     """
+    from services.audio_utils import probe_audio_duration_sec
+
     candidates = list(DOWNLOADS_DIR.glob(f"{video_id}_audio_only.*"))
     for name in (f"{video_id}_video.mp4", f"{video_id}_video.webm", f"{video_id}_video.mkv",
                  f"{video_id}_muxed.mp4"):
         candidates.append(DOWNLOADS_DIR / name)
     for path in candidates:
-        if path.exists() and path.stat().st_size > 0 and not path.name.endswith(".part"):
-            return str(path)
+        if not (path.exists() and path.stat().st_size > 0 and not path.name.endswith(".part")):
+            continue
+        if expected_duration_sec and expected_duration_sec > 0:
+            got = probe_audio_duration_sec(str(path))
+            if got and got < expected_duration_sec * MEDIA_MIN_DURATION_RATIO:
+                print(f"🗑️ {path.name} tiene {got / 60:.1f} min de "
+                      f"{expected_duration_sec / 60:.1f} min — parcial, se descarta")
+                path.unlink(missing_ok=True)
+                continue
+        return str(path)
     return None
 
 
-def download_audio_only(video_url: str, video_id: str) -> str:
+def download_audio_only(
+    video_url: str, video_id: str, expected_duration_sec: float | None = None
+) -> str:
     """
     Descarga SOLO el audio del video para el Transcript completo de W4
     (docs/PLAN_CALIDAD.md §4) a `downloads/{video_id}_audio_only.<ext>`.
@@ -888,7 +938,7 @@ def download_audio_only(video_url: str, video_id: str) -> str:
        único que YouTube ofrece sin cookies ni PO token (formato 18, 360p,
        ~5 MB/min); el audio se extrae al partir en tramos. Camino de la Mac.
     """
-    existing = find_local_full_media(video_id)
+    existing = find_local_full_media(video_id, expected_duration_sec)
     if existing:
         print(f"♻️ Audio completo ya disponible en local: {Path(existing).name}")
         return existing
@@ -911,9 +961,9 @@ def download_audio_only(video_url: str, video_id: str) -> str:
             print(f"⬇️ Audio completo de {video_id} vía yt-dlp ({label})...")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.extract_info(video_url, download=True)
-            found = find_local_full_media(video_id)
+            found = find_local_full_media(video_id, expected_duration_sec)
             if not found:
-                raise FileNotFoundError("yt-dlp terminó sin dejar el archivo")
+                raise FileNotFoundError("yt-dlp terminó sin dejar el archivo completo")
             print(f"✅ Audio completo ({label}): {Path(found).name} "
                   f"({Path(found).stat().st_size / (1 << 20):.1f} MB)")
             return found
