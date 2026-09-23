@@ -550,6 +550,24 @@ bash deploy/deploy-worker.sh                             # deploy manual
 
 Salud: `GET /health` (readiness con Supabase) y `GET /health/live` en el backend; el worker solo expone `/health` si `PORT` está seteado (Render). Errores en Sentry (backend y worker). Costos en `/admin/usage`.
 
+**Mergear a `main` despliega el worker.** `.github/workflows/deploy.yml` escucha el push a `main` (además del `workflow_dispatch`) y reconstruye y reinicia el contenedor, aunque el PR sea solo de docs. Si hay un job corriendo, se corta. Por eso todo cambio de comportamiento del worker entra con su flag apagado ([`PLAN_MEJORA.md`](PLAN_MEJORA.md) §4) y se prende en `~/viralengine/.env` recién después del gate.
+
+#### Después de un fix de audio, transcript o idioma
+
+Un fix de descarga o de transcript no arregla los videos ya procesados: sus cachés siguen sirviendo el resultado viejo (job `fb287cba`, 23-sep-2026). Desde W18 la Huella del transcript evita reutilizar un análisis calculado sobre otro transcript. Aun así, los transcripts cacheados con el bug hay que purgarlos:
+
+1. **Detectar los videos afectados:**
+   - los jobs del período del bug (`jobs.created_at`, con el `video_url`);
+   - o, para bugs de idioma, un detector sobre `analysis_cache.result` (summary y hooks) y `transcription_cache.transcript`: proporción de stopwords en inglés contra español.
+2. **Purgar cada video**, primero con `--dry-run`, en la Mac o dentro del contenedor:
+   ```bash
+   cd worker && python scripts/purge-video-cache.py <video_id> --dry-run   # Mac, lista lo que borraría
+   docker compose -f docker-compose.worker.yml exec worker \
+     python scripts/purge-video-cache.py <video_id>                         # VPS: Supabase + /app/downloads/<video_id>*
+   ```
+   El script borra `analysis_cache`, `category_cache`, `transcription_cache` (clave pelada y compuestas) y los archivos locales, incluido el audio. En el VPS lo local vive en el volumen `worker_downloads`, que sobrevive a los deploys: purgar solo Supabase no alcanza.
+3. **Verificar:** volver a correr el detector (0 filas) y procesar el video una vez para confirmar que el transcript sale en el idioma correcto.
+
 ---
 
 ## 11. Configuración
