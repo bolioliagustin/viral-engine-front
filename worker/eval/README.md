@@ -153,12 +153,18 @@ python eval/run_golden_set.py --tier seleccion --recalcular eval/runs/<corrida>.
   video habilitado con `"seleccion"` en `tiers` **y** Referencias validadas.
 - `--reps N` (default del tier: 3) hace N llamadas independientes y reporta
   media y desvío por métrica. Las corridas van en paralelo (`--workers`,
-  default 8).
+  default 4: con 8 y saldo bajo, OpenRouter devuelve 402).
 - `--incluir-borradores` mide también contra momentos sin validar; el JSON lo
   marca (`incluir_borradores: true`) y el resumen lo avisa.
 - El JSON guarda los candidatos de cada repetición (inicio, fin,
   `rank_score`), la categoría, el costo y el tiempo, así que `--recalcular`
   rehace las métricas sin llamar a la API cuando cambian las Referencias.
+- `--completar <corrida.json>` rehace solo las repeticiones con error (p. ej.
+  402 de OpenRouter) y reescribe la corrida. Una repetición en la que la
+  Pasada A cae al mega-prompt de respaldo cuenta como error: no mide la
+  selección.
+- Baseline: `runs/2026-09-23-seleccion-baseline.json` (tabla en
+  `runs/README.md`).
 
 ### No contaminar producción (PLAN_MEJORA §4.1)
 

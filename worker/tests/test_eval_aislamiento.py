@@ -290,3 +290,45 @@ class TestRutasW18:
         assert not (tmp_path / "downloads" / "VIDX_transcript_whisper_full.json").exists()  # la purga local sí corre
         assert intentos["purge_video_cache"] == 1
         assert intentos["save_transcript"] == 2
+
+
+class TestRepeticionesInvalidas:
+    def test_fallback_a_mega_prompt_invalida_la_rep(self, fake_sb, monkeypatch):
+        import seleccion
+        from services import moment_selector, processor
+        monkeypatch.setattr(processor, "OpenAI", _FakeOpenAI)
+
+        def _falla(*a, **k):
+            raise RuntimeError("402")
+        monkeypatch.setattr(moment_selector, "select_moments", _falla)
+        restaurar = seleccion._instalar_capturas()
+        try:
+            with aislamiento.sin_cache_de_produccion():
+                with pytest.raises(RuntimeError, match="mega-prompt"):
+                    seleccion.correr_pasada_a(_transcript(), {"id": "VIDX", "title": "t", "duration": 1500})
+        finally:
+            restaurar()
+
+    def test_completar_rehace_solo_las_fallidas(self, fake_sb, monkeypatch, tmp_path):
+        import referencias as refs
+        import seleccion
+        from services import processor
+        monkeypatch.setattr(processor, "OpenAI", _FakeOpenAI)
+        monkeypatch.setattr(aislamiento, "EVAL_TRANSCRIPTS_DIR", tmp_path / "tr")
+        monkeypatch.setattr(refs, "REFERENCIAS_DIR", tmp_path / "refs")
+        aislamiento.guardar_transcript_local("VIDX", _transcript(), {"id": "VIDX", "title": "t", "duration": 1500})
+        doc = refs.documento_vacio("VIDX", "video_x", 1500.0)
+        doc["momentos"] = [{"id": "R01", "inicio": 95, "fin": 150, "nucleo_inicio": 105, "nucleo_fin": 135,
+                            "tipo": "anécdota", "calidad": "A", "por_que": "x", "autor": "t",
+                            "validado_por": "agustin", "fecha": "2026-09-23"}]
+        refs.guardar_referencias(doc)
+        buena = {"rep": 1, "candidatos": [{"start_time": 0, "end_time": 30, "rank_score": 1}], "costo_usd": 0.5}
+        corrida = {"reps": 2, "incluir_borradores": False, "videos": [{
+            "id": "video_x", "youtube_id": "VIDX", "duracion_sec": 1500.0,
+            "reps": [buena, {"rep": 2, "error": "APIStatusError: 402"}],
+        }]}
+        out = seleccion.completar_corrida(corrida, [{"id": "video_x", "youtube_id": "VIDX"}], workers=1, log=lambda *_: None)
+        reps = out["videos"][0]["reps"]
+        assert reps[0]["costo_usd"] == 0.5 and not reps[1].get("error")
+        assert out["videos"][0]["agregado"]["recall_completo"]["n"] == 2
+        assert _cache_ops(fake_sb) == []
