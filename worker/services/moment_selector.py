@@ -156,6 +156,13 @@ class CandidateEval:
     jev_confidence: float | None = None
 
 
+def is_broken(c: "CandidateEval") -> bool:
+    """Nivel FUERTE (W2-C): el clip no tiene lo que dice tener (Verificación
+    fallida o segmento sin habla). W18: no completa el piso ni suma para el
+    Cortacircuitos (este último cuenta solo hook/payoff, ver main.py)."""
+    return bool(c.hook_not_found or c.payoff_not_found or c.bad_segment)
+
+
 def _judge_sum(c: "CandidateEval") -> float:
     """Nota base del candidato, en la escala 0..30 del Juez.
 
@@ -243,6 +250,11 @@ def select_finalists(
     `usable=False` (sin `clip_text`, no hay nada que renderizar), ni
     siquiera para completar el piso.
 
+    W18 (hallazgo H4, job fb287cba): el piso tampoco se completa con
+    candidatos rotos (`is_broken`: `hook_not_found`, `payoff_not_found` o
+    `bad_segment`). Si hay menos entregables que el piso, se entregan menos;
+    con 0, el job falla y devuelve el crédito (`_finalize_job_outcome`).
+
     Diversidad: un candidato se descarta si solapa > MAX_OVERLAP_RATIO en
     tiempo con uno ya elegido, o si su hook es casi el mismo (Jaccard de
     palabras > MAX_HOOK_SIMILARITY) — igual que W2. El backfill del piso
@@ -287,6 +299,9 @@ def select_finalists(
             if len(selected) >= floor or len(selected) >= DELIVERY_MAX_CLIPS:
                 break
             if cand.index in selected_idx or not cand.usable:
+                continue
+            if is_broken(cand):
+                cand.discard_reason = (cand.discard_reason or "") + " · piso: roto, no rellena (W18)"
                 continue
             cand.discard_reason = None
             selected.append(cand)

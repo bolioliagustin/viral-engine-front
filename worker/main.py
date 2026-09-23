@@ -892,10 +892,34 @@ def _refine_bounds_legacy(
 
     Returns dict con precut_path, clip_duration, clip_words,
     clip_segments_whisper, snap_trim_start, tail_snapped_by_sentence,
-    min_duration_reverted.
+    min_duration_reverted, anchor_failed.
+
+    W18 (hallazgo H5): si el momento SÍ trae frases de Verificación, llegar
+    acá significa que el anclaje W1 no se pudo hacer (la fuente no cubría el
+    momento o falló el Whisper del segmento ancho). Entonces no se recorta
+    nada por palabras (ni silencio, ni oración, ni "Head filler trim" por el
+    hook, que le sacó el planteo a los clips 4 y 5 de fb287cba): se
+    conservan los límites originales y `anchor_failed=True` marca el
+    candidato como roto. El refinamiento numérico queda solo para momentos
+    sin frases de Verificación (jobs legacy).
     """
     snap_trim_start = 0.0
     min_duration_reverted = False
+    if any(_moment_phrases(moment)):
+        print(
+            f"   🚩 Anclaje W1 no disponible y el momento trae frases de Verificación — "
+            f"conservo los límites originales ({clip_duration:.1f}s), sin recorte por palabras"
+        )
+        return {
+            "precut_path": precut_path,
+            "clip_duration": clip_duration,
+            "clip_words": clip_words,
+            "clip_segments_whisper": clip_segments_whisper,
+            "snap_trim_start": 0.0,
+            "tail_snapped_by_sentence": False,
+            "min_duration_reverted": False,
+            "anchor_failed": True,
+        }
     # Fase A: snap trim silencio + refinamiento a oración
     from services.validation import (
         verify_phrases_after_snap,
@@ -1076,6 +1100,7 @@ def _refine_bounds_legacy(
         "snap_trim_start": snap_trim_start,
         "tail_snapped_by_sentence": tail_snapped_by_sentence,
         "min_duration_reverted": min_duration_reverted,
+        "anchor_failed": False,
     }
 
 
@@ -1507,6 +1532,10 @@ def _prepare_moment_clip(
                     clip_segments_whisper = refined["clip_segments_whisper"]
                     snap_trim_start = refined["snap_trim_start"]
                     min_duration_reverted = refined["min_duration_reverted"]
+                    if refined["anchor_failed"]:
+                        # W18: Verificación no lograda → candidato roto
+                        # (no completa el piso de select_finalists).
+                        hook_not_found = True
                     subs_words = clip_words
                     subs_segments = clip_segments_whisper
 
@@ -1544,6 +1573,9 @@ def _prepare_moment_clip(
                     if late_hook:
                         moment.verification_failed = True
                         reasons.append("late hook")
+                    if hook_not_found:
+                        moment.verification_failed = True
+                        reasons.append("anchor failed")
                 info_reasons = []
                 if incomplete_tail:
                     info_reasons.append("incomplete_tail")
@@ -2007,7 +2039,7 @@ def _deliver_moment(
 
 def _annotate_candidates_all_with_judge(
     video_id: str,
-    tone: str,
+    transcript: dict,
     candidates: list,
     selected_idx: set,
 ) -> None:
@@ -2020,13 +2052,25 @@ def _annotate_candidates_all_with_judge(
     cercano porque `validate_durations` puede haber ajustado los tiempos
     entre la Pasada A cruda y el momento que llegó acá; si no hay match
     razonable o falla el guardado, no rompe el job.
+
+    W18: `candidates_all` solo existe en un análisis de la Pasada A, que se
+    guarda con el tono centinela (`PASADA_A_TONE`), la versión efectiva de
+    la fuente del transcript y su huella: se lee y se reescribe esa misma
+    fila, y solo si la huella coincide con la del transcript del job.
     """
     try:
-        from services.analysis_cache import get_cached_analysis_row, save_analysis
+        from services.analysis_cache import (
+            get_cached_analysis_row, save_analysis, effective_prompt_version, PASADA_A_TONE,
+        )
+        from services.transcript_cache import transcript_fingerprint
         from config.model_tiers import get_model
 
         model = get_model("analysis")
-        row = get_cached_analysis_row(video_id, model, tone)
+        prompt_version = effective_prompt_version(transcript.get("source"))
+        row = get_cached_analysis_row(
+            video_id, model, PASADA_A_TONE,
+            prompt_version=prompt_version, fingerprint=transcript_fingerprint(transcript),
+        )
         if not row or not isinstance((row.get("result") or {}).get("candidates_all"), list):
             return
         result = row["result"]
@@ -2049,11 +2093,88 @@ def _annotate_candidates_all_with_judge(
                 best_entry["w2_selected"] = cand.index in selected_idx
                 best_entry["w2_discard_reason"] = cand.discard_reason
         save_analysis(
-            video_id, model, result, tone=tone,
+            video_id, model, result, tone=PASADA_A_TONE,
             category_detected=row.get("category_detected"),
+            prompt_version=prompt_version,
         )
     except Exception as e:
         print(f"   ⚠️ No se pudo anotar candidates_all con las notas del juez (no fatal): {e}")
+
+
+# Claves que agrega el Transcript completo (W4) sobre los captions.
+_FULL_TRANSCRIPT_KEYS = ("lines", "words", "wpm", "source", "model", "provider", "fingerprint")
+
+
+def _save_captions_transcript(video_id: str, transcript: dict, video_info: dict) -> None:
+    """
+    S3: guarda los captions bajo la clave pelada `video_id`.
+
+    W18: la clave pelada es solo para captions. Un transcript `whisper_full`
+    ya se guardó bajo su clave compuesta (`yt_transcript`) y no se escribe
+    acá; de un `hybrid` se guardan solo sus captions (sin las Líneas del
+    Whisper completo).
+    """
+    from services.transcript_cache import save_transcript
+
+    source = (transcript.get("source") or "supadata").strip().lower()
+    if source == "whisper_full":
+        return
+    captions = transcript
+    if source == "hybrid":
+        captions = {k: v for k, v in transcript.items() if k not in _FULL_TRANSCRIPT_KEYS}
+    save_transcript(
+        video_id=video_id,
+        transcript=captions,
+        language=transcript.get("language"),
+        duration_seconds=video_info.get("duration"),
+    )
+    print(f"💾 Transcript cached for video {video_id}")
+
+
+# ── W18: Cortacircuitos (CONTEXT.md) ─────────────────────────────────────────
+# Si casi ningún candidato ancla sus frases de Verificación en el audio real,
+# el transcript no corresponde al audio (job fb287cba: transcript y análisis
+# del doblaje en inglés, 30/30 sin anclar, 5 clips rotos entregados). En vez
+# de evaluar los 30 y entregar rotos, se purga la caché del video y se rehace
+# el transcript y la Pasada A una sola vez; si vuelve a pasar, el job falla.
+CORTACIRCUITOS_PRIMEROS = 5        # ventana inicial…
+CORTACIRCUITOS_ROTOS_PRIMEROS = 4  # …con 4 de los primeros 5 rotos se dispara
+CORTACIRCUITOS_FRACCION = 0.5      # o ≥ 50 % del total…
+CORTACIRCUITOS_MIN_ROTOS = 4       # …con un mínimo de 4 rotos
+CORTACIRCUITOS_ERROR = "no pudimos alinear el audio del video con su transcript"
+
+
+class _TranscriptDesalineado(Exception):
+    """El Cortacircuitos se disparó: el transcript no se alinea con el audio."""
+
+
+def _anclaje_fallido(c: CandidateEval) -> bool:
+    return bool(c.hook_not_found or c.payoff_not_found)
+
+
+def cortacircuitos_motivo(candidates: list, *, completo: bool) -> str | None:
+    """
+    Motivo del disparo, o None. Cuenta los candidatos con `hook_not_found`
+    o `payoff_not_found` (la Verificación no se ancló en el audio).
+
+    - Durante la evaluación (`completo=False`): 4 de los primeros 5.
+    - Al terminar de evaluar (`completo=True`): además, ≥ 50 % del total con
+      un mínimo de 4.
+    """
+    primeros = candidates[:CORTACIRCUITOS_PRIMEROS]
+    rotos_primeros = sum(1 for c in primeros if _anclaje_fallido(c))
+    if rotos_primeros >= CORTACIRCUITOS_ROTOS_PRIMEROS:
+        return f"{rotos_primeros} de los primeros {len(primeros)} candidatos sin anclar"
+    if completo and candidates:
+        rotos = sum(1 for c in candidates if _anclaje_fallido(c))
+        if rotos >= CORTACIRCUITOS_MIN_ROTOS and rotos >= CORTACIRCUITOS_FRACCION * len(candidates):
+            return f"{rotos} de {len(candidates)} candidatos sin anclar ({rotos / len(candidates):.0%})"
+    return None
+
+
+def _log_cortacircuitos(msg: str) -> None:
+    import logging
+    logging.getLogger("worker").error(f"CORTACIRCUITOS {msg}")
 
 
 def _finalize_job_outcome(
@@ -2113,22 +2234,35 @@ def process_job(job_data: dict) -> None:
         _process_job_inner(job_data, job_id)
 
 
-def _process_job_inner(job_data: dict, job_id: str) -> None:
+def _process_job_inner(
+    job_data: dict,
+    job_id: str,
+    realign_attempt: int = 0,
+    job_start_time: float | None = None,
+) -> None:
+    """
+    `realign_attempt`/`job_start_time` (W18): el Cortacircuitos relanza el job
+    una vez (`realign_attempt=1`) con el timeout contado desde el arranque
+    original, para que el reintento no duplique el tiempo máximo del job.
+    """
     set_job_context(job_id=job_id, user_id=job_data.get("userId"))
     video_url = job_data["videoUrl"]
     video_id = None
     muxed_video_path = None  # se setea solo en path B (partial download fallback)
     muxed_avail_end = None   # hasta qué segundo absoluto llega el muxeado (W1)
     timed_out = threading.Event()  # C5: timeout flag
-    job_start_time = time.time()
+    job_start_time = job_start_time or time.time()
     job_timeout_sec = JOB_TIMEOUT_MIN_SEC  # piso; se re-arma al conocer la duración (addendum W14)
+    realign_needed = False  # W18: el Cortacircuitos pide relanzar el job
 
     # C5: Start a timeout timer (Windows-compatible, using threading instead of signal)
     def _on_timeout():
         timed_out.set()
         print(f"⏰ Job {job_id} exceeded {job_timeout_sec / 60:.0f} minute timeout!")
 
-    timeout_timer = threading.Timer(job_timeout_sec, _on_timeout)
+    timeout_timer = threading.Timer(
+        max(1.0, job_timeout_sec - (time.time() - job_start_time)), _on_timeout,
+    )
     timeout_timer.daemon = True
     timeout_timer.start()
 
@@ -2185,7 +2319,17 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         set_phase("transcript")
         print("\n📝 Steps 1+2: Fetching transcript from YouTube...")
         from services.supabase_client import update_job_progress
-        update_job_progress(job_id, current_step="transcribing", progress_percentage=0)
+        if realign_attempt:
+            # W18: el reintento del Cortacircuitos arranca el progreso de cero.
+            update_job_progress(
+                job_id, current_step="transcribing", progress_percentage=0,
+                progress_detail={
+                    "current": 0, "total": 0, "clips_ready": 0,
+                    "message": "Rehaciendo el transcript del video",
+                },
+            )
+        else:
+            update_job_progress(job_id, current_step="transcribing", progress_percentage=0)
 
         # W14-B: la duración importa para el timeout del job, y antes recién
         # se conocía DESPUÉS de bajar y transcribir el audio completo — para
@@ -2216,14 +2360,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         check_timeout()  # C5
 
         # S3: Save transcript to cache
-        from services.transcript_cache import save_transcript
-        save_transcript(
-            video_id=video_id,
-            transcript=transcript,
-            language=transcript.get("language"),
-            duration_seconds=video_info.get("duration"),
-        )
-        print(f"💾 Transcript cached for video {video_id}")
+        _save_captions_transcript(video_id, transcript, video_info)
         
         # Step 3: Analyze transcript with AI (via OpenRouter)
         set_phase("analyze")
@@ -2524,6 +2661,11 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 jev_confidence=(jev_rank or {}).get("confidence_avg"),
             ))
 
+            # W18: Cortacircuitos — antes de seguir pagando evaluaciones.
+            motivo = cortacircuitos_motivo(candidates, completo=False)
+            if motivo:
+                raise _TranscriptDesalineado(motivo)
+
             # W9-B: progreso fino por candidato evaluado (contrato con P1).
             update_job_progress(
                 job_id,
@@ -2538,6 +2680,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     "clips_ready": 0,
                 },
             )
+
+        motivo = cortacircuitos_motivo(candidates, completo=True)
+        if motivo:
+            raise _TranscriptDesalineado(motivo)
 
         # Fase 5b: rankear por el juez (no por el auto-score, causa C4) y
         # entregar por umbral, con diversidad (W9-B).
@@ -2567,7 +2713,7 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
 
         # Trazabilidad (W0 candidates_all): notas del juez de todos los
         # candidatos, elegidos y descartados, con el motivo del descarte.
-        _annotate_candidates_all_with_judge(video_id, job_tone, candidates, selected_idx)
+        _annotate_candidates_all_with_judge(video_id, transcript, candidates, selected_idx)
 
         # Los descartados no se entregan: limpiar su precut. Los finalistas
         # reutilizan el suyo en _deliver_moment — no se vuelve a descargar
@@ -2627,6 +2773,31 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             total_moments=total_moments,
         )
         
+    except _TranscriptDesalineado as e:
+        # W18: Cortacircuitos. Todavía no hubo entrega (se dispara antes de
+        # select_finalists), así que no hay filas en content_results.
+        if realign_attempt == 0:
+            _log_cortacircuitos(
+                f"job {job_id} video {video_id}: {e}. Purgo la caché del video y "
+                f"rehago el transcript y la Pasada A (única vez)."
+            )
+            try:
+                from services.cache_purge import purge_video_cache
+                from services.supabase_client import is_dry_run
+                # En dry-run (golden set) no se tocan las cachés de Supabase.
+                purge_video_cache(video_id, include_supabase=not is_dry_run())
+            except Exception as e_purge:
+                print(f"   ⚠️ Purga del cortacircuitos falló (sigo con el reintento): {e_purge}")
+            realign_needed = True
+        else:
+            _log_cortacircuitos(
+                f"job {job_id} video {video_id}: {e} otra vez después de rehacer el "
+                f"transcript. El job falla y se devuelve el crédito."
+            )
+            # update_job_error dispara la devolución del crédito reservado (F1,
+            # release_credit_on_job_failed) y la alerta de jobs fallidos.
+            update_job_error(job_id, CORTACIRCUITOS_ERROR)
+
     except Exception as e:
         print(f"\n❌ Job {job_id} failed: {str(e)}")
         # Si el error fue una desconexión de Supabase, reseteamos el cliente
@@ -2637,7 +2808,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         update_job_error(job_id, str(e))
         
     finally:
-        finalize_job_usage(job_id)
+        if not realign_needed:
+            # Con reintento, el uso sigue acumulándose en el mismo job.
+            finalize_job_usage(job_id)
         clear_job_context()
         set_progress_hook(None)  # W14: no dejar el hook de este job para el siguiente
         # C5: Cancel timeout timer
@@ -2654,6 +2827,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         if video_id:
             cleanup_all(video_id)
             cleanup_clips(video_id)
+
+    if realign_needed:
+        print(f"\n🔁 Cortacircuitos: relanzo el job {job_id} con el transcript rehecho")
+        _process_job_inner(job_data, job_id, realign_attempt=1, job_start_time=job_start_time)
 
 
 def watch_queue():
