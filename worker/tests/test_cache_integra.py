@@ -475,3 +475,153 @@ class TestSinRecortePorHook:
                 moment_index=1, whisper_timestamps_suspect=False,
             )
         assert out["anchor_failed"] is False
+
+
+# ─── 7. Cortacircuitos ──────────────────────────────────────────────────────
+def _moment_dict(i):
+    start = i * 200
+    return {
+        "start_time": start, "end_time": start + 40, "hook": f"hook número {i} " + "y" * i,
+        "emotional_trigger": "curiosidad", "viral_overlay": f"OVERLAY {i}",
+        "scores": {"hook": 8, "retention": 8, "shareability": 8},
+        "verification": {"first_phrase_in_audio": "hola", "last_phrase_in_audio": "chau"},
+        "content_pieces": {},
+    }
+
+
+class _JobHarness:
+    """Corre `_process_job_inner` con transcript, Pasada A, evaluación y
+    entrega mockeados. `broken_by_attempt[i]` dice si los candidatos del
+    intento i salen sin anclar."""
+
+    def __init__(self, broken_by_attempt, n_moments=8):
+        self.broken_by_attempt = broken_by_attempt
+        self.n_moments = n_moments
+        self.transcripts = 0
+        self.analyses = 0
+        self.prepared_per_attempt = []
+
+    def run(self, job_data=None):
+        import main
+        from models.schemas import AnalysisResult
+
+        def _transcript(_url):
+            self.transcripts += 1
+            self.prepared_per_attempt.append(0)
+            return _full_transcript(), {"id": "B60BHDNFNxM", "title": "T", "duration": 3000}
+
+        def _analysis(*_a, **_k):
+            self.analyses += 1
+            return AnalysisResult(video_title="t", summary="s",
+                                  viral_moments=[_moment_dict(i) for i in range(1, self.n_moments + 1)])
+
+        def _prepare(moment, idx, **_k):
+            attempt = len(self.prepared_per_attempt) - 1
+            self.prepared_per_attempt[attempt] += 1
+            broken = self.broken_by_attempt[attempt]
+            return main._PreparedClip(
+                ok=True, clip_duration=40.0, clip_text_final="texto del clip", wps_val=2.5,
+                hook_not_found=broken, payoff_not_found=broken,
+            )
+
+        self.mocks = {}
+        patches = [
+            patch("services.yt_transcript.get_video_metadata", return_value={"duration": 3000}),
+            patch("services.yt_transcript.get_youtube_transcript", side_effect=_transcript),
+            patch("services.processor.analyze_with_openrouter", side_effect=_analysis),
+            patch("services.scorer.judge_moment_scores",
+                  return_value={"hook": 9, "retention": 9, "shareability": 9, "reasoning": ""}),
+            patch("services.ranker_jev.ranker_is_jev", return_value=False),
+            patch("services.supabase_client.update_job_progress"),
+            patch.object(main, "_select_download_strategy", return_value="ninguna"),
+            patch.object(main, "_log_download_strategy"),
+            patch.object(main, "_prepare_moment_clip", side_effect=_prepare),
+            patch.object(main, "get_supabase", return_value=None),
+            patch.object(main, "cleanup_all"),
+            patch.object(main, "cleanup_clips"),
+            patch.object(main, "_save_captions_transcript"),
+            patch.object(main, "_annotate_candidates_all_with_judge"),
+            patch.object(main, "record_download_usage"),
+        ]
+        named = {
+            "status": patch.object(main, "update_job_status"),
+            "error": patch.object(main, "update_job_error"),
+            "purge": patch("services.cache_purge.purge_video_cache"),
+            "usage": patch.object(main, "finalize_job_usage"),
+            "log": patch.object(main, "_log_cortacircuitos"),
+            "deliver": patch.object(main, "_deliver_moment", return_value=True),
+        }
+        for p in patches:
+            p.start()
+        for k, p in named.items():
+            self.mocks[k] = p.start()
+        try:
+            main.process_job(job_data or {
+                "id": "job-w18", "videoUrl": "https://youtu.be/B60BHDNFNxM", "userId": None,
+            })
+        finally:
+            for p in patches + list(named.values()):
+                p.stop()
+        return self
+
+
+class TestCortacircuitos:
+    def test_motivo_4_de_5(self):
+        import main
+
+        rotos = [_cand(i, broken=True) for i in range(1, 5)]
+        assert main.cortacircuitos_motivo(rotos[:3], completo=False) is None
+        assert "4 de los primeros 4" in main.cortacircuitos_motivo(rotos, completo=False)
+        mezcla = [_cand(1), _cand(2)] + [_cand(i, broken=True) for i in range(3, 6)]
+        assert main.cortacircuitos_motivo(mezcla, completo=False) is None  # 3 de 5
+
+    def test_motivo_mitad_del_total_con_minimo_4(self):
+        import main
+
+        sanos_primero = [_cand(i) for i in range(1, 6)] + [_cand(i, broken=True) for i in range(6, 11)]
+        assert main.cortacircuitos_motivo(sanos_primero, completo=False) is None
+        assert "5 de 10" in main.cortacircuitos_motivo(sanos_primero, completo=True)
+        pocos = [_cand(1), _cand(2), _cand(3, broken=True), _cand(4, broken=True)]
+        assert main.cortacircuitos_motivo(pocos, completo=True) is None  # 50 % pero < 4 rotos
+
+    def test_dispara_rehace_una_vez_y_el_segundo_disparo_falla(self):
+        import main
+
+        h = _JobHarness(broken_by_attempt=[True, True]).run()
+        assert h.transcripts == 2 and h.analyses == 2, "transcript y Pasada A se rehacen una vez"
+        assert h.prepared_per_attempt == [4, 4], "corta a los 4 rotos, sin evaluar los 8"
+        h.mocks["purge"].assert_called_once_with("B60BHDNFNxM")
+        h.mocks["error"].assert_called_once_with("job-w18", main.CORTACIRCUITOS_ERROR)
+        assert ("job-w18", "completed") not in [c.args[:2] for c in h.mocks["status"].call_args_list]
+        assert h.mocks["log"].call_count == 2
+        h.mocks["usage"].assert_called_once()  # el uso de los dos intentos va al mismo rollup
+        # se dispara antes de select_finalists: nada entregado, 0 filas en content_results
+        h.mocks["deliver"].assert_not_called()
+
+    def test_dispara_y_el_reintento_sano_completa(self):
+        h = _JobHarness(broken_by_attempt=[True, False]).run()
+        assert h.transcripts == 2
+        assert h.prepared_per_attempt == [4, 8]
+        h.mocks["purge"].assert_called_once()
+        h.mocks["error"].assert_not_called()
+        assert ("job-w18", "completed") in [c.args[:2] for c in h.mocks["status"].call_args_list]
+
+    def test_job_sano_no_dispara(self):
+        h = _JobHarness(broken_by_attempt=[False]).run()
+        assert h.transcripts == 1 and h.prepared_per_attempt == [8]
+        h.mocks["purge"].assert_not_called()
+        h.mocks["log"].assert_not_called()
+
+    def test_la_purga_del_cortacircuitos_borra_transcript_y_audio(self, tmp_path):
+        """Lo que invalida el cortacircuitos es lo mismo que el script de purga,
+        audio incluido: el reintento no puede releer el transcript envenenado."""
+        from services import cache_purge
+
+        db = _db_con_video()
+        _archivos(tmp_path)
+        with patch.object(cache_purge, "get_supabase", return_value=db), \
+             patch.object(cache_purge, "DOWNLOADS_DIR", tmp_path):
+            cache_purge.purge_video_cache("B60BHDNFNxM")
+        assert not any(r["video_id"].startswith("B60BHDNFNxM") for r in db.tables["transcription_cache"])
+        assert not (tmp_path / "B60BHDNFNxM_audio_only.m4a").exists()
+        assert not (tmp_path / "B60BHDNFNxM_transcript_whisper_full_m.json").exists()

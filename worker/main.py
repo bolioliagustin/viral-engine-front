@@ -2131,6 +2131,52 @@ def _save_captions_transcript(video_id: str, transcript: dict, video_info: dict)
     print(f"💾 Transcript cached for video {video_id}")
 
 
+# ── W18: Cortacircuitos (CONTEXT.md) ─────────────────────────────────────────
+# Si casi ningún candidato ancla sus frases de Verificación en el audio real,
+# el transcript no corresponde al audio (job fb287cba: transcript y análisis
+# del doblaje en inglés, 30/30 sin anclar, 5 clips rotos entregados). En vez
+# de evaluar los 30 y entregar rotos, se purga la caché del video y se rehace
+# el transcript y la Pasada A una sola vez; si vuelve a pasar, el job falla.
+CORTACIRCUITOS_PRIMEROS = 5        # ventana inicial…
+CORTACIRCUITOS_ROTOS_PRIMEROS = 4  # …con 4 de los primeros 5 rotos se dispara
+CORTACIRCUITOS_FRACCION = 0.5      # o ≥ 50 % del total…
+CORTACIRCUITOS_MIN_ROTOS = 4       # …con un mínimo de 4 rotos
+CORTACIRCUITOS_ERROR = "no pudimos alinear el audio del video con su transcript"
+
+
+class _TranscriptDesalineado(Exception):
+    """El Cortacircuitos se disparó: el transcript no se alinea con el audio."""
+
+
+def _anclaje_fallido(c: CandidateEval) -> bool:
+    return bool(c.hook_not_found or c.payoff_not_found)
+
+
+def cortacircuitos_motivo(candidates: list, *, completo: bool) -> str | None:
+    """
+    Motivo del disparo, o None. Cuenta los candidatos con `hook_not_found`
+    o `payoff_not_found` (la Verificación no se ancló en el audio).
+
+    - Durante la evaluación (`completo=False`): 4 de los primeros 5.
+    - Al terminar de evaluar (`completo=True`): además, ≥ 50 % del total con
+      un mínimo de 4.
+    """
+    primeros = candidates[:CORTACIRCUITOS_PRIMEROS]
+    rotos_primeros = sum(1 for c in primeros if _anclaje_fallido(c))
+    if rotos_primeros >= CORTACIRCUITOS_ROTOS_PRIMEROS:
+        return f"{rotos_primeros} de los primeros {len(primeros)} candidatos sin anclar"
+    if completo and candidates:
+        rotos = sum(1 for c in candidates if _anclaje_fallido(c))
+        if rotos >= CORTACIRCUITOS_MIN_ROTOS and rotos >= CORTACIRCUITOS_FRACCION * len(candidates):
+            return f"{rotos} de {len(candidates)} candidatos sin anclar ({rotos / len(candidates):.0%})"
+    return None
+
+
+def _log_cortacircuitos(msg: str) -> None:
+    import logging
+    logging.getLogger("worker").error(f"CORTACIRCUITOS {msg}")
+
+
 def _finalize_job_outcome(
     *,
     job_id: str,
@@ -2188,22 +2234,35 @@ def process_job(job_data: dict) -> None:
         _process_job_inner(job_data, job_id)
 
 
-def _process_job_inner(job_data: dict, job_id: str) -> None:
+def _process_job_inner(
+    job_data: dict,
+    job_id: str,
+    realign_attempt: int = 0,
+    job_start_time: float | None = None,
+) -> None:
+    """
+    `realign_attempt`/`job_start_time` (W18): el Cortacircuitos relanza el job
+    una vez (`realign_attempt=1`) con el timeout contado desde el arranque
+    original, para que el reintento no duplique el tiempo máximo del job.
+    """
     set_job_context(job_id=job_id, user_id=job_data.get("userId"))
     video_url = job_data["videoUrl"]
     video_id = None
     muxed_video_path = None  # se setea solo en path B (partial download fallback)
     muxed_avail_end = None   # hasta qué segundo absoluto llega el muxeado (W1)
     timed_out = threading.Event()  # C5: timeout flag
-    job_start_time = time.time()
+    job_start_time = job_start_time or time.time()
     job_timeout_sec = JOB_TIMEOUT_MIN_SEC  # piso; se re-arma al conocer la duración (addendum W14)
+    realign_needed = False  # W18: el Cortacircuitos pide relanzar el job
 
     # C5: Start a timeout timer (Windows-compatible, using threading instead of signal)
     def _on_timeout():
         timed_out.set()
         print(f"⏰ Job {job_id} exceeded {job_timeout_sec / 60:.0f} minute timeout!")
 
-    timeout_timer = threading.Timer(job_timeout_sec, _on_timeout)
+    timeout_timer = threading.Timer(
+        max(1.0, job_timeout_sec - (time.time() - job_start_time)), _on_timeout,
+    )
     timeout_timer.daemon = True
     timeout_timer.start()
 
@@ -2260,7 +2319,17 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         set_phase("transcript")
         print("\n📝 Steps 1+2: Fetching transcript from YouTube...")
         from services.supabase_client import update_job_progress
-        update_job_progress(job_id, current_step="transcribing", progress_percentage=0)
+        if realign_attempt:
+            # W18: el reintento del Cortacircuitos arranca el progreso de cero.
+            update_job_progress(
+                job_id, current_step="transcribing", progress_percentage=0,
+                progress_detail={
+                    "current": 0, "total": 0, "clips_ready": 0,
+                    "message": "Rehaciendo el transcript del video",
+                },
+            )
+        else:
+            update_job_progress(job_id, current_step="transcribing", progress_percentage=0)
 
         # W14-B: la duración importa para el timeout del job, y antes recién
         # se conocía DESPUÉS de bajar y transcribir el audio completo — para
@@ -2592,6 +2661,11 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                 jev_confidence=(jev_rank or {}).get("confidence_avg"),
             ))
 
+            # W18: Cortacircuitos — antes de seguir pagando evaluaciones.
+            motivo = cortacircuitos_motivo(candidates, completo=False)
+            if motivo:
+                raise _TranscriptDesalineado(motivo)
+
             # W9-B: progreso fino por candidato evaluado (contrato con P1).
             update_job_progress(
                 job_id,
@@ -2606,6 +2680,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
                     "clips_ready": 0,
                 },
             )
+
+        motivo = cortacircuitos_motivo(candidates, completo=True)
+        if motivo:
+            raise _TranscriptDesalineado(motivo)
 
         # Fase 5b: rankear por el juez (no por el auto-score, causa C4) y
         # entregar por umbral, con diversidad (W9-B).
@@ -2695,6 +2773,29 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
             total_moments=total_moments,
         )
         
+    except _TranscriptDesalineado as e:
+        # W18: Cortacircuitos. Todavía no hubo entrega (se dispara antes de
+        # select_finalists), así que no hay filas en content_results.
+        if realign_attempt == 0:
+            _log_cortacircuitos(
+                f"job {job_id} video {video_id}: {e}. Purgo la caché del video y "
+                f"rehago el transcript y la Pasada A (única vez)."
+            )
+            try:
+                from services.cache_purge import purge_video_cache
+                purge_video_cache(video_id)
+            except Exception as e_purge:
+                print(f"   ⚠️ Purga del cortacircuitos falló (sigo con el reintento): {e_purge}")
+            realign_needed = True
+        else:
+            _log_cortacircuitos(
+                f"job {job_id} video {video_id}: {e} otra vez después de rehacer el "
+                f"transcript. El job falla y se devuelve el crédito."
+            )
+            # update_job_error dispara la devolución del crédito reservado (F1,
+            # release_credit_on_job_failed) y la alerta de jobs fallidos.
+            update_job_error(job_id, CORTACIRCUITOS_ERROR)
+
     except Exception as e:
         print(f"\n❌ Job {job_id} failed: {str(e)}")
         # Si el error fue una desconexión de Supabase, reseteamos el cliente
@@ -2705,7 +2806,9 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         update_job_error(job_id, str(e))
         
     finally:
-        finalize_job_usage(job_id)
+        if not realign_needed:
+            # Con reintento, el uso sigue acumulándose en el mismo job.
+            finalize_job_usage(job_id)
         clear_job_context()
         set_progress_hook(None)  # W14: no dejar el hook de este job para el siguiente
         # C5: Cancel timeout timer
@@ -2722,6 +2825,10 @@ def _process_job_inner(job_data: dict, job_id: str) -> None:
         if video_id:
             cleanup_all(video_id)
             cleanup_clips(video_id)
+
+    if realign_needed:
+        print(f"\n🔁 Cortacircuitos: relanzo el job {job_id} con el transcript rehecho")
+        _process_job_inner(job_data, job_id, realign_attempt=1, job_start_time=job_start_time)
 
 
 def watch_queue():
