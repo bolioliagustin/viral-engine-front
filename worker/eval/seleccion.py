@@ -25,9 +25,10 @@ import aislamiento
 import eval_metrics as em
 import referencias as refs
 
-# Paralelismo por defecto: 3 repeticiones × 8 videos tienen que entrar en
-# < 15 min, y una Pasada A de un video de 110 min tarda 1–3 min.
-DEFAULT_WORKERS = 8
+# Paralelismo por defecto: 3 repeticiones × 8 videos entran en < 15 min con 4
+# (una Pasada A de un video de 110 min tarda 30–60 s). Con 8, OpenRouter
+# devolvió 402 por "in-flight budget" cuando el saldo era bajo (23-sep).
+DEFAULT_WORKERS = 4
 
 _captura = threading.local()
 
@@ -116,12 +117,13 @@ def correr_pasada_a(transcript: dict, video_info: dict) -> dict[str, Any]:
     rollup = ut._job_rollups.pop(job_id, None) or {}
 
     raw = getattr(_captura, "result_dict", None)
-    if raw and isinstance(raw.get("candidates_all"), list):
-        fuente = raw["candidates_all"]
-    else:
-        # Fallback (mega-prompt o una Pasada A que no pasó por select_moments):
-        # sin rank_score, el orden de viral_moments es el ranking.
-        fuente = [m.model_dump() for m in analysis.viral_moments]
+    if not (raw and isinstance(raw.get("candidates_all"), list)):
+        # La Pasada A falló y el pipeline cayó al mega-prompt legacy: eso no
+        # mide la selección (trae ~5 momentos), la repetición no cuenta.
+        raise RuntimeError(
+            f"la Pasada A cayó al mega-prompt de respaldo ({len(analysis.viral_moments)} momentos): repetición inválida"
+        )
+    fuente = raw["candidates_all"]
     candidatos = [_candidato(m, i) for i, m in enumerate(fuente) if isinstance(m, dict)]
     return {
         "categoria": getattr(_captura, "categoria", None),
@@ -237,6 +239,56 @@ def correr_seleccion(
     return calcular_metricas(corrida, incluir_borradores=incluir_borradores)
 
 
+def completar_corrida(
+    corrida: dict,
+    videos: list[dict],
+    *,
+    workers: int = DEFAULT_WORKERS,
+    log: Callable[[str], None] = print,
+) -> dict:
+    """Rehace solo las repeticiones con error de una corrida guardada y recalcula."""
+    os.environ["EVAL_DRY_RUN"] = "1"
+    t0 = time.time()
+    por_id = {v["id"]: v for v in videos}
+    tareas = []
+    for v in corrida["videos"]:
+        fallidas = [r for r in v["reps"] if r.get("error")]
+        if not fallidas or v["id"] not in por_id:
+            continue
+        loaded = cargar_transcript_eval(por_id[v["id"]], log=log)
+        if not loaded:
+            continue
+        tareas += [(v, r, loaded) for r in fallidas]
+    log(f"🔁 completar: {len(tareas)} repeticiones fallidas, {workers} en paralelo")
+
+    def _una(v, r, loaded):
+        try:
+            nuevo = correr_pasada_a(*loaded)
+            log(f"   ✔ {v['id']} rep {r['rep']}: {len(nuevo['candidatos'])} candidatos, ${nuevo['costo_usd']:.4f}")
+            return {"rep": r["rep"], **nuevo, "reintento_de": r.get("error", "")[:120],
+                    "costo_descartado_usd": r.get("costo_descartado_usd") or r.get("costo_usd")}
+        except Exception as e:
+            log(f"   ❌ {v['id']} rep {r['rep']}: {str(e)[:160]}")
+            return {"rep": r["rep"], "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+    restaurar = _instalar_capturas()
+    try:
+        with aislamiento.sin_cache_de_produccion() as intentos:
+            with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+                futuros = [(v, r, pool.submit(_una, v, r, loaded)) for v, r, loaded in tareas]
+                for v, r, fut in futuros:
+                    v["reps"][v["reps"].index(r)] = fut.result()
+            bloqueados = dict(intentos)
+    finally:
+        restaurar()
+    previos = corrida.setdefault("aislamiento", {}).setdefault("intentos_bloqueados", {})
+    for k, n in bloqueados.items():
+        previos[k] = previos.get(k, 0) + n
+    corrida["wall_seconds"] = round((corrida.get("wall_seconds") or 0) + time.time() - t0, 1)
+    corrida.setdefault("completada", []).append({"reps_rehechas": len(tareas), "segundos": round(time.time() - t0, 1)})
+    return calcular_metricas(corrida, incluir_borradores=corrida.get("incluir_borradores", False))
+
+
 def calcular_metricas(corrida: dict, *, incluir_borradores: bool, docs: dict[str, dict] | None = None) -> dict:
     """
     (Re)calcula métricas por repetición, por video y agregadas a partir de
@@ -257,7 +309,8 @@ def calcular_metricas(corrida: dict, *, incluir_borradores: bool, docs: dict[str
         for rep in v["reps"]:
             rep["metricas"] = metricas_de_rep(rep, doc, incluir_borradores=incluir_borradores, duracion=v.get("duracion_sec"))
         v["agregado"] = em.agregar_repeticiones(v["reps"])
-        v["costo_usd"] = round(sum(r.get("costo_usd") or 0 for r in v["reps"]), 6)
+        # Incluye lo pagado en repeticiones descartadas (fallback, reintentos)
+        v["costo_usd"] = round(sum((r.get("costo_usd") or 0) + (r.get("costo_descartado_usd") or 0) for r in v["reps"]), 6)
         v["categorias"] = sorted({r.get("categoria") for r in v["reps"] if r.get("categoria")})
     corrida["incluir_borradores"] = incluir_borradores
     corrida["agregado"] = em.agregar_seleccion(corrida["videos"])

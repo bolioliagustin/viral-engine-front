@@ -554,6 +554,10 @@ def main() -> int:
     )
     parser.add_argument("--workers", type=int, default=None, help="(seleccion) Pasadas A en paralelo")
     parser.add_argument(
+        "--completar", metavar="CORRIDA_JSON",
+        help="(seleccion) rehace solo las repeticiones con error de una corrida guardada y la reescribe",
+    )
+    parser.add_argument(
         "--recalcular", metavar="CORRIDA_JSON",
         help="(seleccion) recalcula las métricas de una corrida guardada con las Referencias actuales, sin llamar a la API",
     )
@@ -566,6 +570,11 @@ def main() -> int:
     tier_cfg = resolve_tier_config(golden, tier)
     with_copy = tier_cfg["include_copy"]
     thresholds = tier_cfg["thresholds"]
+
+    if tier == "seleccion" and args.completar:
+        return _main_completar(
+            args.completar, golden.get("videos") or [], json_mode=json_mode, workers=args.workers,
+        )
 
     if tier == "seleccion" and args.recalcular:
         return _main_recalcular(args.recalcular, json_mode=json_mode, incluir_borradores=args.incluir_borradores)
@@ -840,6 +849,27 @@ def _main_seleccion(videos, tier_cfg, *, json_mode, reps, workers, incluir_borra
         _log(linea, json_mode=json_mode)
     ok = any(v.get("agregado") for v in corrida["videos"])
     return 0 if ok else 1
+
+
+def _main_completar(ruta: str, videos: list[dict], *, json_mode: bool, workers: int | None) -> int:
+    import seleccion
+    with open(ruta, encoding="utf-8") as f:
+        corrida = json.load(f)
+    real_stdout = sys.stdout
+    if json_mode:
+        sys.stdout = sys.stderr
+    try:
+        corrida = seleccion.completar_corrida(
+            corrida, videos, workers=workers or seleccion.DEFAULT_WORKERS,
+            log=lambda msg: _log(msg, json_mode=json_mode),
+        )
+    finally:
+        sys.stdout = real_stdout
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write(json.dumps(corrida, ensure_ascii=False, indent=2, default=str) + "\n")
+    for linea in seleccion.resumen_legible(corrida):
+        _log(linea, json_mode=json_mode)
+    return 0
 
 
 def _main_recalcular(ruta: str, *, json_mode: bool, incluir_borradores: bool) -> int:

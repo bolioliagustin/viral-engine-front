@@ -39,4 +39,24 @@ Presupuesto de API de W19: US$6. Una línea por gasto.
 | 2026-09-23 | Borrador `MaXgAEI4Vm8` (108,5 min): 22 momentos | `../referencias/MaXgAEI4Vm8.json` | 0,153 | |
 | 2026-09-23 | Borrador `Nn0kxFXDfX4` (86,2 min): 27 momentos | `../referencias/Nn0kxFXDfX4.json` | 0,264 | |
 | 2026-09-23 | Borrador `B60BHDNFNxM` (110,7 min), intento 2, `--solo-propuesta`: 28 propuestos, **16 coinciden con la semilla** (12 de las 15 A) y 12 son nuevos | `../referencias/propuestas/B60BHDNFNxM.json` | 0,331 | Se fusiona cuando Agustín termine de validar la semilla (`referencias_cli.py fusionar`) |
-| | **Total W19 hasta acá** | | **1,80** | de US$6 |
+| 2026-09-23 | **Baseline `seleccion --reps 3 --incluir-borradores`**, 7 videos × 3 reps, Supabase apuntado a `http://127.0.0.1:9` | [`2026-09-23-seleccion-baseline.json`](2026-09-23-seleccion-baseline.json) | 2,83 | Commit `258ed53` (integración de la Ola 0 con W18 + W19; la Pasada A es la de `main`). La primera pasada, con 8 en paralelo, dio 402 por *in-flight budget* en 5 reps, y 1 rep cayó al mega-prompt; esas 6 se rehicieron con `--completar --workers 2`. Incluye US$0,11 de la rep descartada. Reloj: 3,9 min en total. Medido contra borradores sin validar, salvo la semilla de B60, que tampoco está validada: **se recalcula gratis con `--recalcular` cuando Agustín valide**. |
+| | **Total W19** | | **4,63** | de US$6 |
+
+**Baseline (media ± desvío, 3 reps; Referencias sin validar):**
+
+| Video | Formato | Refs A | `recall_completo@candidatos` (A) | `recall_parcial` (A) | `historias_partidas` | `min_cuarto` | Candidatos por cuarto (rep 1) |
+|---|---|---|---|---|---|---|---|
+| business_spanish_01 | clase | 12 | 31 % ± 19 % | 50 % ± 8 % | 0,3 | 6 % ± 2 % | [23, 5, 1, 1] |
+| podcast_general_01 | entrevista | 20 | 15 % ± 10 % | 40 % ± 30 % | 2,0 | 6 % ± 5 % | [22, 6, 2, 0] |
+| claude_hacks_regression_01 | clase | 6 | 72 % ± 19 % | 83 % ± 0 % | 0,0 | 11 % ± 0 % | [4, 2, 2, 1] |
+| user_recommended_01 | charla | 10 | 3 % ± 6 % | 33 % ± 15 % | 1,7 | 4 % ± 2 % | [12, 10, 6, 2] |
+| charla_humor_01 (B60) | charla | 15 | 22 % ± 4 % | 56 % ± 8 % | 0,3 | 12 % ± 7 % | [13, 9, 6, 2] |
+| charla_humor_02 | charla | 12 | 31 % ± 10 % | 47 % ± 13 % | 1,0 | 12 % ± 8 % | [10, 9, 7, 4] |
+| monologo_coach_01 | monólogo | 19 | 33 % ± 16 % | 46 % ± 8 % | 1,7 | 1 % ± 2 % | [18, 10, 0, 0] |
+| **Agregado (macro)** | | | **30 % ± 22 %** | **51 % ± 16 %** | **1,0** | **7 % ± 4 %** | |
+
+Lectura: el sesgo de posición del Anexo A se repite en todos los formatos. La
+Pasada A pone la mitad o más de sus candidatos en el primer cuarto, y el
+último cuarto tiene 0–4. En B60, `recall_completo` da 22 %, en línea con el
+20 % de una pasada del Anexo A. El desvío entre repeticiones es alto (hasta
+±19 pp en un video): hacen falta 3 reps para comparar variantes.
