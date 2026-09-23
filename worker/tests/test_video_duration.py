@@ -39,6 +39,27 @@ class TestFetchLengthSeconds:
         with patch("services.yt_transcript.requests.get", side_effect=Exception("timeout")):
             assert _fetch_length_seconds("abc12345678") == 0
 
+    def test_ip_propia_bloqueada_prueba_por_proxy(self):
+        """VPS: la IP propia recibe la página de bot (sin lengthSeconds); el
+        primer proxy del pool recibe la página completa."""
+        pagina_bot = '"playabilityStatus":{"status":"LOGIN_REQUIRED"}'
+        pagina_ok = '"lengthSeconds":"3261","isOwnerViewing":false'
+        llamadas = []
+
+        def _get(url, **kw):
+            llamadas.append(kw.get("proxies"))
+            return _fake_response(text=pagina_ok if kw.get("proxies") else pagina_bot)
+
+        with patch("services.yt_transcript.requests.get", side_effect=_get), \
+             patch("services.downloader._get_proxy_list", return_value=["http://u:p@p1:1", "http://u:p@p2:2"]):
+            assert _fetch_length_seconds("abc12345678") == 3261
+        assert llamadas[0] is None and llamadas[1] == {"http": "http://u:p@p1:1", "https": "http://u:p@p1:1"}
+
+    def test_sin_length_seconds_en_ningun_lado_devuelve_cero(self):
+        with patch("services.yt_transcript.requests.get", return_value=_fake_response(text="bot")), \
+             patch("services.downloader._get_proxy_list", return_value=["http://u:p@p1:1"] * 5):
+            assert _fetch_length_seconds("abc12345678") == 0
+
 
 class TestGetVideoMetadataDuration:
     def test_oembed_ok_usa_length_seconds_del_html(self):

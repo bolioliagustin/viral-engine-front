@@ -39,7 +39,14 @@ def get_video_id(video_url: str) -> Optional[str]:
 
 
 _LENGTH_SECONDS_RE = re.compile(r'"lengthSeconds":"(\d+)"')
+# W16: la beta es contenido en español (ICP: podcasters ES). Fijar el idioma
+# evita que Whisper "detecte" inglés en una intro ruidosa y TRADUZCA el video
+# entero (job 88d6a444, 21-sep-2026: un programa argentino salió en inglés), y
+# que Supadata devuelva la pista de captions auto-traducida (job 1ea90b15).
+# Vacío = detección automática (comportamiento anterior).
+TRANSCRIPT_LANGUAGE = (os.getenv("TRANSCRIPT_LANGUAGE") or "").strip().lower()
 _DURATION_FETCH_TIMEOUT_SEC = 4
+_DURATION_PROXY_ATTEMPTS = 3  # proxies del pool a probar si la IP propia recibe la página de bot
 
 
 def _fetch_length_seconds(video_id: str) -> int:
@@ -50,19 +57,31 @@ def _fetch_length_seconds(video_id: str) -> int:
     `main.py` no puede armar el timeout dinámico del job (`JOB_TIMEOUT_*`)
     antes de bajar nada. Fail-open a 0 (duración desconocida): un problema de
     scraping no debe romper el job, solo deja el timeout en el piso.
+
+    Desde la IP del VPS, YouTube sirve la página "Inicia sesión para confirmar
+    que no eres un bot" (sin `lengthSeconds`; medido el 21-sep-2026), así que
+    tras el intento directo se prueba por hasta `_DURATION_PROXY_ATTEMPTS`
+    proxies del pool, que sí reciben la página completa (~1 s cada uno).
     """
-    try:
-        resp = requests.get(
-            f"https://www.youtube.com/watch?v={video_id}",
-            headers={"User-Agent": "Mozilla/5.0 (compatible; viral-engine/1.0)"},
-            timeout=_DURATION_FETCH_TIMEOUT_SEC,
-        )
-        if not resp.ok:
-            return 0
-        m = _LENGTH_SECONDS_RE.search(resp.text)
-        return int(m.group(1)) if m else 0
-    except Exception:
-        return 0
+    from services.downloader import _get_proxy_list
+
+    attempts: list[str | None] = [None] + _get_proxy_list()[:_DURATION_PROXY_ATTEMPTS]
+    for proxy in attempts:
+        try:
+            resp = requests.get(
+                f"https://www.youtube.com/watch?v={video_id}",
+                headers={"User-Agent": "Mozilla/5.0 (compatible; viral-engine/1.0)"},
+                proxies={"http": proxy, "https": proxy} if proxy else None,
+                timeout=_DURATION_FETCH_TIMEOUT_SEC,
+            )
+            if not resp.ok:
+                continue
+            m = _LENGTH_SECONDS_RE.search(resp.text)
+            if m:
+                return int(m.group(1))
+        except Exception:
+            continue
+    return 0
 
 
 def get_video_metadata(video_id: str) -> dict:
@@ -156,10 +175,20 @@ _SUPADATA_TIMEOUT_SEC = 30
 
 
 def _supadata_request(video_url: str, api_key: str):
-    """Un intento de GET a Supadata. Puede lanzar requests.exceptions.*."""
+    """
+    Un intento de GET a Supadata. Puede lanzar requests.exceptions.*.
+
+    Con `TRANSCRIPT_LANGUAGE` se pide esa pista de captions: sin `lang`,
+    Supadata elige la pista por defecto del video, que puede ser la
+    auto-traducida al inglés (job 1ea90b15, un programa argentino devuelto
+    en inglés). Si esa pista no existe, Supadata cae a la que haya.
+    """
+    params = {"url": video_url, "text": "false"}
+    if TRANSCRIPT_LANGUAGE:
+        params["lang"] = TRANSCRIPT_LANGUAGE
     return requests.get(
         "https://api.supadata.ai/v1/youtube/transcript",
-        params={"url": video_url, "text": "false"},
+        params=params,
         headers={"x-api-key": api_key},
         timeout=_SUPADATA_TIMEOUT_SEC,
     )
@@ -412,9 +441,11 @@ def _get_transcript_via_whisper_full(
         return cached, video_info
 
     from services.downloader import download_audio_only
-    audio_path = download_audio_only(video_url, video_id)
+    audio_path = download_audio_only(
+        video_url, video_id, expected_duration_sec=float(video_info.get("duration") or 0),
+    )
 
-    lang = (language or "").strip().lower() or None
+    lang = (language or TRANSCRIPT_LANGUAGE or "").strip().lower() or None
     if lang and len(lang) > 2:
         lang = lang.split("-")[0]
 
