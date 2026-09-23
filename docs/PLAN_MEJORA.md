@@ -364,9 +364,9 @@ Hay una semana de colchón. Un gate que no pasa da una semana más de iteración
 
 | Línea | Estado | Rama | Gate | Nota |
 |---|---|---|---|---|
-| W18 Caché íntegra | En curso (Ola 0) | `fix/worker-cache-integridad` | G0 | agente *fiabilidad* |
-| W19 Referencias y tier `seleccion` | En curso (Ola 0) | `feat/eval-referencias` | G0 | agente *eval*; las Referencias de B60BHDNFNxM salen del Anexo B |
-| W20 Purga, tope y runbook | Purga de Supabase: 23-sep; volumen del VPS: pendiente de Agustín; tope y runbook: después de W18 | `fix/worker-tope-duracion` | G0 | coordinador + *fiabilidad* |
+| W18 Caché íntegra | **Integrado** en `integracion/mejora-ola-0` (PR #17, 23-sep); suite integrada 672 passed | `fix/worker-cache-integridad` | G0 | Hueco conocido para W25: un roto con nota ≥ 27 aún puede pasar el umbral por la vía principal |
+| W19 Referencias y tier `seleccion` | En curso: PR #18 en borrador, código y tests listos; **bloqueado** por falta de crédito en OpenRouter (borradores y baseline) | `feat/eval-referencias` | G0 | Semilla de B60BHDNFNxM lista para validar en `worker/eval/referencias/validar/B60BHDNFNxM.md` |
+| W20 Purga, tope y runbook | Supabase purgado (7 filas, 23-sep); tope **integrado** (PR #19); runbook en `docs/runbook-purga-cache`; **pendiente de Agustín:** volumen del VPS y `MAX_VIDEO_MINUTES=150` en Render y en el VPS | `fix/worker-tope-duracion` | G0 | — |
 | W21–W29 | Pendiente (Olas 1–4) | — | G1–G4 | — |
 
 ---
