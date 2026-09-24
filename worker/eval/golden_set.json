@@ -1,5 +1,5 @@
 {
-  "_doc": "Golden set por tiers. Ver worker/eval/README.md. Correr: python eval/run_golden_set.py --tier smoke|analysis|full|e2e",
+  "_doc": "Golden set por tiers. Ver worker/eval/README.md. Correr: python eval/run_golden_set.py --tier smoke|analysis|full|e2e|seleccion",
   "thresholds": {
     "_doc": "Defaults globales; cada tier en 'tiers' puede sobreescribir.",
     "category_accuracy_min": 0.75,
@@ -65,6 +65,16 @@
         "min_clips_total": 15
       },
       "thresholds_blocking": false
+    },
+    "seleccion": {
+      "_doc": "W19. ~5-15 min, < US$4 con 8 videos × 3 reps. Clasificador + Pasada A sobre el transcript whisper_full cacheado de cada video con Referencias validadas (eval/referencias/<youtube_id>.json); métricas de cobertura contra Referencias. No lee ni escribe analysis_cache/category_cache ni escribe transcription_cache (eval/aislamiento.py). Los umbrales son las metas de PLAN_MEJORA §3 y no bloquean.",
+      "include_copy": false,
+      "reps": 3,
+      "thresholds": {
+        "recall_completo_min": 0.7,
+        "min_cuarto_min": 0.15
+      },
+      "thresholds_blocking": false
     }
   },
   "videos": [
@@ -76,7 +86,8 @@
       "tiers": [
         "analysis",
         "full",
-        "e2e"
+        "e2e",
+        "seleccion"
       ],
       "note": "Podcast/charla de negocios en español — golden set post-Groq",
       "expected_category": "podcast",
@@ -89,7 +100,8 @@
         "Clasificador podcast",
         "Copy: 7 tweets, LinkedIn 800-1200 chars",
         "Subs: primer chunk < 2s, cobertura >= 0.9"
-      ]
+      ],
+      "formato": "clase"
     },
     {
       "id": "podcast_general_01",
@@ -99,7 +111,8 @@
       "tiers": [
         "analysis",
         "full",
-        "e2e"
+        "e2e",
+        "seleccion"
       ],
       "note": "Podcast general — caso prioritario",
       "expected_category": "podcast",
@@ -107,7 +120,8 @@
         "Clips 15-40s",
         "Hooks standalone",
         "overlay breve"
-      ]
+      ],
+      "formato": "entrevista"
     },
     {
       "id": "claude_hacks_regression_01",
@@ -118,7 +132,8 @@
         "smoke",
         "analysis",
         "full",
-        "e2e"
+        "e2e",
+        "seleccion"
       ],
       "note": "Regresión: cortes a mitad de frase, ghost words, verification",
       "expected_category": "business",
@@ -126,7 +141,8 @@
         "business monólogo educativo",
         "phrase anchors en transcript",
         "sin overlap >50%"
-      ]
+      ],
+      "formato": "clase"
     },
     {
       "id": "user_recommended_01",
@@ -136,13 +152,62 @@
       "tiers": [
         "analysis",
         "full",
-        "e2e"
+        "e2e",
+        "seleccion"
       ],
       "note": "Benchmark calidad target del usuario (108 min: va último en e2e; ~25 min de presupuesto)",
       "expected_category": "podcast",
       "test_focus": [
         "Calidad publicable sin editar"
+      ],
+      "formato": "charla"
+    },
+    {
+      "id": "charla_humor_01",
+      "url": "https://www.youtube.com/watch?v=B60BHDNFNxM",
+      "youtube_id": "B60BHDNFNxM",
+      "enabled": true,
+      "tiers": [
+        "analysis",
+        "full",
+        "seleccion"
+      ],
+      "formato": "charla",
+      "note": "Paren La Mano (Vorterix), 110,7 min, charla/humor futbolero. Caso del job fb287cba (PLAN_MEJORA §1, Anexos A y B). Referencias sembradas del Anexo B.",
+      "expected_category": "podcast",
+      "test_focus": [
+        "Cobertura del episodio entero (cuartos)",
+        "Humor: remates, imitaciones, cruces con el público",
+        "Excluir publicidad (DiDi 3100–3168)"
       ]
+    },
+    {
+      "id": "charla_humor_02",
+      "url": "https://www.youtube.com/watch?v=Nn0kxFXDfX4",
+      "youtube_id": "Nn0kxFXDfX4",
+      "enabled": true,
+      "tiers": [
+        "analysis",
+        "full",
+        "seleccion"
+      ],
+      "formato": "charla",
+      "note": "Blender, 'Pachu Peña y Josema sin filtro' (BAT completo 03/10), 86 min, charla/humor. Provisorio (A6) hasta que Agustín confirme.",
+      "expected_category": "podcast"
+    },
+    {
+      "id": "monologo_coach_01",
+      "url": "https://www.youtube.com/watch?v=oeGWtyMAbKk",
+      "youtube_id": "oeGWtyMAbKk",
+      "enabled": true,
+      "tiers": [
+        "analysis",
+        "full",
+        "seleccion"
+      ],
+      "formato": "monólogo",
+      "note": "Emilio Duró, 'La clave de todo es tener un sentido de vida' (AprendemosJuntos), 57,7 min, monólogo/coach. Provisorio (A6) hasta que Agustín confirme.",
+      "expected_category": "business"
     },
     {
       "id": "business_spanish_02",
@@ -154,7 +219,8 @@
         "full"
       ],
       "note": "PENDIENTE: monólogo/keynote business ES 10-30 min",
-      "expected_category": "business"
+      "expected_category": "business",
+      "formato": "monólogo"
     },
     {
       "id": "business_spanish_03",
@@ -166,7 +232,8 @@
         "full"
       ],
       "note": "PENDIENTE: tutorial educativo ES",
-      "expected_category": "business"
+      "expected_category": "business",
+      "formato": "clase"
     },
     {
       "id": "podcast_english_01",
@@ -178,7 +245,8 @@
         "full"
       ],
       "note": "PENDIENTE: podcast EN — idioma de salida",
-      "expected_category": "podcast"
+      "expected_category": "podcast",
+      "formato": "entrevista"
     },
     {
       "id": "long_video_01",
@@ -190,7 +258,8 @@
         "full"
       ],
       "note": "PENDIENTE: video >1h — ranking 12→5 candidatos",
-      "expected_category": "podcast"
+      "expected_category": "podcast",
+      "formato": "charla"
     }
   ],
   "scoring_criteria": {
@@ -201,5 +270,6 @@
     "linkedin_quality": "800-1200 chars, pregunta final",
     "tiktok_overlay": "≤4 palabras UPPERCASE",
     "judge_calibration": "judge más crítico que score_llm (delta 2-4 pts es sano con juez cross-family)"
-  }
+  },
+  "_doc_formato": "formato (W19, D5/D9 de docs/PLAN_MEJORA.md): entrevista | charla | monólogo | clase. Charla cubre mesas, streams y humor."
 }

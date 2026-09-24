@@ -15,7 +15,10 @@ from typing import Any
 
 DEFAULT_TIER = "analysis"
 
-TIER_ORDER = ("smoke", "analysis", "full", "e2e")
+TIER_ORDER = ("smoke", "analysis", "full", "e2e", "seleccion")
+
+# Tiers que corren aislados de las cachés de producción (PLAN_MEJORA §4.1).
+TIERS_AISLADOS = ("seleccion", "e2e")
 
 # Densidad de palabras plausible (palabras/s). Fuera de este rango el clip es
 # basura: sin habla o con timestamps Whisper rotos (PLAN_CALIDAD §1.1).
@@ -662,4 +665,238 @@ def build_e2e_clip_record(
         "copy_types": sorted({r.get("type") for r in rows if r.get("type")}),
         "posteable": etiqueta.posteable if etiqueta is not None else None,
         "posteable_motivo": etiqueta.motivo if etiqueta is not None else None,
+    }
+
+
+# ─── W19: métricas contra Referencias (tiers `seleccion` y `e2e`) ────────────
+#
+# Definiciones en eval/README.md ("Métricas contra Referencias"). Todas son
+# funciones puras: reciben intervalos (dicts con start/end) y Referencias
+# (dicts con nucleo_inicio/nucleo_fin/calidad) y no tocan la red.
+
+# Tolerancia de "contenido": el candidato puede empezar hasta 2 s después del
+# núcleo y terminar hasta 2 s antes (timestamps de Líneas redondeados).
+TOLERANCIA_CONTENIDO_SEC = 2.0
+COBERTURA_PARCIAL_MIN = 0.5
+COBERTURA_PARTIDA_MIN = 0.8
+SOLAPE_EXCLUSION_MIN = 0.5
+K_PRECISION_REF = (5, 10)
+
+
+def _intervalo(c: dict) -> tuple[float, float] | None:
+    ini = c.get("start_time", c.get("start"))
+    fin = c.get("end_time", c.get("end"))
+    if ini is None or fin is None:
+        return None
+    ini, fin = float(ini), float(fin)
+    return (ini, fin) if fin > ini else None
+
+
+def _nucleo(ref: dict) -> tuple[float, float]:
+    return float(ref["nucleo_inicio"]), float(ref["nucleo_fin"])
+
+
+def contiene_nucleo(cand: dict, ref: dict, tol: float = TOLERANCIA_CONTENIDO_SEC) -> bool:
+    iv = _intervalo(cand)
+    if iv is None:
+        return False
+    ni, nf = _nucleo(ref)
+    return iv[0] <= ni + tol and iv[1] >= nf - tol
+
+
+def cobertura_nucleo(cand: dict, ref: dict) -> float:
+    """Fracción del núcleo que cubre el candidato (0–1)."""
+    iv = _intervalo(cand)
+    ni, nf = _nucleo(ref)
+    if iv is None or nf <= ni:
+        return 0.0
+    return max(0.0, min(iv[1], nf) - max(iv[0], ni)) / (nf - ni)
+
+
+def _union_cubre(intervalos: list[tuple[float, float]], ni: float, nf: float) -> float:
+    """Fracción de [ni, nf] cubierta por la unión de los intervalos."""
+    recortes = sorted((max(a, ni), min(b, nf)) for a, b in intervalos if min(b, nf) > max(a, ni))
+    total, cur_a, cur_b = 0.0, None, None
+    for a, b in recortes:
+        if cur_b is None or a > cur_b:
+            if cur_b is not None:
+                total += cur_b - cur_a
+            cur_a, cur_b = a, b
+        else:
+            cur_b = max(cur_b, b)
+    if cur_b is not None:
+        total += cur_b - cur_a
+    return total / (nf - ni) if nf > ni else 0.0
+
+
+def clasificar_referencia(ref: dict, candidatos: list[dict]) -> str:
+    """
+    'completa' (algún candidato contiene el núcleo ±2 s), 'partida' (ninguno
+    lo contiene pero la unión de ≥ 2 candidatos cubre ≥ 80 %), 'parcial'
+    (algún candidato cubre ≥ 50 %) o 'ausente'.
+    """
+    if any(contiene_nucleo(c, ref) for c in candidatos):
+        return "completa"
+    ni, nf = _nucleo(ref)
+    tocan = [iv for iv in (_intervalo(c) for c in candidatos) if iv and iv[1] > ni and iv[0] < nf]
+    if len(tocan) >= 2 and _union_cubre(tocan, ni, nf) >= COBERTURA_PARTIDA_MIN:
+        return "partida"
+    if any(cobertura_nucleo(c, ref) >= COBERTURA_PARCIAL_MIN for c in candidatos):
+        return "parcial"
+    return "ausente"
+
+
+def candidatos_por_cuarto(candidatos: list[dict], duracion_sec: float) -> list[int]:
+    """Cuenta candidatos por cuarto del video, según el punto medio de cada uno."""
+    cuartos = [0, 0, 0, 0]
+    if not duracion_sec or duracion_sec <= 0:
+        return cuartos
+    for c in candidatos:
+        iv = _intervalo(c)
+        if iv is None:
+            continue
+        medio = (iv[0] + iv[1]) / 2
+        cuartos[min(3, max(0, int(medio / (duracion_sec / 4))))] += 1
+    return cuartos
+
+
+def en_exclusion(cand: dict, excluir: list[dict], umbral: float = SOLAPE_EXCLUSION_MIN) -> bool:
+    """El candidato se solapa > 50 % de su duración con algún tramo excluido."""
+    iv = _intervalo(cand)
+    if iv is None:
+        return False
+    dur = iv[1] - iv[0]
+    for e in excluir or []:
+        inter = max(0.0, min(iv[1], float(e["fin"])) - max(iv[0], float(e["inicio"])))
+        if dur > 0 and inter / dur > umbral:
+            return True
+    return False
+
+
+def ordenar_por_ranking(candidatos: list[dict]) -> list[dict]:
+    """Orden del pipeline: `rank_score` desc (Pasada A); sin score, orden original."""
+    indexados = list(enumerate(candidatos))
+    indexados.sort(key=lambda t: (-(t[1].get("rank_score") if t[1].get("rank_score") is not None else float("-inf")), t[0]))
+    return [c for _, c in indexados]
+
+
+def metricas_referencias(
+    candidatos: list[dict],
+    referencias: list[dict],
+    *,
+    duracion_sec: float | None,
+    excluir: list[dict] | None = None,
+    k_precision: tuple[int, ...] = K_PRECISION_REF,
+) -> dict[str, Any]:
+    """
+    Métricas de cobertura de un conjunto de intervalos (candidatos de la
+    Pasada A, o clips entregados) contra las Referencias de un video.
+    """
+    refs_a = [r for r in referencias if r.get("calidad") == "A"]
+    estado = {r["id"]: clasificar_referencia(r, candidatos) for r in referencias}
+
+    def _recall(refs, ok) -> float | None:
+        return _rate(sum(1 for r in refs if ok(r)), len(refs))
+
+    completa = lambda r: estado[r["id"]] == "completa"  # noqa: E731
+    parcial = lambda r: any(cobertura_nucleo(c, r) >= COBERTURA_PARCIAL_MIN for c in candidatos)  # noqa: E731
+
+    cuartos = candidatos_por_cuarto(candidatos, duracion_sec or 0)
+    total_cuartos = sum(cuartos)
+    ranked = ordenar_por_ranking(candidatos)
+    precision = {}
+    for k in k_precision:
+        top = ranked[:k]
+        precision[f"precision_ref@{k}"] = _rate(
+            sum(1 for c in top if any(cobertura_nucleo(c, r) >= COBERTURA_PARCIAL_MIN for r in referencias)),
+            len(top),
+        )
+
+    return {
+        "n_candidatos": len(candidatos),
+        "n_referencias": len(referencias),
+        "n_referencias_a": len(refs_a),
+        "recall_completo": _recall(refs_a, completa),
+        "recall_completo_ab": _recall(referencias, completa),
+        "recall_parcial": _recall(refs_a, parcial),
+        "recall_parcial_ab": _recall(referencias, parcial),
+        "historias_partidas": sum(1 for e in estado.values() if e == "partida"),
+        "historias_partidas_ids": sorted(rid for rid, e in estado.items() if e == "partida"),
+        "candidatos_por_cuarto": cuartos,
+        "min_cuarto": _rate(min(cuartos), total_cuartos) if total_cuartos else None,
+        "candidatos_en_exclusion": sum(1 for c in candidatos if en_exclusion(c, excluir or [])),
+        **precision,
+        "estado_por_referencia": estado,
+    }
+
+
+def captura_de_lo_mejor(
+    referencias: list[dict],
+    entregados: list[dict],
+    *,
+    posteable: list[bool | None] | None = None,
+) -> dict[str, Any]:
+    """
+    Métrica norte (PLAN_MEJORA §3): Referencias A cuyo núcleo está contenido
+    en un clip **entregado** y etiquetado posteable. `posteable[i]` es la
+    etiqueta del entregado i (None = sin etiqueta). Si ningún entregado tiene
+    etiqueta, devuelve la versión "contenido en un entregado" y lo marca en
+    `tipo` para que nadie la confunda con la norte.
+    """
+    refs_a = [r for r in referencias if r.get("calidad") == "A"]
+    etiquetas = list(posteable) if posteable is not None else [None] * len(entregados)
+    con_etiqueta = any(e is not None for e in etiquetas)
+    if con_etiqueta:
+        validos = [c for c, e in zip(entregados, etiquetas) if e is True]
+        tipo = "posteable"
+    else:
+        validos = list(entregados)
+        tipo = "contenido_en_entregado_sin_etiquetas"
+    capturadas = sorted(r["id"] for r in refs_a if any(contiene_nucleo(c, r) for c in validos))
+    return {
+        "captura_de_lo_mejor": _rate(len(capturadas), len(refs_a)),
+        "captura_tipo": tipo,
+        "captura_ids": capturadas,
+        "captura_etiquetados_n": sum(1 for e in etiquetas if e is not None),
+    }
+
+
+# Métricas numéricas que se promedian entre repeticiones y videos.
+METRICAS_SELECCION = (
+    "recall_completo", "recall_completo_ab", "recall_parcial", "recall_parcial_ab",
+    "historias_partidas", "min_cuarto", "candidatos_en_exclusion",
+    "precision_ref@5", "precision_ref@10", "n_candidatos",
+)
+
+
+def media_y_desvio(valores: list[float | None]) -> dict[str, Any]:
+    vs = [float(v) for v in valores if v is not None]
+    if not vs:
+        return {"media": None, "desvio": None, "n": 0}
+    return {
+        "media": round(statistics.mean(vs), 4),
+        "desvio": round(statistics.stdev(vs), 4) if len(vs) > 1 else 0.0,
+        "n": len(vs),
+    }
+
+
+def agregar_repeticiones(reps: list[dict]) -> dict[str, Any]:
+    """Media y desvío por métrica sobre las repeticiones de un video."""
+    ok = [r["metricas"] for r in reps if r.get("metricas")]
+    out = {m: media_y_desvio([r.get(m) for r in ok]) for m in METRICAS_SELECCION}
+    # Estado por Referencia: en cuántas reps quedó completa (estabilidad)
+    completas: dict[str, int] = {}
+    for r in ok:
+        for rid, e in (r.get("estado_por_referencia") or {}).items():
+            completas[rid] = completas.get(rid, 0) + (1 if e == "completa" else 0)
+    out["completa_en_reps"] = completas
+    return out
+
+
+def agregar_seleccion(por_video: list[dict]) -> dict[str, Any]:
+    """Promedio macro (por video) de las medias de cada métrica."""
+    ok = [v for v in por_video if v.get("agregado")]
+    return {
+        m: media_y_desvio([(v["agregado"].get(m) or {}).get("media") for v in ok])
+        for m in METRICAS_SELECCION
     }
