@@ -1,6 +1,6 @@
 # Referencias — charla_humor_01 (B60BHDNFNxM)
 
-Video: https://youtu.be/B60BHDNFNxM · duración 1:50:41 · 25 momentos (0 validados, 25 pendientes)
+Video: https://youtu.be/B60BHDNFNxM · duración 1:50:41 · 29 momentos (17 validados, 12 pendientes)
 
 Cómo validar (una pasada, sin apuro):
 
@@ -21,25 +21,39 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 ## Momentos
 
-### R16 · B · Romay, "colifa divino" (lo etiquetaste posteable)
+### R26 · B · Chupamela Canal 13
 
-[▶ tramo 4:43](https://youtu.be/B60BHDNFNxM?t=283) · [▶ núcleo 4:43](https://youtu.be/B60BHDNFNxM?t=283) · autor: claude-anexo-b
+[▶ tramo 2:14](https://youtu.be/B60BHDNFNxM?t=134) · [▶ núcleo 2:23](https://youtu.be/B60BHDNFNxM?t=143) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
-- tramo: 283 – 335
-- nucleo: 283 – 328   (4:43–5:28, 45 s)
+- tramo: 134 – 186
+- nucleo: 143 – 179   (2:23–2:59, 36 s)
+- calidad: B
+- tipo: frase citable
+- titulo: Chupamela Canal 13
+- por_que: Chicana filosa contra la competencia de canales, frase muy repetible.
+
+> Ellos hacen un recorte y creo que es de 25 minutos. Se saca bastante basura. Que me chupen bien la pica. Y a esas cosas, supongo que no … fuerte con respecto a Canal 13. Ni de Koki Capitanich. Ni de Koki Capitanich. Yo soy los putos de Telefe. Y ya lo he. Y ya lo he.
+
+### R27 · B · Por qué el Bambino canta los goles
+
+[▶ tramo 6:11](https://youtu.be/B60BHDNFNxM?t=371) · [▶ núcleo 6:20](https://youtu.be/B60BHDNFNxM?t=380) · autor: borrador:anthropic/claude-sonnet-5
+
+- decision: pendiente
+- tramo: 371 – 415
+- nucleo: 380 – 411   (6:20–6:51, 31 s)
 - calidad: B
 - tipo: anécdota
-- titulo: Romay, "colifa divino" (lo etiquetaste posteable)
-- por_que: Romay, "colifa divino" (lo etiquetaste posteable)
+- titulo: Por qué el Bambino canta los goles
+- por_que: Explica con humor su costumbre de cantar los goles, autoconciencia graciosa.
 
-> Ellos dicen que una de las primeras apariciones del fútbol europeo en canales de aire es Canal 9, ¿puede ser? Yo, ojo, que laburo con Guido Casca, no … fútbol inglés. Y arrancamos con la Premier League a las 10 de la mañana, a 12 del mediodía con Fernando, sábado y domingo y metimos el fútbol italiano.
+> Hicimos el Manchester de Verón, de Forlán. Ahí está la camiseta, esa camiseta Ryan Grigg Verón, Verón, Verón, Verón, Verón, Verón. Yo bailaba en Bamboche, un bolicho, un … Scholl Esas pelotudeces, como es, engancho bien, Yo soy tímido, hablo mucho, soy tímido, tengo cierto. Si engancho, si me dicen "viejo meado" o "pará de cantar, corto.
 
 ### R01 · A · Caniggia y el auto en Italia 90
 
-[▶ tramo 8:41](https://youtu.be/B60BHDNFNxM?t=521) · [▶ núcleo 9:17](https://youtu.be/B60BHDNFNxM?t=557) · autor: claude-anexo-b
+[▶ tramo 8:41](https://youtu.be/B60BHDNFNxM?t=521) · [▶ núcleo 9:17](https://youtu.be/B60BHDNFNxM?t=557) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 521 – 628
 - nucleo: 557 – 626   (9:17–10:26, 69 s)
 - calidad: A
@@ -49,11 +63,53 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 > Vos decís que en una concentración estaba Cani arriba del auto y Mariana pidiéndole... Dale arranque, a ver Cani, dale arranque. No, no, no, no, en un BM. … Carlos no quería, no, piba, no, no, no, no. Mariana, anda, anda para allá, anda para allá, tira, tira, tira, tira, tira, no escucha, no escucha, no escucha.
 
-### R20 · B · Hinchas del Arsenal
+### R28 · A · Por qué la Premier le prohibió cantar
 
-[▶ tramo 17:44](https://youtu.be/B60BHDNFNxM?t=1064) · [▶ núcleo 17:45](https://youtu.be/B60BHDNFNxM?t=1065) · autor: claude-anexo-b
+[▶ tramo 10:28](https://youtu.be/B60BHDNFNxM?t=628) · [▶ núcleo 10:38](https://youtu.be/B60BHDNFNxM?t=638) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
+- tramo: 628 – 722
+- nucleo: 638 – 721   (10:38–12:01, 83 s)
+- calidad: A
+- tipo: anécdota
+- titulo: Por qué la Premier le prohibió cantar
+- por_que: Historia sorprendente sobre censura de sus canciones, con dato curioso al final.
+
+> El que más trascendencia tuvo, pero por el gol, fue el de Agüero. Yo canté con la música original del tema de Durán Durán, de los beats, de … apodo de chiquito Y te cortaron las canciones en 2013. Claro, después con el de Agüero, que yo ese día ya no sé por qué no puse pista.
+
+### R29 · B · ¿Sos hincha por el FIFA?
+
+[▶ tramo 16:01](https://youtu.be/B60BHDNFNxM?t=961) · [▶ núcleo 16:08](https://youtu.be/B60BHDNFNxM?t=968) · autor: borrador:anthropic/claude-sonnet-5
+
+- decision: pendiente
+- tramo: 961 – 1002
+- nucleo: 968 – 992   (16:08–16:32, 24 s)
+- calidad: B
+- tipo: cruce con el público
+- titulo: ¿Sos hincha por el FIFA?
+- por_que: Pregunta filosa al público que genera reacciones divertidas e inmediatas.
+
+> No, más o menos. Quiero recopilar historias raras de por qué se hicieron hinchas de un club de Europa. Es raro. Ahí hay quizás un punto clave que … Manager. ¿Tiene mucho que ver con los hinchas de equipo europeo? ¿o no? ¿muchos de ustedes se hicieron hinchas de su club por el FIFA? ¿por el FIFA?
+
+### R30 · A · Chicanas cruzadas entre hinchas
+
+[▶ tramo 16:43](https://youtu.be/B60BHDNFNxM?t=1003) · [▶ núcleo 16:53](https://youtu.be/B60BHDNFNxM?t=1013) · autor: borrador:anthropic/claude-sonnet-5
+
+- decision: pendiente
+- tramo: 1003 – 1046
+- nucleo: 1013 – 1041   (16:53–17:21, 28 s)
+- calidad: A
+- tipo: cruce con el público
+- titulo: Chicanas cruzadas entre hinchas
+- por_que: Ida y vuelta rápido y filoso entre hinchas de distintos clubes, energía de programa en vivo.
+
+> Sí ¿Por quién? Eh, no, Por nadie. No sé. Perfecto, Por la Cobra. Yo di Barcelona por la Cobra. Gracias, papá. Vos tenés algo que decir del Chelsea. … No, a diferencia de, por ejemplo, Los hinchas del Arsenal, que no miran fútbol. Me gusta, me gusta, me gusta. Preparate, Baulo, Que vamos a romper el orto.
+
+### R20 · B · Hinchas del Arsenal
+
+[▶ tramo 17:44](https://youtu.be/B60BHDNFNxM?t=1064) · [▶ núcleo 17:45](https://youtu.be/B60BHDNFNxM?t=1065) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
+
+- decision: si
 - tramo: 1064 – 1098
 - nucleo: 1065 – 1092   (17:45–18:12, 27 s)
 - calidad: B
@@ -65,9 +121,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 ### R02 · A · "Porteño, usted tiene 3 problemas"
 
-[▶ tramo 19:24](https://youtu.be/B60BHDNFNxM?t=1164) · [▶ núcleo 19:34](https://youtu.be/B60BHDNFNxM?t=1174) · autor: claude-anexo-b
+[▶ tramo 19:24](https://youtu.be/B60BHDNFNxM?t=1164) · [▶ núcleo 19:34](https://youtu.be/B60BHDNFNxM?t=1174) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1164 – 1229
 - nucleo: 1174 – 1229   (19:34–20:29, 55 s)
 - calidad: A
@@ -77,25 +133,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 > Pará, Tito Goncalve un 5 me dijo 3 cosas fundamentales. Yo tengo un número 10 de pelo largo, buena técnica, muy miedoso, muy cagón. Me agarraban estos salvajes, … Fracansé, voy a ser periodista. Y ahí encontré a Leto, al Ruso y a Tití en el mercado de Abasto, lo que es hoy el shopping del Abasto.
 
-### R25 · B · Bielsa "después enloqueció"; la final del 92
-
-[▶ tramo 24:10](https://youtu.be/B60BHDNFNxM?t=1450) · [▶ núcleo 24:10](https://youtu.be/B60BHDNFNxM?t=1450) · autor: claude-anexo-b
-
-- decision: pendiente
-- tramo: 1450 – 1494
-- nucleo: 1450 – 1484   (24:10–24:44, 34 s)
-- calidad: B
-- tipo: anécdota
-- titulo: Bielsa "después enloqueció"; la final del 92
-- por_que: Bielsa "después enloqueció"; la final del 92
-
-> El primer título de Europa era de Bielsa, era de Bielsa. Eso lo hice toda la campaña del 92 con Bielsa, llega a la final. Bielsa era un … gano la final y juego contra el Milan. El tipo estaba loco y perdió la final y se pegaba con la medalla acá y no lo podía entender.
-
 ### R03 · A · Voces del Oso Yogi y Melquíades
 
-[▶ tramo 25:28](https://youtu.be/B60BHDNFNxM?t=1528) · [▶ núcleo 25:28](https://youtu.be/B60BHDNFNxM?t=1528) · autor: claude-anexo-b
+[▶ tramo 25:28](https://youtu.be/B60BHDNFNxM?t=1528) · [▶ núcleo 25:28](https://youtu.be/B60BHDNFNxM?t=1528) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1528 – 1610
 - nucleo: 1528 – 1605   (25:28–26:45, 77 s)
 - calidad: A
@@ -107,9 +149,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 ### R04 · A · "El periodista, el más puteado después del árbitro"
 
-[▶ tramo 27:31](https://youtu.be/B60BHDNFNxM?t=1651) · [▶ núcleo 27:31](https://youtu.be/B60BHDNFNxM?t=1651) · autor: claude-anexo-b
+[▶ tramo 27:31](https://youtu.be/B60BHDNFNxM?t=1651) · [▶ núcleo 27:31](https://youtu.be/B60BHDNFNxM?t=1651) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1651 – 1709
 - nucleo: 1651 – 1676   (27:31–27:56, 25 s)
 - calidad: A
@@ -123,7 +165,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 [▶ tramo 30:43](https://youtu.be/B60BHDNFNxM?t=1843) · [▶ núcleo 30:43](https://youtu.be/B60BHDNFNxM?t=1843) · autor: claude-anexo-b
 
-- decision: pendiente
+- decision: si
 - tramo: 1843 – 1885
 - nucleo: 1843 – 1885   (30:43–31:25, 42 s)
 - calidad: A
@@ -133,11 +175,25 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 > Bambi, hay algunas veces que vos en tus relatos desaparecés 10 segundos y... No, porque estoy mirando los... La gente pide saludos, boludo. Y gritaste el gol de... … razón, estoy mirando la canción Yo me escribo todo No voy en bola, me escribo todo Mal me escribo todo Este te lo mandó Ávila ¡Qué ingrato, Loque!
 
-### R06 · A · Cuti Romero y Haaland
+### R31 · B · ¿Nenazo por ser hincha de un club europeo?
 
-[▶ tramo 32:44](https://youtu.be/B60BHDNFNxM?t=1964) · [▶ núcleo 32:47](https://youtu.be/B60BHDNFNxM?t=1967) · autor: claude-anexo-b
+[▶ tramo 31:25](https://youtu.be/B60BHDNFNxM?t=1885) · [▶ núcleo 31:32](https://youtu.be/B60BHDNFNxM?t=1892) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
+- tramo: 1885 – 1921
+- nucleo: 1892 – 1917   (31:32–31:57, 25 s)
+- calidad: B
+- tipo: cruce con el público
+- titulo: ¿Nenazo por ser hincha de un club europeo?
+- por_que: Chicana recurrente del programa que genera reacción inmediata del público presente.
+
+> Pero mío todavía ¿Sos hincha del Atlético de Madrid? Ser hincha del club europeo es de nenazo ¿Y qué haces con una camiseta? ¿Qué haces acá además? Una … Atlético de Madrid pero no tengo nada ¿Para quiénes? El de Quique Caminero ¿Para quiénes lo son los silbidos? Para el Atlético Salinas, a mi me gusta Simeone.
+
+### R06 · A · Cuti Romero y Haaland
+
+[▶ tramo 32:44](https://youtu.be/B60BHDNFNxM?t=1964) · [▶ núcleo 32:47](https://youtu.be/B60BHDNFNxM?t=1967) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
+
+- decision: si
 - tramo: 1964 – 2012
 - nucleo: 1967 – 2012   (32:47–33:32, 45 s)
 - calidad: A
@@ -151,7 +207,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 [▶ tramo 33:42](https://youtu.be/B60BHDNFNxM?t=2022) · [▶ núcleo 33:50](https://youtu.be/B60BHDNFNxM?t=2030) · autor: claude-anexo-b
 
-- decision: pendiente
+- decision: si
 - tramo: 2022 – 2048
 - nucleo: 2030 – 2046   (33:50–34:06, 16 s)
 - calidad: B
@@ -161,11 +217,25 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 > Un manche hace dos años estaba por ir al descenso. y lo rajunió todo. Y vine Guardiola a hacerse el papá de Jala, él le dijo, vos sos … mira, le dice, ¿qué me decís, amigo? Lo que me decís, no soy blanco, ni de tres metros. ¿Qué querés? ¿Que le dé un beso en la boca?
 
-### R18 · B · Enzo Fernández
+### R32 · B · El consejo para intimidar a las estrellas
 
-[▶ tramo 36:49](https://youtu.be/B60BHDNFNxM?t=2209) · [▶ núcleo 36:49](https://youtu.be/B60BHDNFNxM?t=2209) · autor: claude-anexo-b
+[▶ tramo 35:54](https://youtu.be/B60BHDNFNxM?t=2154) · [▶ núcleo 36:00](https://youtu.be/B60BHDNFNxM?t=2160) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
+- tramo: 2154 – 2199
+- nucleo: 2160 – 2192   (36:00–36:32, 32 s)
+- calidad: B
+- tipo: anécdota
+- titulo: El consejo para intimidar a las estrellas
+- por_que: Explica un código no escrito del fútbol argentino con ejemplos concretos y graciosos.
+
+> Yo cuando vino Neymar a jugar contra San Lorenzo, que hicieron la pleitesía, le digo, esto es un boludo, se lo va a comer. Vos tenés que putearlo, … campeón del mundo. Y es raro que pase en la Argentina eso, porque juega en Boca. Andás poniendo la pared con la camiseta y se van a morir.
+
+### R18 · B · Enzo Fernández
+
+[▶ tramo 36:49](https://youtu.be/B60BHDNFNxM?t=2209) · [▶ núcleo 36:49](https://youtu.be/B60BHDNFNxM?t=2209) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
+
+- decision: si
 - tramo: 2209 – 2265
 - nucleo: 2209 – 2255   (36:49–37:35, 46 s)
 - calidad: B
@@ -179,7 +249,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 [▶ tramo 43:53](https://youtu.be/B60BHDNFNxM?t=2633) · [▶ núcleo 44:05](https://youtu.be/B60BHDNFNxM?t=2645) · autor: claude-anexo-b
 
-- decision: pendiente
+- decision: si
 - tramo: 2633 – 2671
 - nucleo: 2645 – 2669   (44:05–44:29, 24 s)
 - calidad: B
@@ -191,9 +261,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 ### R07 · A · Maradona en Nápoles, 1990
 
-[▶ tramo 45:11](https://youtu.be/B60BHDNFNxM?t=2711) · [▶ núcleo 45:11](https://youtu.be/B60BHDNFNxM?t=2711) · autor: claude-anexo-b
+[▶ tramo 45:11](https://youtu.be/B60BHDNFNxM?t=2711) · [▶ núcleo 45:11](https://youtu.be/B60BHDNFNxM?t=2711) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2711 – 2769
 - nucleo: 2711 – 2769   (45:11–46:09, 58 s)
 - calidad: A
@@ -205,9 +275,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 ### R08 · A · La foto perdida con Jagger
 
-[▶ tramo 46:31](https://youtu.be/B60BHDNFNxM?t=2791) · [▶ núcleo 46:36](https://youtu.be/B60BHDNFNxM?t=2796) · autor: claude-anexo-b
+[▶ tramo 46:31](https://youtu.be/B60BHDNFNxM?t=2791) · [▶ núcleo 46:36](https://youtu.be/B60BHDNFNxM?t=2796) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2791 – 2901
 - nucleo: 2796 – 2896   (46:36–48:16, 100 s)
 - calidad: A
@@ -217,39 +287,25 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 > Es mi banda. ¿Los conociste? No, me sacó una foto y la perdí Qué pelotudo ¿En serio? 82 Final En España Fielce Mundial Madrid Hotel Clarich Estaba Jagger … mirar la foto, ¿Qué voy a revelar el rollo? No lo revelaron. La foto ya existió, la tengo acá y vino uno, me la hurraqueé y la guardo.
 
-### R09 · A · "Después vas y llorás en el baño"
+### R33 · B · La chicana de Bauleti a Chelsea
 
-[▶ tramo 51:00](https://youtu.be/B60BHDNFNxM?t=3060) · [▶ núcleo 51:00](https://youtu.be/B60BHDNFNxM?t=3060) · autor: claude-anexo-b
-
-- decision: pendiente
-- tramo: 3060 – 3090
-- nucleo: 3060 – 3087   (51:00–51:27, 27 s)
-- calidad: A
-- tipo: frase citable
-- titulo: "Después vas y llorás en el baño"
-- por_que: "Públicamente no hay frío ni calor… después llorás en el baño"
-
-> Los milardistas tenemos una cosa. Pásame, pásame. Públicamente, Luquitas y muchachos, no hay frío, no hay calor, no hay amargura, no hay alegría, públicamente. Sí. Siempre cara de … cabeza abajo. No hay hambre, no hay sueño, no hay saciedad, no hay un carajo. No hay sentimiento. Después vas y lloras en el baño de tu casa.
-
-### R24 · B · "¿Cómo la pasaste? Como el orto. No vengo más."
-
-[▶ tramo 52:49](https://youtu.be/B60BHDNFNxM?t=3169) · [▶ núcleo 52:52](https://youtu.be/B60BHDNFNxM?t=3172) · autor: claude-anexo-b
+[▶ tramo 56:13](https://youtu.be/B60BHDNFNxM?t=3373) · [▶ núcleo 56:20](https://youtu.be/B60BHDNFNxM?t=3380) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
-- tramo: 3169 – 3182
-- nucleo: 3172 – 3181   (52:52–53:01, 9 s)
+- tramo: 3373 – 3413
+- nucleo: 3380 – 3408   (56:20–56:48, 28 s)
 - calidad: B
-- tipo: frase citable
-- titulo: "¿Cómo la pasaste? Como el orto. No vengo más."
-- por_que: "¿Cómo la pasaste? Como el orto. No vengo más."
+- tipo: opinión
+- titulo: La chicana de Bauleti a Chelsea
+- por_que: Dato picante y polémico usado como arma en la discusión entre hinchas.
 
-> ¿Cómo la pasaste? ¿Cómo la pasaste, Bambino? Me voy a un Didi. Claro. Muchas gracias. ¿Cómo la pasaste, Bambino? ¿Cómo estuviste? Como el orto. No vengo más, no vengo más.
+> Quiero decirlo, Enzo Fernández, El mejor mediocampista de la historia de la selección argentina, se fue del Chelsea, firmó con el Chelsea y se fue del Chelsea sin … ver, quiero ver una cosa. Pero bueno, te repito, Enzo Fernández firmó con el Chelsea y se fue del Chelsea sin ganarle un partido de fútbol de Arteta.
 
 ### R21 · B · "Una Libertadores, pero que se muera Arteta"
 
 [▶ tramo 57:46](https://youtu.be/B60BHDNFNxM?t=3466) · [▶ núcleo 57:46](https://youtu.be/B60BHDNFNxM?t=3466) · autor: claude-anexo-b
 
-- decision: pendiente
+- decision: si
 - tramo: 3466 – 3491
 - nucleo: 3466 – 3480   (57:46–58:00, 14 s)
 - calidad: B
@@ -259,39 +315,39 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 > Claro, pero en las famosas preguntas. Si River, campeón de la Libertadores o Arsenal a la B. Todo River. ¿Cómo, cómo, cuál era el...? ¿Que el Arsenal descienda? No, no, no. No, no, no. Una Libertadores, pero que se muera Arteta. Claro, ok, ok.
 
-### R10 · A · Ledley King, el ídolo que nadie conoce
+### R34 · B · El respeto al hincha de un solo club
 
-[▶ tramo 1:02:17](https://youtu.be/B60BHDNFNxM?t=3737) · [▶ núcleo 1:02:23](https://youtu.be/B60BHDNFNxM?t=3743) · autor: claude-anexo-b
+[▶ tramo 59:49](https://youtu.be/B60BHDNFNxM?t=3589) · [▶ núcleo 1:00:01](https://youtu.be/B60BHDNFNxM?t=3601) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
-- tramo: 3737 – 3811
-- nucleo: 3743 – 3782   (1:02:23–1:03:02, 39 s)
-- calidad: A
+- tramo: 3589 – 3631
+- nucleo: 3601 – 3621   (1:00:01–1:00:21, 20 s)
+- calidad: B
 - tipo: cruce con el público
-- titulo: Ledley King, el ídolo que nadie conoce
-- por_que: Ídolo de Tottenham: "¿Quién es? Será un cantante"
+- titulo: El respeto al hincha de un solo club
+- por_que: Momento de tensión y humor entre panelistas e invitados del público, con remate gracioso.
 
-> Soy solo hincha del Tottenham desde el año, desde el año 2006. Por favor, ¿Quién es tu ídolo máximo? ¿Míndolo lo máximo? Harry Kane Harry Kane Eric Lamela … quién es? Lo banco, lo banco Yo esperaba un Harry Kane. Lily King. Chelo banco, es por el show. Será un cantante, capaz que es un cantante, boludo.
+> Voy a decir algo Me lo voy a poner a todo en contra Es amigo ¿Sí? Voy a decir algo. ¿No supo el fútbol con él, no? Sí. … solo de esto, que soy de este, soy del otro, soy del otro. ¡Muy bien, Roberto! ¡Este tiene tres equipos, boludo! ¡Muy bien, Roberto! ¡Este es del Borussia!
 
-### R22 · B · Herbert Chapman, "el que mató a Lennon"
+### R35 · B · Los trabajos secretos de las estrellas inglesas
 
-[▶ tramo 1:04:54](https://youtu.be/B60BHDNFNxM?t=3894) · [▶ núcleo 1:04:55](https://youtu.be/B60BHDNFNxM?t=3895) · autor: claude-anexo-b
+[▶ tramo 1:04:23](https://youtu.be/B60BHDNFNxM?t=3863) · [▶ núcleo 1:04:30](https://youtu.be/B60BHDNFNxM?t=3870) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
-- tramo: 3894 – 3905
-- nucleo: 3895 – 3901   (1:04:55–1:05:01, 6 s)
+- tramo: 3863 – 3898
+- nucleo: 3870 – 3894   (1:04:30–1:04:54, 24 s)
 - calidad: B
 - tipo: frase citable
-- titulo: Herbert Chapman, "el que mató a Lennon"
-- por_que: Herbert Chapman, "el que mató a Lennon"
+- titulo: Los trabajos secretos de las estrellas inglesas
+- por_que: Lista de chistes rápidos y absurdos sobre los ídolos de la Premier.
 
-> Está Herbert Chapman también. El que mató a Lennon. El asesino del Google.
+> Cristiano seguramente como futbolista fue mejor, pero en Premier League, en Riffo es un periodo. Y Rooney, que tenía una carnicería, y Gareth Bale, que tenía un programa … que hacía sandwich de migas, que hacía el coloradito. ¿Cuál que hacía? andaba en monopatín que hacía que error habernos metido ven cámara economista Pero hay varios iguales.
 
 ### R11 · A · "Al Arsenal lo viven robando"
 
-[▶ tramo 1:08:46](https://youtu.be/B60BHDNFNxM?t=4126) · [▶ núcleo 1:08:48](https://youtu.be/B60BHDNFNxM?t=4128) · autor: claude-anexo-b
+[▶ tramo 1:08:46](https://youtu.be/B60BHDNFNxM?t=4126) · [▶ núcleo 1:08:48](https://youtu.be/B60BHDNFNxM?t=4128) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4126 – 4193
 - nucleo: 4128 – 4180   (1:08:48–1:09:40, 52 s)
 - calidad: A
@@ -301,39 +357,39 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 > ¿Querés que te diga la verdad? A nivel arbitraje el Arsenal es el huracán de la Premier League Lo cagan todos los partidos ¿Qué? Hay choreo Hay choreo … a la Perla Reyes, por ejemplo. Al Arsenal le cobran más los penales, al Arsenal no le cobran dos penales, o sea, lo han robado durante mucho tiempo.
 
-### R12 · A · "Cierren el orto" a los hinchas de Boca
+### R36 · B · El gol que le arruinó el stream a Bauleti
 
-[▶ tramo 1:13:57](https://youtu.be/B60BHDNFNxM?t=4437) · [▶ núcleo 1:13:57](https://youtu.be/B60BHDNFNxM?t=4437) · autor: claude-anexo-b
-
-- decision: pendiente
-- tramo: 4437 – 4470
-- nucleo: 4437 – 4462   (1:13:57–1:14:22, 25 s)
-- calidad: A
-- tipo: opinión
-- titulo: "Cierren el orto" a los hinchas de Boca
-- por_que: Bienvenida a los hinchas nuevos de Boca "con una condición"
-
-> Y el viernes tuvimos apariencia de mano. Y decime, ¿cómo vivís este momento de Boca, El Super Boca, hoy son todos bienvenidos. El quinto del grupo A, pueden … todos bienvenidos, Están todos bienvenidos, pueden entrar, Ahora les pido un favor, solo, un solo favor: cierren el orto, No, no, no, no es que escuchar a nadie.
-
-### R23 · B · "Lo más injusto del futbolista…"
-
-[▶ tramo 1:35:14](https://youtu.be/B60BHDNFNxM?t=5714) · [▶ núcleo 1:35:19](https://youtu.be/B60BHDNFNxM?t=5719) · autor: claude-anexo-b
+[▶ tramo 1:20:11](https://youtu.be/B60BHDNFNxM?t=4811) · [▶ núcleo 1:20:26](https://youtu.be/B60BHDNFNxM?t=4826) · autor: borrador:anthropic/claude-sonnet-5
 
 - decision: pendiente
-- tramo: 5714 – 5728
-- nucleo: 5719 – 5727   (1:35:19–1:35:27, 8 s)
+- tramo: 4811 – 4868
+- nucleo: 4826 – 4864   (1:20:26–1:21:04, 38 s)
 - calidad: B
-- tipo: frase citable
-- titulo: "Lo más injusto del futbolista…"
-- por_que: "Lo más injusto del futbolista…"
+- tipo: anécdota
+- titulo: El gol que le arruinó el stream a Bauleti
+- por_que: Anécdota personal divertida con contexto de redes y una coincidencia irónica.
 
-> Lo más injusto del futbolista muchas veces es que vos sos un fenómeno, si hablás bien de él, pero no sabés nada, porque nunca jugás tal fútbol, si hablás mal del tipo.
+> Es tuyo. De hecho, tiene que estar hablado. Esto tiene que estar hablado. Y después convirtió Lucas Blondel. Le mandamos feliz. ¡Qué noche habrá pasado! Un tirón al … ganarme y sacarme de atrás. Acá no tiene nada que hacer el arquero. no no No, no, no, no, no, no, no. Burrada de Fauto Vera, burrada monumental.
+
+### R37 · A · Usa forro
+
+[▶ tramo 1:23:08](https://youtu.be/B60BHDNFNxM?t=4988) · [▶ núcleo 1:23:16](https://youtu.be/B60BHDNFNxM?t=4996) · autor: borrador:anthropic/claude-sonnet-5
+
+- decision: pendiente
+- tramo: 4988 – 5028
+- nucleo: 4996 – 5006   (1:23:16–1:23:26, 10 s)
+- calidad: A
+- tipo: imitación
+- titulo: Usa forro
+- por_que: Chiste visual con canción y remate absurdo sobre el técnico bajo la lluvia, muy compartible.
+
+> ¿No te acordabas? Usa forro. Usa forro. Si triki-triki no hay bombón. ¡Qué bonito! Cuida tu vida.
 
 ### R13 · A · La frase de Luis Enrique
 
-[▶ tramo 1:45:11](https://youtu.be/B60BHDNFNxM?t=6311) · [▶ núcleo 1:45:16](https://youtu.be/B60BHDNFNxM?t=6316) · autor: claude-anexo-b
+[▶ tramo 1:45:11](https://youtu.be/B60BHDNFNxM?t=6311) · [▶ núcleo 1:45:16](https://youtu.be/B60BHDNFNxM?t=6316) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 6311 – 6361
 - nucleo: 6316 – 6350   (1:45:16–1:45:50, 34 s)
 - calidad: A
@@ -347,7 +403,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 [▶ tramo 1:46:26](https://youtu.be/B60BHDNFNxM?t=6386) · [▶ núcleo 1:46:26](https://youtu.be/B60BHDNFNxM?t=6386) · autor: claude-anexo-b
 
-- decision: pendiente
+- decision: si
 - tramo: 6386 – 6407
 - nucleo: 6386 – 6403   (1:46:26–1:46:43, 17 s)
 - calidad: A
@@ -359,9 +415,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/B60BH
 
 ### R15 · A · "El Real Madrid es una asociación ilícita"
 
-[▶ tramo 1:48:23](https://youtu.be/B60BHDNFNxM?t=6503) · [▶ núcleo 1:48:37](https://youtu.be/B60BHDNFNxM?t=6517) · autor: claude-anexo-b
+[▶ tramo 1:48:23](https://youtu.be/B60BHDNFNxM?t=6503) · [▶ núcleo 1:48:37](https://youtu.be/B60BHDNFNxM?t=6517) · autor: claude-anexo-b · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 6503 – 6545
 - nucleo: 6517 – 6535   (1:48:37–1:48:55, 18 s)
 - calidad: A
