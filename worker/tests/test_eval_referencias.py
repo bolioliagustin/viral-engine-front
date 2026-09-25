@@ -164,8 +164,16 @@ class TestEsquema:
         doc = refs.cargar_referencias("B60BHDNFNxM")
         assert doc is not None
         assert refs.validar_documento(doc) == []
-        ids_semilla = {m["id"] for m in doc["momentos"] if m.get("autor") == "claude-anexo-b"}
-        assert len(ids_semilla) == 25
+        # La semilla (Anexo B de PLAN_MEJORA) son los 25 momentos R01–R25. La
+        # validación mueve a `descartados` los que Agustín no quiere, así que
+        # cuántos quedan en `momentos` es un dato, no un invariante. Lo
+        # invariante: ningún momento de la semilla se pierde ni se duplica;
+        # cada uno está vivo o descartado, nunca en los dos lados.
+        ids_anexo_b = {f"R{i:02d}" for i in range(1, 26)}
+        vivos = {m["id"] for m in doc["momentos"] if m.get("autor") == "claude-anexo-b"}
+        descartados = {m["id"] for m in doc.get("descartados", []) if m.get("autor") == "claude-anexo-b"}
+        assert vivos | descartados == ids_anexo_b
+        assert not vivos & descartados
         assert doc["excluir"][0]["inicio"] == 3100
 
 
