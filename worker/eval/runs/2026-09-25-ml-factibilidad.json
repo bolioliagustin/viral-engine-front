@@ -1,0 +1,534 @@
+{
+  "experimento": "ml_factibilidad",
+  "fecha": "2026-09-25",
+  "costo_api_usd": 0.0,
+  "fuente_candidatos": "2026-09-25-seleccion-baseline-validado.json",
+  "E2_b60_referencias_validadas": {
+    "n_candidatos": 90,
+    "n_grupos_unicos": 48,
+    "etiquetas": {
+      "descartada": 14,
+      "nada": 43,
+      "incierto": 8,
+      "mejor": 25
+    },
+    "tasa_base_mejor": 0.305,
+    "auc_por_rasgo": {
+      "rank_score": {
+        "auc": 0.816,
+        "ic95": [
+          0.677,
+          0.948
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      },
+      "pos_rel": {
+        "auc": 0.465,
+        "ic95": [
+          0.266,
+          0.653
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      },
+      "duracion": {
+        "auc": 0.749,
+        "ic95": [
+          0.553,
+          0.908
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      },
+      "palabras_por_seg": {
+        "auc": 0.537,
+        "ic95": [
+          0.356,
+          0.71
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      },
+      "preguntas_por_min": {
+        "auc": 0.441,
+        "ic95": [
+          0.261,
+          0.623
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      },
+      "exclamaciones_por_min": {
+        "auc": 0.519,
+        "ic95": [
+          0.408,
+          0.653
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      },
+      "lineas_por_min": {
+        "auc": 0.465,
+        "ic95": [
+          0.249,
+          0.685
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      }
+    },
+    "confusion_con_duracion": {
+      "corr_rank_score_duracion": 0.104,
+      "auc_rank_score_residuo_de_duracion": {
+        "auc": 0.78,
+        "ic95": [
+          0.623,
+          0.934
+        ],
+        "n": 82,
+        "n_pos": 25,
+        "n_grupos": 43
+      },
+      "auc_rank_score_por_tercil_de_duracion": {
+        "tercil_1": {
+          "n": 25,
+          "n_pos": 3,
+          "auc_rank_score": 0.932
+        },
+        "tercil_2": {
+          "n": 28,
+          "n_pos": 7,
+          "auc_rank_score": 0.864
+        },
+        "tercil_3": {
+          "n": 29,
+          "n_pos": 15,
+          "auc_rank_score": 0.79
+        }
+      }
+    },
+    "etiqueta_estricta_contiene_nucleo_A": {
+      "n_pos": 5,
+      "auc_rank_score": {
+        "auc": 0.508,
+        "ic95": [
+          0.324,
+          0.899
+        ],
+        "n": 82,
+        "n_pos": 5,
+        "n_grupos": 43
+      },
+      "auc_duracion": {
+        "auc": 0.956,
+        "ic95": [
+          0.903,
+          0.992
+        ],
+        "n": 82,
+        "n_pos": 5,
+        "n_grupos": 43
+      }
+    },
+    "precision_top_k_rank_score": [
+      {
+        "rep": 1,
+        "k": 5,
+        "mejor": 4
+      },
+      {
+        "rep": 1,
+        "k": 10,
+        "mejor": 5
+      },
+      {
+        "rep": 2,
+        "k": 5,
+        "mejor": 3
+      },
+      {
+        "rep": 2,
+        "k": 10,
+        "mejor": 5
+      },
+      {
+        "rep": 3,
+        "k": 5,
+        "mejor": 3
+      },
+      {
+        "rep": 3,
+        "k": 10,
+        "mejor": 6
+      }
+    ],
+    "referencias": {
+      "validadas": 17,
+      "validadas_a": 12,
+      "pendientes": 12,
+      "descartadas": 8
+    }
+  },
+  "E2b_anexo_a2_juez_jev": {
+    "n": 10,
+    "conservadas": 8,
+    "descartadas": 2,
+    "auc_juez": 0.656,
+    "auc_jev": 0.5,
+    "pares_comparables": 16,
+    "filas": [
+      {
+        "candidato": "Cuti/Haaland",
+        "ref": "R06",
+        "juez": 20,
+        "jev": 21.8,
+        "conservada": true
+      },
+      {
+        "candidato": "Peñarol",
+        "ref": "R02",
+        "juez": 16,
+        "jev": 19.1,
+        "conservada": true
+      },
+      {
+        "candidato": "Bilardistas",
+        "ref": "R09",
+        "juez": 15,
+        "jev": 18.6,
+        "conservada": false
+      },
+      {
+        "candidato": "Periodista",
+        "ref": "R04",
+        "juez": 19,
+        "jev": 16.7,
+        "conservada": true
+      },
+      {
+        "candidato": "Jagger completa",
+        "ref": "R08",
+        "juez": 18,
+        "jev": 14.8,
+        "conservada": true
+      },
+      {
+        "candidato": "Caniggia",
+        "ref": "R01",
+        "juez": 18,
+        "jev": 8.8,
+        "conservada": true
+      },
+      {
+        "candidato": "Oso Yogi completo",
+        "ref": "R03",
+        "juez": 13,
+        "jev": 8.2,
+        "conservada": true
+      },
+      {
+        "candidato": "Ledley King",
+        "ref": "R10",
+        "juez": 13,
+        "jev": 10.5,
+        "conservada": false
+      },
+      {
+        "candidato": "Asociación ilícita",
+        "ref": "R15",
+        "juez": 9,
+        "jev": 11.4,
+        "conservada": true
+      },
+      {
+        "candidato": "Luis Enrique",
+        "ref": "R13",
+        "juez": 10,
+        "jev": 12.3,
+        "conservada": true
+      }
+    ]
+  },
+  "E4_tamano_de_muestra": {
+    "auc_contra_azar": {
+      "auc_0.6": 288,
+      "auc_0.65": 128,
+      "auc_0.7": 71,
+      "auc_0.75": 45,
+      "auc_0.8": 31
+    },
+    "delta_auc_mismos_clips_r05": {
+      "de_0.65_a_0.70": 1055,
+      "de_0.65_a_0.75": 255,
+      "de_0.65_a_0.80": 110
+    },
+    "ic95_auc_0.7_mitad_de_anchura": {
+      "22": 0.24,
+      "50": 0.157,
+      "100": 0.112,
+      "200": 0.079,
+      "400": 0.056,
+      "1000": 0.035
+    },
+    "precision_para_estimar_0.8_con_mas_menos": {
+      "0.05": 246,
+      "0.1": 62,
+      "0.15": 28
+    },
+    "precision_0.65_a_0.80_por_brazo": 138,
+    "precision_0.75_a_0.85_por_brazo": 250,
+    "videos_para_recall": {
+      "desvio_entre_videos_recall_completo": 0.216,
+      "videos_para_ic95_mas_menos_10pp": 18,
+      "videos_para_ic95_mas_menos_15pp": 8
+    },
+    "eventos_por_variable": {
+      "regla": "10–20 positivos por parámetro (Peduzzi 1996); Riley 2020 calcula según R² y prevalencia",
+      "10_rasgos": {
+        "positivos_min": 100,
+        "positivos_holgado": 200
+      },
+      "embedding_768_con_regularizacion": "no aplica la regla; ver §2.3 del estudio"
+    }
+  },
+  "E1_posteable": {
+    "n": 22,
+    "posteables": 13,
+    "posteable_rate": 0.591,
+    "posteable_rate_ic95": [
+      0.387,
+      0.767
+    ],
+    "por_video": {
+      "XxoVRjTySsM": {
+        "n": 20,
+        "posteables": 12
+      },
+      "B60BHDNFNxM": {
+        "n": 2,
+        "posteables": 1
+      }
+    },
+    "anotadores": 1,
+    "auc_por_rasgo": {
+      "juez_suma": {
+        "auc": 0.611,
+        "ic95": [
+          0.357,
+          0.838
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "juez_hook": {
+        "auc": 0.504,
+        "ic95": [
+          0.263,
+          0.752
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "juez_retention": {
+        "auc": 0.65,
+        "ic95": [
+          0.438,
+          0.833
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "juez_shareability": {
+        "auc": 0.53,
+        "ic95": [
+          0.333,
+          0.739
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "pasada_a_suma": {
+        "auc": 0.509,
+        "ic95": [
+          0.24,
+          0.771
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "duracion": {
+        "auc": 0.573,
+        "ic95": [
+          0.307,
+          0.821
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "pos_rel": {
+        "auc": 0.453,
+        "ic95": [
+          0.202,
+          0.709
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "palabras_por_seg": {
+        "auc": 0.628,
+        "ic95": [
+          0.348,
+          0.88
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      },
+      "n_flags": {
+        "auc": 0.585,
+        "ic95": [
+          0.35,
+          0.808
+        ],
+        "n": 22,
+        "n_pos": 13,
+        "n_grupos": 22
+      }
+    }
+  },
+  "E3_juez_vs_borradores": {
+    "n": 230,
+    "n_toca": 86,
+    "etiquetas": "borradores de Referencias (anthropic/claude-sonnet-5), SIN validar por Agustín",
+    "auc_pooled_por_rasgo": {
+      "juez_suma": {
+        "auc": 0.679,
+        "ic95": [
+          0.606,
+          0.74
+        ],
+        "n": 230,
+        "n_pos": 86,
+        "n_grupos": 4
+      },
+      "w2_score": {
+        "auc": 0.606,
+        "ic95": [
+          0.49,
+          0.666
+        ],
+        "n": 230,
+        "n_pos": 86,
+        "n_grupos": 4
+      },
+      "rank_score": {
+        "auc": 0.584,
+        "ic95": [
+          0.386,
+          0.729
+        ],
+        "n": 230,
+        "n_pos": 86,
+        "n_grupos": 4
+      },
+      "pos_rel": {
+        "auc": 0.588,
+        "ic95": [
+          0.468,
+          0.683
+        ],
+        "n": 230,
+        "n_pos": 86,
+        "n_grupos": 4
+      },
+      "duracion": {
+        "auc": 0.568,
+        "ic95": [
+          0.462,
+          0.651
+        ],
+        "n": 230,
+        "n_pos": 86,
+        "n_grupos": 4
+      }
+    },
+    "por_video": {
+      "KXKzgeHOr7A": {
+        "n": 26,
+        "n_toca": 20,
+        "auc_juez_suma": 0.738,
+        "auc_w2_score": 0.662,
+        "auc_rank_score": 0.642,
+        "auc_pos_rel": 0.567,
+        "auc_duracion": 0.537
+      },
+      "Lqq78q17jDY": {
+        "n": 68,
+        "n_toca": 18,
+        "auc_juez_suma": 0.621,
+        "auc_w2_score": 0.447,
+        "auc_rank_score": 0.751,
+        "auc_pos_rel": 0.692,
+        "auc_duracion": 0.699
+      },
+      "MaXgAEI4Vm8": {
+        "n": 68,
+        "n_toca": 14,
+        "auc_juez_suma": 0.591,
+        "auc_w2_score": 0.548,
+        "auc_rank_score": 0.431,
+        "auc_pos_rel": 0.368,
+        "auc_duracion": 0.504
+      },
+      "XxoVRjTySsM": {
+        "n": 68,
+        "n_toca": 34,
+        "auc_juez_suma": 0.585,
+        "auc_w2_score": 0.655,
+        "auc_rank_score": 0.769,
+        "auc_pos_rel": 0.561,
+        "auc_duracion": 0.531
+      }
+    },
+    "logistica_lovo": {
+      "rasgos": [
+        "juez_suma",
+        "w2_score",
+        "rank_score",
+        "pos_rel",
+        "duracion"
+      ],
+      "auc_pooled_oof": {
+        "auc": 0.589,
+        "ic95": [
+          0.551,
+          0.646
+        ],
+        "n": 230,
+        "n_pos": 86,
+        "n_grupos": 4
+      },
+      "auc_por_video_oof": {
+        "KXKzgeHOr7A": 0.717,
+        "Lqq78q17jDY": 0.692,
+        "MaXgAEI4Vm8": 0.512,
+        "XxoVRjTySsM": 0.593
+      }
+    }
+  }
+}

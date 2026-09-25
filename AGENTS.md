@@ -11,7 +11,8 @@ SaaS que convierte un video (link de YouTube o archivo del creador) en clips ver
 
 ## Flujo de trabajo
 
-- Trabajá en una rama `feat/<componente>-<tema>` o `fix/<componente>-<tema>` creada desde `main`, y abrí un PR. `main` es solo de humanos: el merge y el deploy los decide Agustín (deploy del worker por `workflow_dispatch`). Nunca hagas push ni force-push a `main`.
+- Trabajá en una rama `feat/<componente>-<tema>` o `fix/<componente>-<tema>` creada desde `main` (o desde la rama de integración que te indique el coordinador) y abrí un PR. `main` es solo de humanos: el merge y el deploy los decide Agustín. **Mergear a `main` despliega el worker** (`deploy.yml` escucha el push), así que un cambio de comportamiento del worker entra con su flag apagado.
+- Una medición nunca lee ni escribe la caché de análisis de producción: el `.env` de la raíz apunta a la base de la beta (`docs/PLAN_MEJORA.md` §4.1).
 - Un componente por agente. Los contratos entre componentes son el esquema (§7 de PROYECTO), los endpoints (§8) y las variables de entorno (§11): si tu PR cambia uno, actualizá esa sección en el mismo PR y decilo en la descripción.
 - Secretos: `.env`, `frontend/.env.local`, `proxies.txt` y `cookies.txt` viven fuera de git. Los nombres están en `.env.example`; los valores los pone Agustín. Un valor de esos nunca aparece en un commit, log o PR.
 - Datos: el desarrollo usa su propio proyecto Supabase. Un worker local apuntado al Supabase de la beta le roba jobs (no hay afinidad de worker): verificá `SUPABASE_URL` antes de correr `worker/main.py`.

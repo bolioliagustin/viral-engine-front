@@ -8,6 +8,12 @@ Tiers (de más rápido a más completo):
   e2e      — pipeline real por clip (descarga + Whisper + snap + Pasada B +
              juez + render) en modo dry-run: nada se persiste ni se sube.
              Emite juez, flags, densidad, duraciones, costo y tiempo por clip.
+  seleccion — (W19) clasificador + Pasada A sobre el transcript cacheado de
+             cada video con Referencias, N repeticiones, métricas de cobertura
+             (recall_completo@candidatos, min_cuarto, …). Minutos y centavos.
+
+seleccion y e2e no leen ni escriben analysis_cache/category_cache ni escriben
+transcription_cache (eval/aislamiento.py; EVAL_CACHE_PRODUCCION=1 lo apaga).
 
 Uso (desde worker/ en Docker, o repo root en local):
 
@@ -18,6 +24,8 @@ Uso (desde worker/ en Docker, o repo root en local):
     python eval/run_golden_set.py --tier full --json > /tmp/report.json
     EVAL_DRY_RUN=1 ENVIRONMENT=development python eval/run_golden_set.py --tier e2e --json \
         2>eval/runs/<fecha>-<PROMPT_VERSION>.log >eval/runs/<fecha>-<PROMPT_VERSION>.json
+    python eval/run_golden_set.py --tier seleccion --reps 3 --json > eval/runs/<fecha>-seleccion.json
+    python eval/run_golden_set.py --tier seleccion --recalcular eval/runs/<fecha>-seleccion.json
 
 Con --json: logs humanos van a stderr; stdout es solo JSON válido.
 
@@ -522,7 +530,8 @@ def main() -> int:
         "--tier",
         choices=TIER_ORDER,
         default=DEFAULT_TIER,
-        help="smoke (rápido) | analysis (default) | full (+ copy/juez) | e2e (pipeline real, dry-run)",
+        help="smoke (rápido) | analysis (default) | full (+ copy/juez) | e2e (pipeline real, dry-run) "
+             "| seleccion (Pasada A contra Referencias)",
     )
     parser.add_argument("--copy", action="store_true", help="(legacy) equivale a --tier full")
     parser.add_argument("--video", help="Evaluar solo este id del golden set")
@@ -533,6 +542,25 @@ def main() -> int:
         default=DEFAULT_E2E_VIDEO_BUDGET_SEC,
         help="(e2e) segundos máximos por video antes de marcarlo timed_out",
     )
+    parser.add_argument("--reps", type=int, default=None, help="(seleccion) repeticiones independientes por video")
+    parser.add_argument(
+        "--sin-cache", action="store_true",
+        help="No leer ni escribir analysis_cache/category_cache ni escribir transcription_cache. "
+             "Default (y obligatorio salvo EVAL_CACHE_PRODUCCION=1) en seleccion y e2e.",
+    )
+    parser.add_argument(
+        "--incluir-borradores", action="store_true",
+        help="(seleccion/e2e) medir también contra Referencias todavía no validadas (queda marcado en el JSON)",
+    )
+    parser.add_argument("--workers", type=int, default=None, help="(seleccion) Pasadas A en paralelo")
+    parser.add_argument(
+        "--completar", metavar="CORRIDA_JSON",
+        help="(seleccion) rehace solo las repeticiones con error de una corrida guardada y la reescribe",
+    )
+    parser.add_argument(
+        "--recalcular", metavar="CORRIDA_JSON",
+        help="(seleccion) recalcula las métricas de una corrida guardada con las Referencias actuales, sin llamar a la API",
+    )
     args = parser.parse_args()
 
     tier = "full" if args.copy else args.tier
@@ -542,6 +570,14 @@ def main() -> int:
     tier_cfg = resolve_tier_config(golden, tier)
     with_copy = tier_cfg["include_copy"]
     thresholds = tier_cfg["thresholds"]
+
+    if tier == "seleccion" and args.completar:
+        return _main_completar(
+            args.completar, golden.get("videos") or [], json_mode=json_mode, workers=args.workers,
+        )
+
+    if tier == "seleccion" and args.recalcular:
+        return _main_recalcular(args.recalcular, json_mode=json_mode, incluir_borradores=args.incluir_borradores)
 
     videos = filter_videos_for_tier(
         golden.get("videos") or [],
@@ -560,12 +596,36 @@ def main() -> int:
 
     from config.model_tiers import resolved_models
 
+    if tier == "seleccion":
+        return _main_seleccion(
+            videos, tier_cfg, json_mode=json_mode,
+            reps=args.reps or int(tier_cfg.get("reps") or 1),
+            workers=args.workers,
+            incluir_borradores=args.incluir_borradores,
+        )
+
     if tier == "e2e":
         return _main_e2e(
             videos, thresholds, json_mode=json_mode, budget_sec=args.video_budget_sec,
             aggregate=aggregate_e2e_results, check=check_e2e_thresholds,
             blocking=tier_cfg["thresholds_blocking"],
+            incluir_borradores=args.incluir_borradores,
         )
+
+    # analysis/full: el aislamiento es opt-in con --sin-cache
+    import contextlib
+    from aislamiento import sin_cache_de_produccion
+    aislar = sin_cache_de_produccion(activo=True) if args.sin_cache else contextlib.nullcontext()
+    with aislar:
+        return _main_analysis(videos, tier, tier_cfg, json_mode=json_mode)
+
+
+def _main_analysis(videos, tier, tier_cfg, *, json_mode) -> int:
+    from config.model_tiers import resolved_models
+    from eval_metrics import aggregate_results, check_thresholds
+
+    with_copy = tier_cfg["include_copy"]
+    thresholds = tier_cfg["thresholds"]
 
     _log(f"🏆 Golden set | tier={tier} | videos={len(videos)} | copy={'sí' if with_copy else 'no'}", json_mode=json_mode)
     _log(f"   Modelos: {resolved_models()}", json_mode=json_mode)
@@ -635,7 +695,9 @@ def _emit_json(summary: dict, stream=None) -> None:
     stream.flush()
 
 
-def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check, blocking=True) -> int:
+def _main_e2e(
+    videos, thresholds, *, json_mode, budget_sec, aggregate, check, blocking=True, incluir_borradores=False,
+) -> int:
     from datetime import datetime, timezone
 
     from config.model_tiers import resolved_models
@@ -652,21 +714,32 @@ def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check, bl
     if json_mode:
         sys.stdout = sys.stderr
 
+    # W19 (PLAN_MEJORA §4.1): el e2e no lee ni escribe la caché de análisis y
+    # no escribe ninguna caché de producción (eval/aislamiento.py).
+    from aislamiento import aislamiento_activo, sin_cache_de_produccion
+
     t0 = time.time()
     results = []
     try:
-        for video in videos:
-            _log(f"── {video['id']} ─────────────────────────────", json_mode=json_mode)
-            try:
-                results.append(evaluate_video_e2e(video, json_mode=json_mode, budget_sec=budget_sec))
-            except Exception as e:
-                _log(f"   ❌ Eval crash: {str(e)[:200]}", json_mode=json_mode)
-                results.append({"id": video["id"], "ok": False, "clips": [], "errors": [f"crash: {str(e)[:150]}"]})
-            _log("", json_mode=json_mode)
+        with sin_cache_de_produccion() as intentos:
+            for video in videos:
+                _log(f"── {video['id']} ─────────────────────────────", json_mode=json_mode)
+                try:
+                    results.append(evaluate_video_e2e(video, json_mode=json_mode, budget_sec=budget_sec))
+                except Exception as e:
+                    _log(f"   ❌ Eval crash: {str(e)[:200]}", json_mode=json_mode)
+                    results.append({"id": video["id"], "ok": False, "clips": [], "errors": [f"crash: {str(e)[:150]}"]})
+                _log("", json_mode=json_mode)
+            intentos_cache = dict(intentos)
     finally:
         sys.stdout = real_stdout
 
+    for r in results:
+        _referencias_e2e(r, incluir_borradores=incluir_borradores)
+
     summary = aggregate(results)
+    summary["aislamiento"] = {"activo": aislamiento_activo(), "intentos_bloqueados": intentos_cache}
+    summary["referencias"] = _agregar_referencias_e2e(results)
     summary["tier"] = "e2e"
     summary["models"] = resolved_models()
     summary["prompt_version"] = PROMPT_VERSION
@@ -683,6 +756,133 @@ def _main_e2e(videos, thresholds, *, json_mode, budget_sec, aggregate, check, bl
     # El resumen legible va a stderr en modo JSON (queda en el .log)
     _print_e2e_summary(summary, failures, json_mode=json_mode, blocking=blocking)
     return 1 if (failures and blocking) else 0
+
+
+def _referencias_e2e(result: dict, *, incluir_borradores: bool) -> None:
+    """
+    W19: `recall@entregados` y `captura_de_lo_mejor` del video, si tiene
+    Referencias. Los entregados son los clips del job; la etiqueta posteable
+    sale de `clip_feedback` cuando el video declara `real_job_id`.
+    """
+    from eval_metrics import captura_de_lo_mejor, metricas_referencias
+    import referencias as refs
+
+    doc = refs.cargar_referencias(result.get("youtube_id") or "")
+    momentos = refs.momentos_validados(doc, incluir_borradores=incluir_borradores)
+    if not momentos:
+        return
+    clips = result.get("clips") or []
+    m = metricas_referencias(
+        clips, momentos, duracion_sec=result.get("video_duration_sec"), excluir=doc.get("excluir") or [],
+    )
+    etiquetas = [c.get("posteable") for c in clips]
+    result["referencias"] = {
+        "incluye_borradores": incluir_borradores,
+        "recall@entregados": m["recall_completo"],
+        "recall_ab@entregados": m["recall_completo_ab"],
+        "recall_parcial@entregados": m["recall_parcial"],
+        "historias_partidas@entregados": m["historias_partidas"],
+        # De lo entregado, cuánto coincide (parcial) con alguna Referencia
+        "precision_ref@entregados": metricas_referencias(
+            clips, momentos, duracion_sec=None, k_precision=(len(clips) or 1,),
+        ).get(f"precision_ref@{len(clips) or 1}"),
+        "estado_por_referencia": m["estado_por_referencia"],
+        **captura_de_lo_mejor(momentos, clips, posteable=etiquetas),
+    }
+
+
+def _agregar_referencias_e2e(results: list[dict]) -> dict | None:
+    from eval_metrics import media_y_desvio
+    con = [r["referencias"] for r in results if r.get("referencias")]
+    if not con:
+        return None
+    claves = ("recall@entregados", "recall_ab@entregados", "recall_parcial@entregados",
+              "precision_ref@entregados", "captura_de_lo_mejor")
+    out = {k: media_y_desvio([c.get(k) for c in con]) for k in claves}
+    out["captura_tipo"] = sorted({c["captura_tipo"] for c in con})
+    out["videos_con_referencias"] = len(con)
+    return out
+
+
+def _main_seleccion(videos, tier_cfg, *, json_mode, reps, workers, incluir_borradores) -> int:
+    from datetime import datetime, timezone
+
+    import referencias as refs
+    import seleccion
+    from config.model_tiers import resolved_models
+    from services.analysis_cache import PROMPT_VERSION
+
+    elegibles = []
+    for v in videos:
+        doc = refs.cargar_referencias(v.get("youtube_id") or "")
+        if refs.momentos_validados(doc, incluir_borradores=incluir_borradores):
+            elegibles.append(v)
+        else:
+            _log(f"   ⏭️  {v['id']}: sin Referencias {'' if incluir_borradores else 'validadas '}— se salta", json_mode=json_mode)
+    if not elegibles:
+        _log("❌ Ningún video tiene Referencias validadas (probá --incluir-borradores)", json_mode=json_mode)
+        return 2
+
+    _log(f"🏆 Golden set | tier=seleccion | videos={len(elegibles)} | reps={reps} | sin cachés de producción", json_mode=json_mode)
+    _log(f"   Modelos: {resolved_models()} | PROMPT_VERSION={PROMPT_VERSION}", json_mode=json_mode)
+
+    real_stdout = sys.stdout
+    if json_mode:
+        sys.stdout = sys.stderr  # el pipeline imprime con print(): que no ensucie el JSON
+    try:
+        corrida = seleccion.correr_seleccion(
+            elegibles, reps=reps, incluir_borradores=incluir_borradores,
+            workers=workers or seleccion.DEFAULT_WORKERS,
+            log=lambda msg: _log(msg, json_mode=json_mode),
+        )
+    finally:
+        sys.stdout = real_stdout
+
+    corrida["models"] = resolved_models()
+    corrida["prompt_version"] = PROMPT_VERSION
+    corrida["run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    corrida["git_commit"] = _git_commit()
+    corrida["env"] = {k: os.getenv(k) for k in ("TRANSCRIPT_SOURCE", "RANKER", "MODEL_ANALYSIS_REASONING") if os.getenv(k)}
+    if json_mode:
+        _emit_json(corrida, real_stdout)
+    for linea in seleccion.resumen_legible(corrida):
+        _log(linea, json_mode=json_mode)
+    ok = any(v.get("agregado") for v in corrida["videos"])
+    return 0 if ok else 1
+
+
+def _main_completar(ruta: str, videos: list[dict], *, json_mode: bool, workers: int | None) -> int:
+    import seleccion
+    with open(ruta, encoding="utf-8") as f:
+        corrida = json.load(f)
+    real_stdout = sys.stdout
+    if json_mode:
+        sys.stdout = sys.stderr
+    try:
+        corrida = seleccion.completar_corrida(
+            corrida, videos, workers=workers or seleccion.DEFAULT_WORKERS,
+            log=lambda msg: _log(msg, json_mode=json_mode),
+        )
+    finally:
+        sys.stdout = real_stdout
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write(json.dumps(corrida, ensure_ascii=False, indent=2, default=str) + "\n")
+    for linea in seleccion.resumen_legible(corrida):
+        _log(linea, json_mode=json_mode)
+    return 0
+
+
+def _main_recalcular(ruta: str, *, json_mode: bool, incluir_borradores: bool) -> int:
+    import seleccion
+    with open(ruta, encoding="utf-8") as f:
+        corrida = json.load(f)
+    corrida = seleccion.calcular_metricas(corrida, incluir_borradores=incluir_borradores)
+    corrida["recalculado_desde"] = ruta
+    if json_mode:
+        _emit_json(corrida)
+    for linea in seleccion.resumen_legible(corrida):
+        _log(linea, json_mode=json_mode)
+    return 0
 
 
 def _git_commit() -> str | None:

@@ -415,13 +415,20 @@ def analyze_with_openrouter(
     from services.analysis_cache import (
         get_cached_analysis, save_analysis,
         get_cached_category, save_category,
-        effective_prompt_version,
+        effective_prompt_version, analysis_cache_tone, two_pass_enabled,
     )
+    from services.transcript_cache import transcript_fingerprint
     # W4: el cache de la Pasada A se separa por fuente del transcript
     # (v5 / v5+whisper_full / v5+hybrid) porque el prompt recibe otro texto.
     prompt_version = effective_prompt_version(transcript.get("source"))
+    # W18: el análisis solo se reutiliza si se calculó sobre este mismo
+    # transcript (huella), y la Pasada A se comparte entre tonos.
+    fingerprint = transcript_fingerprint(transcript)
     if video_id:
-        cached = get_cached_analysis(video_id, model, tone, prompt_version=prompt_version)
+        cached = get_cached_analysis(
+            video_id, model, analysis_cache_tone(tone, two_pass_enabled()),
+            prompt_version=prompt_version, fingerprint=fingerprint,
+        )
         if cached:
             try:
                 from services.usage_tracker import record_cache_hit
@@ -511,7 +518,7 @@ def analyze_with_openrouter(
     # Default ON. TWO_PASS_ANALYSIS=false fuerza el mega-prompt legacy.
     # Si la pasada A falla tras retries, caemos al mega-prompt (su copy queda
     # como borrador que la pasada B pisa post-Whisper).
-    use_two_pass = os.getenv("TWO_PASS_ANALYSIS", "true").lower() not in ("false", "0", "no")
+    use_two_pass = two_pass_enabled()
     result_dict = None
     analysis_mode = "mega_prompt"
     if use_two_pass:
@@ -772,10 +779,11 @@ VIDEO INFO:
                     video_id=video_id,
                     model=model,
                     result=result_dict,
-                    tone=tone,
+                    tone=analysis_cache_tone(tone, analysis_mode == "two_pass"),
                     category_detected=category,
                     prompt_chars=len(transcript_text),
                     prompt_version=prompt_version,
+                    fingerprint=fingerprint,
                 )
             except Exception as e:
                 print(f"   ⚠️ No se pudo guardar al analysis_cache: {e}")
