@@ -60,3 +60,6 @@ Pasada A pone la mitad o más de sus candidatos en el primer cuarto, y el
 último cuarto tiene 0–4. En B60, `recall_completo` da 22 %, en línea con el
 20 % de una pasada del Anexo A. El desvío entre repeticiones es alto (hasta
 ±19 pp en un video): hacen falta 3 reps para comparar variantes.
+
+- **2026-09-25 · baseline `seleccion` recalculado contra Referencias validadas** (`2026-09-25-seleccion-baseline-validado.json`, `--recalcular` sobre la corrida del 23-sep, sin costo). Solo B60BHDNFNxM tiene Referencias validadas (Agustín: 17 validadas, 12 A, 8 descartadas). B60: recall_completo A **14 
+- **2026-09-25 · baseline `seleccion` recalculado contra Referencias validadas** (`2026-09-25-seleccion-baseline-validado.json`, `--recalcular` sobre la corrida del 23-sep, sin costo). Solo B60BHDNFNxM tiene Referencias validadas (Agustín: 17 validadas, 12 A, 8 descartadas). B60: recall_completo A **14 %±5**, recall_parcial A 53 %, min_cuarto 12 %, precision_ref@10 53 %. Contra borradores daba 22 %: las Referencias de Agustín son más exigentes. Es la vara de G1 para charla.
