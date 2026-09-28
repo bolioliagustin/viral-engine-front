@@ -128,6 +128,10 @@ _Avoid_: scorer, evaluador
 Lo que decide el orden de los candidatos de un Momento en W2 (hoy el Juez o Jev, según `RANKER`). El Juez siempre corre y su Score se persiste; un rankeador puede reemplazarlo solo para el orden de selección, sin dejar de generar copy. `worker/eval/calibracion.py` compara cualquier rankeador contra las etiquetas de Posteable para decidir cuál usar.
 _Avoid_: ranker (en inglés), scorer
 
+**Registro de candidatos**:
+Lo que queda guardado de cada Candidato evaluado en un job, elegido o descartado: tiempos propuestos y finales, texto de sus Líneas, `rank_score` de la Pasada A, notas del Juez y de Jev, flags de calidad, nota de selección y motivo del descarte (tabla `candidate_evals`, W30). Una fila por Candidato y por job, nunca se pisa. Son los rasgos para aprender a elegir; las etiquetas (Referencias, Posteable) se le pegan después con `worker/eval/exportar_candidatos.py`.
+_Avoid_: log de candidatos, candidates_all (es la copia vieja dentro de `analysis_cache`, que sí se pisa por video)
+
 **Verificación**:
 Comprobación de que la primera y la última frase que la IA citó para un momento existen en la transcripción del clip (matching difuso); si alguna de las dos no se ancla, el corte queda marcado para revisar. Desde W2-C (docs/PLAN_CALIDAD.md §9) no incluye señales informativas como el hook tardío o la cola incompleta — esas quedan aparte en `clip_quality_issues`, porque el clip puede arrancar unas palabras antes del hook citado (misma oración) sin que la Verificación haya fallado.
 _Avoid_: validación (reservado para reglas de duración y solapamiento), anti-alucinación

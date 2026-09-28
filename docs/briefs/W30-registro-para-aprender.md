@@ -20,11 +20,11 @@ Leé `docs/ESTUDIO_ML_EVALUADOR.md` (§2.4, §8.2: la propuesta de W30) y `docs/
 
 ## Criterios de aceptación
 
-- [ ] Migración nueva en `supabase/migrations/` y `PROYECTO.md` §7 actualizado (es un contrato de esquema: decilo en el PR).
-- [ ] Tests con mocks: se escribe una fila por Candidato con todos los campos; falla de Supabase no rompe el job; en dry-run no se escribe; Jev ausente queda en null.
-- [ ] El exportador corre contra la base en solo lectura y genera el JSONL; test con datos sintéticos.
-- [ ] `CONTEXT.md`: término **Registro de candidatos** (o el que mejor encaje).
-- [ ] Suite del worker en verde.
+- [x] Migración nueva en `supabase/migrations/` y `PROYECTO.md` §7 actualizado (es un contrato de esquema: decilo en el PR).
+- [x] Tests con mocks: se escribe una fila por Candidato con todos los campos; falla de Supabase no rompe el job; en dry-run no se escribe; Jev ausente queda en null.
+- [x] El exportador corre contra la base en solo lectura y genera el JSONL; test con datos sintéticos.
+- [x] `CONTEXT.md`: término **Registro de candidatos** (o el que mejor encaje).
+- [x] Suite del worker en verde.
 
 ## Fuera de alcance
 

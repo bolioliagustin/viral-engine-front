@@ -550,6 +550,7 @@ class _JobHarness:
             "usage": patch.object(main, "finalize_job_usage"),
             "log": patch.object(main, "_log_cortacircuitos"),
             "deliver": patch.object(main, "_deliver_moment", return_value=True),
+            "registro": patch("services.registro_candidatos.guardar_filas", return_value=True),
         }
         for p in patches:
             p.start()
@@ -611,6 +612,22 @@ class TestCortacircuitos:
         assert h.transcripts == 1 and h.prepared_per_attempt == [8]
         h.mocks["purge"].assert_not_called()
         h.mocks["log"].assert_not_called()
+
+    def test_registro_de_candidatos_una_fila_por_candidato(self):
+        """W30: el job registra los 8 evaluados, elegidos con su moment_index
+        de entrega; sin Jev las columnas de Jev quedan en null."""
+        h = _JobHarness(broken_by_attempt=[False]).run()
+        h.mocks["registro"].assert_called_once()
+        filas = h.mocks["registro"].call_args.args[0]
+        assert [f["candidate_index"] for f in filas] == list(range(1, 9))
+        assert {f["job_id"] for f in filas} == {"job-w18"}
+        assert {f["video_id"] for f in filas} == {"B60BHDNFNxM"}
+        elegidas = [f for f in filas if f["selected"]]
+        assert elegidas and sorted(f["delivery_index"] for f in elegidas) == list(range(1, len(elegidas) + 1))
+        assert all(f["delivery_index"] is None for f in filas if not f["selected"])
+        assert all(f["judge_hook"] == 9 for f in filas)
+        assert all(f["jev_rank_score"] is None and f["jev_model"] is None for f in filas)
+        assert {f["ranker"] for f in filas} == {"juez"}
 
     def test_la_purga_del_cortacircuitos_borra_transcript_y_audio(self, tmp_path):
         """Lo que invalida el cortacircuitos es lo mismo que el script de purga,

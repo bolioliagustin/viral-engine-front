@@ -1178,6 +1178,9 @@ class _PreparedClip:
     margin_extension_failed: bool = False
     subs_disabled_timestamps: bool = False
     line_aligned: bool = False
+    # W30: tramo absoluto del corte evaluado (Registro de candidatos).
+    final_start: float | None = None
+    final_end: float | None = None
 
 
 def _prepare_moment_clip(
@@ -1658,6 +1661,16 @@ def _prepare_moment_clip(
                         Path(tmp).unlink(missing_ok=True)
                     except Exception:
                         pass
+            # W30: tramo absoluto del corte evaluado. Anclado (W1): el del
+            # ancla; numérico: el precorte desde start_s menos el recorte
+            # del refinamiento.
+            if anchored is not None:
+                _b = anchored["bounds"]
+                final_start = anchored["seg_start_abs"] + float(_b["start_rel"])
+                final_end = anchored["seg_start_abs"] + float(_b["end_rel"])
+            else:
+                final_start = start_s + snap_trim_start
+                final_end = final_start + clip_duration
             return _PreparedClip(
                 ok=True,
                 precut_path=str(precut_path),
@@ -1684,6 +1697,8 @@ def _prepare_moment_clip(
                 margin_extension_failed=margin_extension_failed,
                 subs_disabled_timestamps=subs_disabled_timestamps,
                 line_aligned=line_aligned,
+                final_start=round(final_start, 3),
+                final_end=round(final_end, 3),
             )
         except _SyncRetryNeeded as e_sync:
             print(f"   ⚠️ {e_sync}")
@@ -2616,6 +2631,7 @@ def _process_job_inner(
         candidates: list[CandidateEval] = []
         prepared_by_index: dict[int, _PreparedClip] = {}
         moment_by_index: dict[int, object] = {}
+        jev_by_index: dict[int, dict] = {}  # W30: Registro de candidatos
 
         for i, moment in enumerate(result.viral_moments):
             check_timeout()
@@ -2666,6 +2682,7 @@ def _process_job_inner(
                         moment_index=cand_index,
                     )
                     if jev_rank:
+                        jev_by_index[cand_index] = jev_rank
                         print(
                             f"   🎯 Jev (ranking): {jev_rank['sum_0_12']:.2f}/12 "
                             f"→ {jev_rank['rank_score']:.1f}/30 "
@@ -2764,6 +2781,16 @@ def _process_job_inner(
         # Trazabilidad (W0 candidates_all): notas del juez de todos los
         # candidatos, elegidos y descartados, con el motivo del descarte.
         _annotate_candidates_all_with_judge(video_id, transcript, candidates, selected_idx)
+
+        # W30: Registro de candidatos — una fila por Candidato evaluado en
+        # `candidate_evals`, sin pisar entre jobs. No fatal; en dry-run no escribe.
+        from services.registro_candidatos import registrar_candidatos
+        registrar_candidatos(
+            job_id=job_id, video_id=video_id, video_duration=video_duration,
+            candidates=candidates, selected=selected,
+            moment_by_index=moment_by_index, prepared_by_index=prepared_by_index,
+            jev_by_index=jev_by_index, transcript=transcript,
+        )
 
         # Los descartados no se entregan: limpiar su precut. Los finalistas
         # reutilizan el suyo en _deliver_moment — no se vuelve a descargar

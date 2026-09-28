@@ -197,6 +197,7 @@ def jev_rank_scores(
         "rank_score": round(total / JEV_MAX_SUM * JUDGE_MAX_SUM, 3),
         "confidence_avg": round(sum(confidence.values()) / len(_DIMENSIONS), 3),
         "latency_ms": latency_ms,
+        "model": data.get("model") or MODEL,
     }
 
     try:
