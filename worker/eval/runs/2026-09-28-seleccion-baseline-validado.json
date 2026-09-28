@@ -1,0 +1,5946 @@
+{
+  "tier": "seleccion",
+  "reps": 3,
+  "incluir_borradores": true,
+  "aislamiento": {
+    "activo": true,
+    "intentos_bloqueados": {
+      "get_cached_analysis": 27,
+      "get_cached_category": 27,
+      "save_category": 27,
+      "save_analysis": 22
+    }
+  },
+  "videos": [
+    {
+      "id": "business_spanish_01",
+      "youtube_id": "Lqq78q17jDY",
+      "formato": "clase",
+      "reps": [
+        {
+          "rep": 1,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 56,
+              "end_time": 91,
+              "rank_score": 23.0,
+              "hook": "La verdad sobre el miedo a la inteligencia artificial en la sociedad actual"
+            },
+            {
+              "orden": 1,
+              "start_time": 92,
+              "end_time": 119,
+              "rank_score": 23.0,
+              "hook": "La mentalidad que te hará ganar dinero gracias a la inteligencia artificial"
+            },
+            {
+              "orden": 2,
+              "start_time": 120,
+              "end_time": 145,
+              "rank_score": 22.0,
+              "hook": "Cómo comprar tiempo y ganar dinero con estas 10 habilidades de Claude"
+            },
+            {
+              "orden": 3,
+              "start_time": 170,
+              "end_time": 198,
+              "rank_score": 24.0,
+              "hook": "La habilidad web de tipo Apple que se vende por miles de euros"
+            },
+            {
+              "orden": 4,
+              "start_time": 209,
+              "end_time": 224,
+              "rank_score": 22.0,
+              "hook": "El secreto de automatizarlo todo con Claude sin esfuerzo"
+            },
+            {
+              "orden": 5,
+              "start_time": 225,
+              "end_time": 257,
+              "rank_score": 24.0,
+              "hook": "Crea y vende webs completas usando solo un perfil de Instagram"
+            },
+            {
+              "orden": 6,
+              "start_time": 257,
+              "end_time": 283,
+              "rank_score": 22.0,
+              "hook": "El servicio de auditoría de Meta Ads que los negocios pequeños necesitan con urgencia"
+            },
+            {
+              "orden": 7,
+              "start_time": 283,
+              "end_time": 309,
+              "rank_score": 22.0,
+              "hook": "Vende auditorías de anuncios por 800€ usando reportes visuales automatizados"
+            },
+            {
+              "orden": 8,
+              "start_time": 336,
+              "end_time": 358,
+              "rank_score": 22.0,
+              "hook": "Ayuda a empresas locales a posicionarse en Google con auditorías automáticas"
+            },
+            {
+              "orden": 9,
+              "start_time": 358,
+              "end_time": 381,
+              "rank_score": 23.0,
+              "hook": "Cómo vender informes SEO de 700€ con solo un clic"
+            },
+            {
+              "orden": 10,
+              "start_time": 395,
+              "end_time": 428,
+              "rank_score": 22.0,
+              "hook": "¿Sigue valiendo la pena aprender n8n en la era de Claude Code?"
+            },
+            {
+              "orden": 11,
+              "start_time": 428,
+              "end_time": 462,
+              "rank_score": 24.0,
+              "hook": "Así automatizan las agencias de IA que facturan millones de euros"
+            },
+            {
+              "orden": 12,
+              "start_time": 462,
+              "end_time": 505,
+              "rank_score": 25.0,
+              "hook": "El servicio de auditoría digital que puedes vender por hasta 3,000$"
+            },
+            {
+              "orden": 13,
+              "start_time": 513,
+              "end_time": 542,
+              "rank_score": 21.0,
+              "hook": "La gran oportunidad de digitalizar al 99% de las pymes locales"
+            },
+            {
+              "orden": 14,
+              "start_time": 542,
+              "end_time": 581,
+              "rank_score": 24.0,
+              "hook": "Ordena facturas desordenadas en un dashboard profesional al instante"
+            },
+            {
+              "orden": 15,
+              "start_time": 581,
+              "end_time": 605,
+              "rank_score": 22.0,
+              "hook": "Cómo conseguir leads y correos de cualquier sector en segundos"
+            },
+            {
+              "orden": 16,
+              "start_time": 627,
+              "end_time": 657,
+              "rank_score": 24.0,
+              "hook": "Crea tus propias extensiones de Chrome para dominar el E-commerce"
+            },
+            {
+              "orden": 17,
+              "start_time": 695,
+              "end_time": 718,
+              "rank_score": 25.0,
+              "hook": "La herramienta secreta para programar cualquier cosa que te propongas"
+            },
+            {
+              "orden": 18,
+              "start_time": 718,
+              "end_time": 755,
+              "rank_score": 21.0,
+              "hook": "Por qué este sistema de IA nunca pasará de moda"
+            },
+            {
+              "orden": 19,
+              "start_time": 755,
+              "end_time": 790,
+              "rank_score": 23.0,
+              "hook": "Quién es Juanpe: De fundador de startup a mentor de IA"
+            },
+            {
+              "orden": 20,
+              "start_time": 855,
+              "end_time": 882,
+              "rank_score": 22.0,
+              "hook": "Cómo Claude traduce tus palabras en código de programación"
+            },
+            {
+              "orden": 21,
+              "start_time": 1138,
+              "end_time": 1162,
+              "rank_score": 24.0,
+              "hook": "Por qué no sirve de nada usar IA sin el modelo de lenguaje correcto"
+            },
+            {
+              "orden": 22,
+              "start_time": 1280,
+              "end_time": 1314,
+              "rank_score": 19.0,
+              "hook": "¿Qué es la terminal y por qué te da miedo usarla?"
+            },
+            {
+              "orden": 23,
+              "start_time": 1377,
+              "end_time": 1401,
+              "rank_score": 26.0,
+              "hook": "Controlando la luz de mi casa con Claude Code en vivo"
+            },
+            {
+              "orden": 24,
+              "start_time": 1506,
+              "end_time": 1539,
+              "rank_score": 20.0,
+              "hook": "¿Qué es Visual Studio Code? Explicado para principiantes"
+            },
+            {
+              "orden": 25,
+              "start_time": 1569,
+              "end_time": 1612,
+              "rank_score": 22.0,
+              "hook": "¿Qué es GitHub? El Google Drive de los programadores"
+            },
+            {
+              "orden": 26,
+              "start_time": 1858,
+              "end_time": 1896,
+              "rank_score": 23.0,
+              "hook": "Por qué no debes usar herramientas fáciles de IA al principio"
+            },
+            {
+              "orden": 27,
+              "start_time": 2131,
+              "end_time": 2166,
+              "rank_score": 23.0,
+              "hook": "El paso que todos los tutoriales de IA se saltan en YouTube"
+            },
+            {
+              "orden": 28,
+              "start_time": 3076,
+              "end_time": 3115,
+              "rank_score": 27.0,
+              "hook": "El efecto web que aumenta el valor de tus servicios digitales instantáneamente"
+            },
+            {
+              "orden": 29,
+              "start_time": 4701,
+              "end_time": 4741,
+              "rank_score": 25.0,
+              "hook": "La cruda realidad: Ningún negocio local está usando Inteligencia Artificial"
+            }
+          ],
+          "costo_usd": 0.114453,
+          "costo_por_tarea": {
+            "classifier": 4.7e-05,
+            "analysis": 0.114406
+          },
+          "segundos": 31.7,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 19,
+            "n_referencias_a": 12,
+            "recall_completo": 0.0833,
+            "recall_completo_ab": 0.0526,
+            "recall_parcial": 0.4167,
+            "recall_parcial_ab": 0.3158,
+            "historias_partidas": 1,
+            "historias_partidas_ids": [
+              "R01"
+            ],
+            "candidatos_por_cuarto": [
+              23,
+              5,
+              1,
+              1
+            ],
+            "min_cuarto": 0.0333,
+            "candidatos_en_exclusion": 7,
+            "precision_ref@5": 0.4,
+            "precision_ref@10": 0.2,
+            "estado_por_referencia": {
+              "R01": "partida",
+              "R02": "parcial",
+              "R03": "parcial",
+              "R04": "ausente",
+              "R05": "parcial",
+              "R06": "ausente",
+              "R07": "ausente",
+              "R08": "completa",
+              "R09": "ausente",
+              "R10": "ausente",
+              "R11": "ausente",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "parcial",
+              "R18": "ausente",
+              "R19": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 56,
+              "end_time": 116,
+              "rank_score": 25.0,
+              "hook": "La gran verdad incómoda: ¿por qué los discursos de miedo sobre la IA son una trampa de marketing?"
+            },
+            {
+              "orden": 1,
+              "start_time": 170,
+              "end_time": 212,
+              "rank_score": 24.0,
+              "hook": "Cómo crear páginas web estilo Apple con efectos 3D en automático."
+            },
+            {
+              "orden": 2,
+              "start_time": 225,
+              "end_time": 257,
+              "rank_score": 22.0,
+              "hook": "La forma más rápida de crear una web de marca personal con un solo clic."
+            },
+            {
+              "orden": 3,
+              "start_time": 257,
+              "end_time": 309,
+              "rank_score": 23.0,
+              "hook": "La auditoría de anuncios que evita que las pymes sigan quemando dinero."
+            },
+            {
+              "orden": 4,
+              "start_time": 336,
+              "end_time": 381,
+              "rank_score": 22.0,
+              "hook": "Cómo auditar el SEO de cualquier pyme en minutos y cobrar por ello."
+            },
+            {
+              "orden": 5,
+              "start_time": 395,
+              "end_time": 455,
+              "rank_score": 23.0,
+              "hook": "¿Ha muerto N8N? La verdad detrás del software de automatizaciones."
+            },
+            {
+              "orden": 6,
+              "start_time": 462,
+              "end_time": 505,
+              "rank_score": 24.0,
+              "hook": "Así puedes escanear y auditar un negocio digital entero con inteligencia artificial."
+            },
+            {
+              "orden": 7,
+              "start_time": 513,
+              "end_time": 574,
+              "rank_score": 23.0,
+              "hook": "El 99% de los pequeños negocios llevan su contabilidad mal. Soluciónalo así."
+            },
+            {
+              "orden": 8,
+              "start_time": 581,
+              "end_time": 624,
+              "rank_score": 24.0,
+              "hook": "Cómo conseguir leads cualificados de tu nicho en segundos."
+            },
+            {
+              "orden": 9,
+              "start_time": 627,
+              "end_time": 687,
+              "rank_score": 26.0,
+              "hook": "Crea tus propias extensiones de Chrome personalizadas sin saber programar."
+            },
+            {
+              "orden": 10,
+              "start_time": 755,
+              "end_time": 811,
+              "rank_score": 24.0,
+              "hook": "De cero a facturar 3 millones de euros con una startup tecnológica."
+            },
+            {
+              "orden": 11,
+              "start_time": 855,
+              "end_time": 905,
+              "rank_score": 22.0,
+              "hook": "La tecnología secreta que traduce tu español a lenguaje de programación."
+            },
+            {
+              "orden": 12,
+              "start_time": 918,
+              "end_time": 972,
+              "rank_score": 19.0,
+              "hook": "La rivalidad secreta de la IA: OpenAI vs Anthropic."
+            },
+            {
+              "orden": 13,
+              "start_time": 1004,
+              "end_time": 1055,
+              "rank_score": 21.0,
+              "hook": "La familia de modelos de IA de Claude explicada para principiantes."
+            },
+            {
+              "orden": 14,
+              "start_time": 1138,
+              "end_time": 1183,
+              "rank_score": 25.0,
+              "hook": "Por qué no sirve de nada usar modelos gratis en herramientas potentes."
+            },
+            {
+              "orden": 15,
+              "start_time": 1280,
+              "end_time": 1346,
+              "rank_score": 23.0,
+              "hook": "La terminal de tu ordenador explicada sin tecnicismos."
+            },
+            {
+              "orden": 16,
+              "start_time": 1377,
+              "end_time": 1435,
+              "rank_score": 27.0,
+              "hook": "Controlando bombillas reales con inteligencia artificial en vivo."
+            },
+            {
+              "orden": 17,
+              "start_time": 1506,
+              "end_time": 1561,
+              "rank_score": 22.0,
+              "hook": "¿Qué es un entorno de desarrollo (IDE) explicado para no programadores?"
+            },
+            {
+              "orden": 18,
+              "start_time": 1569,
+              "end_time": 1623,
+              "rank_score": 23.0,
+              "hook": "Qué es GitHub explicado con la analogía de Google Drive."
+            },
+            {
+              "orden": 19,
+              "start_time": 1661,
+              "end_time": 1718,
+              "rank_score": 24.0,
+              "hook": "Por qué no deberías usar Antigravity si estás empezando."
+            },
+            {
+              "orden": 20,
+              "start_time": 1724,
+              "end_time": 1780,
+              "rank_score": 21.0,
+              "hook": "La filosofía secreta detrás de las herramientas gratuitas de software."
+            },
+            {
+              "orden": 21,
+              "start_time": 2065,
+              "end_time": 2116,
+              "rank_score": 21.0,
+              "hook": "El software invisible que tu ordenador necesita para usar IA."
+            },
+            {
+              "orden": 22,
+              "start_time": 2487,
+              "end_time": 2548,
+              "rank_score": 24.0,
+              "hook": "El modo secreto de CloudCode para programar en piloto automático."
+            },
+            {
+              "orden": 23,
+              "start_time": 2635,
+              "end_time": 2680,
+              "rank_score": 23.0,
+              "hook": "Cómo editar y transformar imágenes reales con IA en segundos."
+            },
+            {
+              "orden": 24,
+              "start_time": 2865,
+              "end_time": 2901,
+              "rank_score": 24.0,
+              "hook": "Cómo hackear el diseño de cualquier página web usando CloudCode."
+            },
+            {
+              "orden": 25,
+              "start_time": 3090,
+              "end_time": 3142,
+              "rank_score": 27.0,
+              "hook": "El brutal efecto de diseño web que puedes crear en 7 minutos."
+            },
+            {
+              "orden": 26,
+              "start_time": 3430,
+              "end_time": 3507,
+              "rank_score": 25.0,
+              "hook": "Tu marca personal convertida en web en 3 minutos."
+            },
+            {
+              "orden": 27,
+              "start_time": 3636,
+              "end_time": 3703,
+              "rank_score": 24.0,
+              "hook": "El informe que convencerá a cualquier cliente de contratarte."
+            },
+            {
+              "orden": 28,
+              "start_time": 4167,
+              "end_time": 4220,
+              "rank_score": 27.0,
+              "hook": "Mira cómo una IA se conecta y programa otra IA en directo."
+            },
+            {
+              "orden": 29,
+              "start_time": 4692,
+              "end_time": 4767,
+              "rank_score": 26.0,
+              "hook": "La inmensa oportunidad de mercado en negocios tradicionales."
+            }
+          ],
+          "costo_usd": 0.119682,
+          "costo_por_tarea": {
+            "classifier": 4.7e-05,
+            "analysis": 0.119635
+          },
+          "segundos": 29.8,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 19,
+            "n_referencias_a": 12,
+            "recall_completo": 0.4167,
+            "recall_completo_ab": 0.3684,
+            "recall_parcial": 0.5833,
+            "recall_parcial_ab": 0.4737,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              16,
+              8,
+              4,
+              2
+            ],
+            "min_cuarto": 0.0667,
+            "candidatos_en_exclusion": 4,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.6,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "completa",
+              "R07": "ausente",
+              "R08": "parcial",
+              "R09": "completa",
+              "R10": "parcial",
+              "R11": "ausente",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "completa",
+              "R18": "ausente",
+              "R19": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 3,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 0,
+              "end_time": 32,
+              "rank_score": 23.0,
+              "hook": "Claude Code: un ChatGPT con esteroides directamente en tu ordenador."
+            },
+            {
+              "orden": 1,
+              "start_time": 56,
+              "end_time": 119,
+              "rank_score": 26.0,
+              "hook": "La verdad sobre el miedo a la Inteligencia Artificial."
+            },
+            {
+              "orden": 2,
+              "start_time": 170,
+              "end_time": 214,
+              "rank_score": 24.0,
+              "hook": "Crea webs como Apple de forma 100% automática."
+            },
+            {
+              "orden": 3,
+              "start_time": 225,
+              "end_time": 257,
+              "rank_score": 23.0,
+              "hook": "Crea la web de cualquier creador solo con su Instagram."
+            },
+            {
+              "orden": 4,
+              "start_time": 257,
+              "end_time": 309,
+              "rank_score": 24.0,
+              "hook": "Audita campañas de Meta Ads y cobra hasta 800€."
+            },
+            {
+              "orden": 5,
+              "start_time": 336,
+              "end_time": 381,
+              "rank_score": 21.0,
+              "hook": "Auditorías de SEO automáticas: un servicio de 700€."
+            },
+            {
+              "orden": 6,
+              "start_time": 395,
+              "end_time": 462,
+              "rank_score": 24.0,
+              "hook": "Por qué N8N sigue vivo (y cómo crear flujos con IA)."
+            },
+            {
+              "orden": 7,
+              "start_time": 462,
+              "end_time": 505,
+              "rank_score": 23.0,
+              "hook": "El negocio de las automatizaciones N8N cobra más de 10.000€."
+            },
+            {
+              "orden": 8,
+              "start_time": 513,
+              "end_time": 581,
+              "rank_score": 24.0,
+              "hook": "La solución al desorden financiero de los pequeños negocios."
+            },
+            {
+              "orden": 9,
+              "start_time": 581,
+              "end_time": 627,
+              "rank_score": 23.0,
+              "hook": "Descarga masiva de leads automáticos para tu negocio."
+            },
+            {
+              "orden": 10,
+              "start_time": 627,
+              "end_time": 695,
+              "rank_score": 25.0,
+              "hook": "Crea extensiones de Google Chrome personalizadas con Claude."
+            },
+            {
+              "orden": 11,
+              "start_time": 755,
+              "end_time": 824,
+              "rank_score": 22.0,
+              "hook": "De ganar premios en Los Ángeles a enseñarte IA gratis."
+            },
+            {
+              "orden": 12,
+              "start_time": 855,
+              "end_time": 905,
+              "rank_score": 22.0,
+              "hook": "Qué es realmente Claude Code y por qué lo cambia todo."
+            },
+            {
+              "orden": 13,
+              "start_time": 918,
+              "end_time": 972,
+              "rank_score": 20.0,
+              "hook": "Claude Code no es lo mismo que ChatGPT."
+            },
+            {
+              "orden": 14,
+              "start_time": 1138,
+              "end_time": 1177,
+              "rank_score": 25.0,
+              "hook": "¿Para qué quieres un Ferrari con motor de Hyundai?"
+            },
+            {
+              "orden": 15,
+              "start_time": 1280,
+              "end_time": 1345,
+              "rank_score": 22.0,
+              "hook": "La terminal de tu PC: el panel del hacker explicada fácil."
+            },
+            {
+              "orden": 16,
+              "start_time": 1377,
+              "end_time": 1441,
+              "rank_score": 27.0,
+              "hook": "Conecté Claude Code a una bombilla real de mi casa."
+            },
+            {
+              "orden": 17,
+              "start_time": 1481,
+              "end_time": 1542,
+              "rank_score": 21.0,
+              "hook": "Qué es VS Code y por qué lo necesitas para programar."
+            },
+            {
+              "orden": 18,
+              "start_time": 1562,
+              "end_time": 1623,
+              "rank_score": 22.0,
+              "hook": "Qué es GitHub explicado para principiantes."
+            },
+            {
+              "orden": 19,
+              "start_time": 1658,
+              "end_time": 1718,
+              "rank_score": 24.0,
+              "hook": "Por qué NO debes usar Antigravity si eres principiante."
+            },
+            {
+              "orden": 20,
+              "start_time": 1719,
+              "end_time": 1780,
+              "rank_score": 20.0,
+              "hook": "Por qué existe el software gratis y libre (Open Source)."
+            },
+            {
+              "orden": 21,
+              "start_time": 1819,
+              "end_time": 1863,
+              "rank_score": 20.0,
+              "hook": "Qué es un fork en programación explicado fácil."
+            },
+            {
+              "orden": 22,
+              "start_time": 2065,
+              "end_time": 2120,
+              "rank_score": 18.0,
+              "hook": "Por qué necesitas Node.js y cómo instalarlo."
+            },
+            {
+              "orden": 23,
+              "start_time": 2481,
+              "end_time": 2548,
+              "rank_score": 23.0,
+              "hook": "Activa el modo bypass de Claude Code para ir a tope."
+            },
+            {
+              "orden": 24,
+              "start_time": 2691,
+              "end_time": 2743,
+              "rank_score": 24.0,
+              "hook": "Crea transiciones y vídeos con IA para tu web."
+            },
+            {
+              "orden": 25,
+              "start_time": 3076,
+              "end_time": 3130,
+              "rank_score": 26.0,
+              "hook": "El espectacular efecto web scrolling creado en minutos."
+            },
+            {
+              "orden": 26,
+              "start_time": 3213,
+              "end_time": 3272,
+              "rank_score": 20.0,
+              "hook": "Cómo ver carpetas ocultas de tus proyectos (Tip Pro)."
+            },
+            {
+              "orden": 27,
+              "start_time": 3636,
+              "end_time": 3718,
+              "rank_score": 27.0,
+              "hook": "La brutal auditoría de Meta Ads que hace Claude en minutos."
+            },
+            {
+              "orden": 28,
+              "start_time": 4167,
+              "end_time": 4220,
+              "rank_score": 27.0,
+              "hook": "Claude Code crea flujos en tu N8N de forma 100% automática."
+            },
+            {
+              "orden": 29,
+              "start_time": 4692,
+              "end_time": 4767,
+              "rank_score": 27.0,
+              "hook": "Analicé 6 clínicas dentales de Madrid con IA (Y ninguna la usa)."
+            }
+          ],
+          "costo_usd": 0.117369,
+          "costo_por_tarea": {
+            "classifier": 4.7e-05,
+            "analysis": 0.117322
+          },
+          "segundos": 30.5,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 19,
+            "n_referencias_a": 12,
+            "recall_completo": 0.4167,
+            "recall_completo_ab": 0.3158,
+            "recall_parcial": 0.5,
+            "recall_parcial_ab": 0.3684,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              16,
+              8,
+              4,
+              2
+            ],
+            "min_cuarto": 0.0667,
+            "candidatos_en_exclusion": 5,
+            "precision_ref@5": 0.8,
+            "precision_ref@10": 0.6,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "ausente",
+              "R07": "ausente",
+              "R08": "completa",
+              "R09": "ausente",
+              "R10": "parcial",
+              "R11": "ausente",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "completa",
+              "R18": "ausente",
+              "R19": "ausente"
+            }
+          }
+        }
+      ],
+      "errores": [],
+      "referencias": {
+        "momentos": 19,
+        "validados": 0,
+        "validados_a": 0,
+        "pendientes": 19,
+        "validado_por": []
+      },
+      "duracion_sec": 5329.506,
+      "agregado": {
+        "recall_completo": {
+          "media": 0.3056,
+          "desvio": 0.1925,
+          "n": 3
+        },
+        "recall_completo_ab": {
+          "media": 0.2456,
+          "desvio": 0.1692,
+          "n": 3
+        },
+        "recall_parcial": {
+          "media": 0.5,
+          "desvio": 0.0833,
+          "n": 3
+        },
+        "recall_parcial_ab": {
+          "media": 0.386,
+          "desvio": 0.0804,
+          "n": 3
+        },
+        "historias_partidas": {
+          "media": 0.3333,
+          "desvio": 0.5774,
+          "n": 3
+        },
+        "min_cuarto": {
+          "media": 0.0556,
+          "desvio": 0.0193,
+          "n": 3
+        },
+        "candidatos_en_exclusion": {
+          "media": 5.3333,
+          "desvio": 1.5275,
+          "n": 3
+        },
+        "precision_ref@5": {
+          "media": 0.6,
+          "desvio": 0.2,
+          "n": 3
+        },
+        "precision_ref@10": {
+          "media": 0.4667,
+          "desvio": 0.2309,
+          "n": 3
+        },
+        "n_candidatos": {
+          "media": 30.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "completa_en_reps": {
+          "R01": 2,
+          "R02": 2,
+          "R03": 2,
+          "R04": 2,
+          "R05": 0,
+          "R06": 1,
+          "R07": 0,
+          "R08": 2,
+          "R09": 1,
+          "R10": 0,
+          "R11": 0,
+          "R12": 0,
+          "R13": 0,
+          "R14": 0,
+          "R15": 0,
+          "R16": 0,
+          "R17": 2,
+          "R18": 0,
+          "R19": 0
+        }
+      },
+      "costo_usd": 0.351504,
+      "categorias": [
+        "business"
+      ]
+    },
+    {
+      "id": "podcast_general_01",
+      "youtube_id": "XxoVRjTySsM",
+      "formato": "entrevista",
+      "reps": [
+        {
+          "rep": 1,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 10,
+              "end_time": 35,
+              "rank_score": 23.0,
+              "hook": "El brote de un nuevo virus misterioso en un crucero de lujo mantiene en alerta a España."
+            },
+            {
+              "orden": 1,
+              "start_time": 39,
+              "end_time": 63,
+              "rank_score": 20.0,
+              "hook": "Un inmunólogo de prestigio internacional explica qué está pasando realmente con el hantavirus."
+            },
+            {
+              "orden": 2,
+              "start_time": 80,
+              "end_time": 96,
+              "rank_score": 25.0,
+              "hook": "La alarmante sensación de revivir la pesadilla del COVID-19 seis años después."
+            },
+            {
+              "orden": 3,
+              "start_time": 126,
+              "end_time": 148,
+              "rank_score": 23.0,
+              "hook": "La asombrosa similitud entre el material genético del hantavirus y el coronavirus."
+            },
+            {
+              "orden": 4,
+              "start_time": 157,
+              "end_time": 173,
+              "rank_score": 21.0,
+              "hook": "Los portadores silenciosos del hantavirus: roedores silvestres de cola larga."
+            },
+            {
+              "orden": 5,
+              "start_time": 174,
+              "end_time": 198,
+              "rank_score": 23.0,
+              "hook": "Cómo el hantavirus destruye directamente el recubrimiento de tus vasos sanguíneos."
+            },
+            {
+              "orden": 6,
+              "start_time": 227,
+              "end_time": 268,
+              "rank_score": 27.0,
+              "hook": "¡Peligro invisible! El simple acto de barrer polvo puede transmitirte un virus mortal."
+            },
+            {
+              "orden": 7,
+              "start_time": 268,
+              "end_time": 286,
+              "rank_score": 21.0,
+              "hook": "Los síntomas iniciales del hantavirus que podrías confundir con una gripe."
+            },
+            {
+              "orden": 8,
+              "start_time": 299,
+              "end_time": 321,
+              "rank_score": 20.0,
+              "hook": "La realidad del hantavirus en España: ¿debemos preocuparnos en el Mediterráneo?"
+            },
+            {
+              "orden": 9,
+              "start_time": 322,
+              "end_time": 349,
+              "rank_score": 23.0,
+              "hook": "La terrible evolución del hantavirus: cuando el cuerpo colapsa por fallo renal."
+            },
+            {
+              "orden": 10,
+              "start_time": 350,
+              "end_time": 376,
+              "rank_score": 22.0,
+              "hook": "Zonas boscosas de Europa acumulan variantes de hantavirus con un 15% de mortalidad."
+            },
+            {
+              "orden": 11,
+              "start_time": 414,
+              "end_time": 437,
+              "rank_score": 23.0,
+              "hook": "La letal diferencia del hantavirus americano: tus propios pulmones se inundan de suero."
+            },
+            {
+              "orden": 12,
+              "start_time": 448,
+              "end_time": 472,
+              "rank_score": 24.0,
+              "hook": "El colapso pulmonar por hantavirus: sobrevivir solo con respirador artificial."
+            },
+            {
+              "orden": 13,
+              "start_time": 527,
+              "end_time": 548,
+              "rank_score": 20.0,
+              "hook": "La peligrosa Cepa Andes: el virus que causó el caos en el crucero de lujo."
+            },
+            {
+              "orden": 14,
+              "start_time": 581,
+              "end_time": 607,
+              "rank_score": 27.0,
+              "hook": "¡La excepción más peligrosa! El único hantavirus que se contagia entre humanos."
+            },
+            {
+              "orden": 15,
+              "start_time": 613,
+              "end_time": 633,
+              "rank_score": 23.0,
+              "hook": "Hantavirus vs. COVID-19: por qué no estamos ante una nueva pandemia descontrolada."
+            },
+            {
+              "orden": 16,
+              "start_time": 773,
+              "end_time": 805,
+              "rank_score": 22.0,
+              "hook": "Cómo se transmite el hantavirus al dormir en la misma cama que un infectado."
+            },
+            {
+              "orden": 17,
+              "start_time": 819,
+              "end_time": 844,
+              "rank_score": 23.0,
+              "hook": "Por qué una simple charla de café de media hora puede ser un contacto estrecho."
+            },
+            {
+              "orden": 18,
+              "start_time": 960,
+              "end_time": 981,
+              "rank_score": 23.0,
+              "hook": "El hantavirus no se queda flotando en el aire: por qué no debes temer a los ascensores."
+            },
+            {
+              "orden": 19,
+              "start_time": 984,
+              "end_time": 1006,
+              "rank_score": 26.0,
+              "hook": "La ciencia habla claro: el hantavirus tiene potencial de pandemia CERO."
+            },
+            {
+              "orden": 20,
+              "start_time": 1021,
+              "end_time": 1046,
+              "rank_score": 22.0,
+              "hook": "El virus más contagioso de la historia: ¿Qué significa realmente el número R0?"
+            },
+            {
+              "orden": 21,
+              "start_time": 1132,
+              "end_time": 1162,
+              "rank_score": 20.0,
+              "hook": "Por qué el hantavirus se extingue solo cuando empezamos a vigilarlo."
+            },
+            {
+              "orden": 22,
+              "start_time": 1203,
+              "end_time": 1232,
+              "rank_score": 23.0,
+              "hook": "El fenómeno de los súpercontagiadores: cómo una sola persona infecta a decenas."
+            },
+            {
+              "orden": 23,
+              "start_time": 1355,
+              "end_time": 1374,
+              "rank_score": 23.0,
+              "hook": "La prueba definitiva de que este virus se transmite mal: solo 8 infectados en un mes."
+            },
+            {
+              "orden": 24,
+              "start_time": 1419,
+              "end_time": 1430,
+              "rank_score": 20.0,
+              "hook": "El preocupante periodo de incubación silencioso del hantavirus."
+            },
+            {
+              "orden": 25,
+              "start_time": 1451,
+              "end_time": 1485,
+              "rank_score": 24.0,
+              "hook": "El gran peligro del hantavirus: ¡Puedes tardar 6 semanas en mostrar síntomas!"
+            },
+            {
+              "orden": 26,
+              "start_time": 1538,
+              "end_time": 1559,
+              "rank_score": 23.0,
+              "hook": "El millonario paciente cero que trajo el virus al crucero de ultra lujo."
+            },
+            {
+              "orden": 27,
+              "start_time": 1599,
+              "end_time": 1636,
+              "rank_score": 22.0,
+              "hook": "Desinfección extrema: Las locas normas de limpieza en un crucero de 20.000€."
+            },
+            {
+              "orden": 28,
+              "start_time": 2431,
+              "end_time": 2462,
+              "rank_score": 26.0,
+              "hook": "La paradoja de los virus: por qué un patógeno ultra letal no logra expandirse."
+            },
+            {
+              "orden": 29,
+              "start_time": 3359,
+              "end_time": 3384,
+              "rank_score": 24.0,
+              "hook": "La viruela del mono y los virus hemorrágicos provienen de un mismo culpable."
+            }
+          ],
+          "costo_usd": 0.156899,
+          "costo_por_tarea": {
+            "classifier": 5.3e-05,
+            "analysis": 0.156846
+          },
+          "segundos": 49.9,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 23,
+            "n_referencias_a": 20,
+            "recall_completo": 0.05,
+            "recall_completo_ab": 0.0435,
+            "recall_parcial": 0.1,
+            "recall_parcial_ab": 0.1304,
+            "historias_partidas": 1,
+            "historias_partidas_ids": [
+              "R06"
+            ],
+            "candidatos_por_cuarto": [
+              22,
+              6,
+              2,
+              0
+            ],
+            "min_cuarto": 0.0,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.4,
+            "precision_ref@10": 0.2,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "ausente",
+              "R03": "ausente",
+              "R04": "ausente",
+              "R05": "ausente",
+              "R06": "partida",
+              "R07": "ausente",
+              "R08": "parcial",
+              "R09": "ausente",
+              "R10": "ausente",
+              "R11": "ausente",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "ausente",
+              "R18": "ausente",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente",
+              "R23": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 80,
+              "end_time": 111,
+              "rank_score": 23.0,
+              "hook": "El experto Alfredo Corell confiesa su cansancio y la sensación de volver al inicio de una pandemia."
+            },
+            {
+              "orden": 1,
+              "start_time": 135,
+              "end_time": 173,
+              "rank_score": 21.0,
+              "hook": "¿Qué es realmente el Hantavirus y por qué es genéticamente similar al COVID?"
+            },
+            {
+              "orden": 2,
+              "start_time": 227,
+              "end_time": 268,
+              "rank_score": 27.0,
+              "hook": "La insospechada forma en la que te puedes contagiar de Hantavirus al barrer el polvo."
+            },
+            {
+              "orden": 3,
+              "start_time": 268,
+              "end_time": 321,
+              "rank_score": 23.0,
+              "hook": "Los síntomas iniciales del Hantavirus: ¿Cómo saber si es solo una gripe?"
+            },
+            {
+              "orden": 4,
+              "start_time": 350,
+              "end_time": 390,
+              "rank_score": 22.0,
+              "hook": "El dato definitivo sobre el Hantavirus europeo que calmará tus nervios."
+            },
+            {
+              "orden": 5,
+              "start_time": 414,
+              "end_time": 465,
+              "rank_score": 25.0,
+              "hook": "Por qué las variantes americanas de Hantavirus encharcan los pulmones y son más peligrosas."
+            },
+            {
+              "orden": 6,
+              "start_time": 471,
+              "end_time": 520,
+              "rank_score": 24.0,
+              "hook": "La verdad detrás de la alarmante cifra de mortalidad del Hantavirus en América."
+            },
+            {
+              "orden": 7,
+              "start_time": 527,
+              "end_time": 607,
+              "rank_score": 27.0,
+              "hook": "La cepa Andes: El único Hantavirus capaz de transmitirse de humano a humano."
+            },
+            {
+              "orden": 8,
+              "start_time": 613,
+              "end_time": 649,
+              "rank_score": 24.0,
+              "hook": "La histeria colectiva: Por qué el Hantavirus no se contagia tan fácil como el COVID."
+            },
+            {
+              "orden": 9,
+              "start_time": 773,
+              "end_time": 827,
+              "rank_score": 26.0,
+              "hook": "Dormir en la misma cama o tener sexo con un contagiado: El peligro real."
+            },
+            {
+              "orden": 10,
+              "start_time": 827,
+              "end_time": 863,
+              "rank_score": 24.0,
+              "hook": "Por qué tomar un café durante media hora con alguien infectado es un contacto estrecho."
+            },
+            {
+              "orden": 11,
+              "start_time": 864,
+              "end_time": 913,
+              "rank_score": 23.0,
+              "hook": "El peligro de limpiar las sábanas de un enfermo de Hantavirus."
+            },
+            {
+              "orden": 12,
+              "start_time": 913,
+              "end_time": 960,
+              "rank_score": 23.0,
+              "hook": "La imprudencia que comete el personal sanitario frente a enfermedades desconocidas."
+            },
+            {
+              "orden": 13,
+              "start_time": 960,
+              "end_time": 1006,
+              "rank_score": 27.0,
+              "hook": "Inmunólogo afirma que la probabilidad de una pandemia por Hantavirus es CERO."
+            },
+            {
+              "orden": 14,
+              "start_time": 1007,
+              "end_time": 1059,
+              "rank_score": 22.0,
+              "hook": "¿Qué es el R0? El concepto científico que define qué tan rápido se expande un virus."
+            },
+            {
+              "orden": 15,
+              "start_time": 1086,
+              "end_time": 1127,
+              "rank_score": 23.0,
+              "hook": "La alarmante mutación de Ómicron: Del COVID original a contagios nivel Sarampión."
+            },
+            {
+              "orden": 16,
+              "start_time": 1127,
+              "end_time": 1162,
+              "rank_score": 24.0,
+              "hook": "El bajísimo nivel de contagio del Hantavirus que lo hace inofensivo como epidemia."
+            },
+            {
+              "orden": 17,
+              "start_time": 1198,
+              "end_time": 1245,
+              "rank_score": 26.0,
+              "hook": "Supercontagiadores: Personas capaces de infectar a decenas en una sola fiesta."
+            },
+            {
+              "orden": 18,
+              "start_time": 1246,
+              "end_time": 1285,
+              "rank_score": 25.0,
+              "hook": "El terrible caso real de Hantavirus en Argentina con un 33% de fallecidos."
+            },
+            {
+              "orden": 19,
+              "start_time": 1310,
+              "end_time": 1366,
+              "rank_score": 25.0,
+              "hook": "La prueba matemática en el barco de que el Hantavirus se transmite muy mal."
+            },
+            {
+              "orden": 20,
+              "start_time": 1417,
+              "end_time": 1485,
+              "rank_score": 25.0,
+              "hook": "El peligro invisible: El Hantavirus puede incubarse en tu cuerpo hasta por 6 semanas."
+            },
+            {
+              "orden": 21,
+              "start_time": 1514,
+              "end_time": 1561,
+              "rank_score": 23.0,
+              "hook": "El misterio del 'Paciente Cero' del Hantavirus en el barco de lujo."
+            },
+            {
+              "orden": 22,
+              "start_time": 1578,
+              "end_time": 1637,
+              "rank_score": 24.0,
+              "hook": "El desinfectado extremo en cruceros de hipermegalujo de 20.000 euros."
+            },
+            {
+              "orden": 23,
+              "start_time": 1758,
+              "end_time": 1802,
+              "rank_score": 25.0,
+              "hook": "El caso de la azafata que atendió de emergencia a una enferma crítica en pleno vuelo."
+            },
+            {
+              "orden": 24,
+              "start_time": 1943,
+              "end_time": 1988,
+              "rank_score": 24.0,
+              "hook": "El protocolo de aislamiento que se activó en Alicante ante un caso sospechoso de Hantavirus."
+            },
+            {
+              "orden": 25,
+              "start_time": 2714,
+              "end_time": 2771,
+              "rank_score": 25.0,
+              "hook": "El operativo militar 'quirúrgico' diseñado para desembarcar a los pasajeros del crucero infectado."
+            },
+            {
+              "orden": 26,
+              "start_time": 3399,
+              "end_time": 3458,
+              "rank_score": 27.0,
+              "hook": "La alarmante aceleración de nuevas epidemias provocada por nuestra destrucción del planeta."
+            },
+            {
+              "orden": 27,
+              "start_time": 3552,
+              "end_time": 3595,
+              "rank_score": 27.0,
+              "hook": "El virus que realmente aterroriza a los científicos: La Gripe Aviar."
+            },
+            {
+              "orden": 28,
+              "start_time": 3596,
+              "end_time": 3645,
+              "rank_score": 27.0,
+              "hook": "¿Qué pasaría si la letal gripe aviar muta y se transmite entre humanos?"
+            },
+            {
+              "orden": 29,
+              "start_time": 3778,
+              "end_time": 3814,
+              "rank_score": 24.0,
+              "hook": "Los seis pilares científicos para tener unas defensas de hierro de forma inmediata."
+            }
+          ],
+          "costo_usd": 0.14852,
+          "costo_por_tarea": {
+            "classifier": 5.3e-05,
+            "analysis": 0.148467
+          },
+          "segundos": 52.0,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 23,
+            "n_referencias_a": 20,
+            "recall_completo": 0.15,
+            "recall_completo_ab": 0.1739,
+            "recall_parcial": 0.4,
+            "recall_parcial_ab": 0.4348,
+            "historias_partidas": 3,
+            "historias_partidas_ids": [
+              "R05",
+              "R09",
+              "R18"
+            ],
+            "candidatos_por_cuarto": [
+              17,
+              8,
+              2,
+              3
+            ],
+            "min_cuarto": 0.0667,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.8,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "parcial",
+              "R03": "completa",
+              "R04": "ausente",
+              "R05": "partida",
+              "R06": "completa",
+              "R07": "ausente",
+              "R08": "completa",
+              "R09": "partida",
+              "R10": "parcial",
+              "R11": "ausente",
+              "R12": "parcial",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "ausente",
+              "R18": "partida",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente",
+              "R23": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 3,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 10,
+              "end_time": 92,
+              "rank_score": 23.0,
+              "hook": "El hantavirus desata un déjà vu peor que el inicio del COVID-19."
+            },
+            {
+              "orden": 1,
+              "start_time": 137,
+              "end_time": 198,
+              "rank_score": 21.0,
+              "hook": "¿Qué es exactamente el hantavirus y cómo vive dentro de los roedores?"
+            },
+            {
+              "orden": 2,
+              "start_time": 227,
+              "end_time": 286,
+              "rank_score": 26.0,
+              "hook": "Así es como te puedes contagiar de hantavirus simplemente barriendo tu casa."
+            },
+            {
+              "orden": 3,
+              "start_time": 322,
+              "end_time": 376,
+              "rank_score": 21.0,
+              "hook": "El hantavirus europeo provoca fiebre hemorrágica y fallo renal."
+            },
+            {
+              "orden": 4,
+              "start_time": 414,
+              "end_time": 474,
+              "rank_score": 24.0,
+              "hook": "La terrible variante americana del hantavirus inunda tus pulmones."
+            },
+            {
+              "orden": 5,
+              "start_time": 476,
+              "end_time": 527,
+              "rank_score": 21.0,
+              "hook": "Por qué la alarmante tasa de mortalidad del hantavirus podría ser engañosa."
+            },
+            {
+              "orden": 6,
+              "start_time": 527,
+              "end_time": 586,
+              "rank_score": 23.0,
+              "hook": "La temida cepa Andes: el único hantavirus que se contagia de persona a persona."
+            },
+            {
+              "orden": 7,
+              "start_time": 587,
+              "end_time": 646,
+              "rank_score": 25.0,
+              "hook": "Desmintiendo la histeria: ¿Por qué el hantavirus Andes no es como el COVID?"
+            },
+            {
+              "orden": 8,
+              "start_time": 779,
+              "end_time": 844,
+              "rank_score": 22.0,
+              "hook": "Las 3 formas más comunes de contagiarte de hantavirus cara a cara."
+            },
+            {
+              "orden": 9,
+              "start_time": 864,
+              "end_time": 913,
+              "rank_score": 21.0,
+              "hook": "El peligro invisible al visitar un enfermo o sacudir sus sábanas."
+            },
+            {
+              "orden": 10,
+              "start_time": 913,
+              "end_time": 979,
+              "rank_score": 24.0,
+              "hook": "Por qué este virus no se queda flotando en el aire como el COVID."
+            },
+            {
+              "orden": 11,
+              "start_time": 984,
+              "end_time": 1044,
+              "rank_score": 26.0,
+              "hook": "La probabilidad matemática de que el hantavirus sea una pandemia es CERO."
+            },
+            {
+              "orden": 12,
+              "start_time": 1046,
+              "end_time": 1112,
+              "rank_score": 22.0,
+              "hook": "Cómo mutó el COVID hasta volverse casi tan contagioso como el sarampión."
+            },
+            {
+              "orden": 13,
+              "start_time": 1127,
+              "end_time": 1168,
+              "rank_score": 21.0,
+              "hook": "Por qué el hantavirus Andes está condenado a desaparecer rápido en aislamiento."
+            },
+            {
+              "orden": 14,
+              "start_time": 1192,
+              "end_time": 1252,
+              "rank_score": 23.0,
+              "hook": "El peligro de los 'supercontagiadores' en fiestas y reuniones."
+            },
+            {
+              "orden": 15,
+              "start_time": 1304,
+              "end_time": 1374,
+              "rank_score": 24.0,
+              "hook": "La prueba definitiva de que el hantavirus se contagia extremadamente mal."
+            },
+            {
+              "orden": 16,
+              "start_time": 1417,
+              "end_time": 1485,
+              "rank_score": 25.0,
+              "hook": "El gran peligro del hantavirus: incubar el virus en silencio hasta por 6 semanas."
+            },
+            {
+              "orden": 17,
+              "start_time": 1514,
+              "end_time": 1577,
+              "rank_score": 21.0,
+              "hook": "El misterioso Paciente Cero que introdujo el hantavirus en el crucero."
+            },
+            {
+              "orden": 18,
+              "start_time": 1593,
+              "end_time": 1646,
+              "rank_score": 21.0,
+              "hook": "El nivel de limpieza extrema en cruceros de lujo que cuesta miles de euros."
+            },
+            {
+              "orden": 19,
+              "start_time": 1713,
+              "end_time": 1756,
+              "rank_score": 23.0,
+              "hook": "Por qué la cadena de contagios de este virus se frena sola al tercer salto."
+            },
+            {
+              "orden": 20,
+              "start_time": 1758,
+              "end_time": 1818,
+              "rank_score": 25.0,
+              "hook": "La angustia de la azafata aislada por hantavirus tras atender a una enferma."
+            },
+            {
+              "orden": 21,
+              "start_time": 2031,
+              "end_time": 2090,
+              "rank_score": 23.0,
+              "hook": "¿El hantavirus se contagia antes de tener síntomas?"
+            },
+            {
+              "orden": 22,
+              "start_time": 2210,
+              "end_time": 2274,
+              "rank_score": 21.0,
+              "hook": "Por qué es tan difícil fabricar antivirales efectivos contra las pandemias."
+            },
+            {
+              "orden": 23,
+              "start_time": 2423,
+              "end_time": 2476,
+              "rank_score": 22.0,
+              "hook": "La ley de la naturaleza que impide al hantavirus extinguirnos."
+            },
+            {
+              "orden": 24,
+              "start_time": 2954,
+              "end_time": 3010,
+              "rank_score": 25.0,
+              "hook": "Desmintiendo el absurdo mito canario: ¿Las ratas del crucero pueden nadar?"
+            },
+            {
+              "orden": 25,
+              "start_time": 3422,
+              "end_time": 3483,
+              "rank_score": 23.0,
+              "hook": "La deforestación está atrayendo virus y mosquitos letales a España."
+            },
+            {
+              "orden": 26,
+              "start_time": 3552,
+              "end_time": 3612,
+              "rank_score": 25.0,
+              "hook": "La gran amenaza real de la que nadie habla: La gripe aviar."
+            },
+            {
+              "orden": 27,
+              "start_time": 3781,
+              "end_time": 3844,
+              "rank_score": 22.0,
+              "hook": "Dos hábitos simples para blindar tus defensas según la inmunología."
+            },
+            {
+              "orden": 28,
+              "start_time": 3935,
+              "end_time": 3989,
+              "rank_score": 25.0,
+              "hook": "Por qué tener sexo y amigos reales cura tu sistema inmune."
+            },
+            {
+              "orden": 29,
+              "start_time": 4201,
+              "end_time": 4252,
+              "rank_score": 24.0,
+              "hook": "La afirmación del Premio Nobel: El yogur puede duplicar tu vida."
+            }
+          ],
+          "costo_usd": 0.176546,
+          "costo_por_tarea": {
+            "classifier": 5.3e-05,
+            "analysis": 0.176493
+          },
+          "segundos": 55.7,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 23,
+            "n_referencias_a": 20,
+            "recall_completo": 0.25,
+            "recall_completo_ab": 0.2609,
+            "recall_parcial": 0.7,
+            "recall_parcial_ab": 0.6957,
+            "historias_partidas": 2,
+            "historias_partidas_ids": [
+              "R03",
+              "R07"
+            ],
+            "candidatos_por_cuarto": [
+              14,
+              9,
+              3,
+              4
+            ],
+            "min_cuarto": 0.1,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.7,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "partida",
+              "R04": "ausente",
+              "R05": "parcial",
+              "R06": "parcial",
+              "R07": "partida",
+              "R08": "completa",
+              "R09": "parcial",
+              "R10": "ausente",
+              "R11": "ausente",
+              "R12": "parcial",
+              "R13": "parcial",
+              "R14": "completa",
+              "R15": "parcial",
+              "R16": "ausente",
+              "R17": "completa",
+              "R18": "parcial",
+              "R19": "completa",
+              "R20": "ausente",
+              "R21": "parcial",
+              "R22": "ausente",
+              "R23": "ausente"
+            }
+          }
+        }
+      ],
+      "errores": [],
+      "referencias": {
+        "momentos": 23,
+        "validados": 0,
+        "validados_a": 0,
+        "pendientes": 23,
+        "validado_por": []
+      },
+      "duracion_sec": 4639.86,
+      "agregado": {
+        "recall_completo": {
+          "media": 0.15,
+          "desvio": 0.1,
+          "n": 3
+        },
+        "recall_completo_ab": {
+          "media": 0.1594,
+          "desvio": 0.1094,
+          "n": 3
+        },
+        "recall_parcial": {
+          "media": 0.4,
+          "desvio": 0.3,
+          "n": 3
+        },
+        "recall_parcial_ab": {
+          "media": 0.4203,
+          "desvio": 0.2829,
+          "n": 3
+        },
+        "historias_partidas": {
+          "media": 2.0,
+          "desvio": 1.0,
+          "n": 3
+        },
+        "min_cuarto": {
+          "media": 0.0556,
+          "desvio": 0.0509,
+          "n": 3
+        },
+        "candidatos_en_exclusion": {
+          "media": 0.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "precision_ref@5": {
+          "media": 0.5333,
+          "desvio": 0.1155,
+          "n": 3
+        },
+        "precision_ref@10": {
+          "media": 0.5667,
+          "desvio": 0.3215,
+          "n": 3
+        },
+        "n_candidatos": {
+          "media": 30.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "completa_en_reps": {
+          "R01": 3,
+          "R02": 1,
+          "R03": 1,
+          "R04": 0,
+          "R05": 0,
+          "R06": 1,
+          "R07": 0,
+          "R08": 2,
+          "R09": 0,
+          "R10": 0,
+          "R11": 0,
+          "R12": 0,
+          "R13": 0,
+          "R14": 1,
+          "R15": 0,
+          "R16": 0,
+          "R17": 1,
+          "R18": 0,
+          "R19": 1,
+          "R20": 0,
+          "R21": 0,
+          "R22": 0,
+          "R23": 0
+        }
+      },
+      "costo_usd": 0.481965,
+      "categorias": [
+        "podcast"
+      ]
+    },
+    {
+      "id": "claude_hacks_regression_01",
+      "youtube_id": "KXKzgeHOr7A",
+      "formato": "clase",
+      "reps": [
+        {
+          "rep": 1,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 38,
+              "end_time": 82,
+              "rank_score": 25.0,
+              "hook": "¿Cuál es la verdadera diferencia entre Claude y Claude Code?"
+            },
+            {
+              "orden": 1,
+              "start_time": 139,
+              "end_time": 195,
+              "rank_score": 27.0,
+              "hook": "Creamos este software financiero en 3 días sin programar"
+            },
+            {
+              "orden": 2,
+              "start_time": 203,
+              "end_time": 225,
+              "rank_score": 22.0,
+              "hook": "Por qué Claude Code necesita instalarse en tu ordenador"
+            },
+            {
+              "orden": 3,
+              "start_time": 249,
+              "end_time": 295,
+              "rank_score": 26.0,
+              "hook": "El truco para clonar cualquier página web con una foto"
+            },
+            {
+              "orden": 4,
+              "start_time": 421,
+              "end_time": 472,
+              "rank_score": 25.0,
+              "hook": "Cómo hacer que la IA trabaje sola sin pedirte permiso"
+            },
+            {
+              "orden": 5,
+              "start_time": 540,
+              "end_time": 570,
+              "rank_score": 24.0,
+              "hook": "Conecta tu IA con Gmail, Notion y tu CRM"
+            },
+            {
+              "orden": 6,
+              "start_time": 706,
+              "end_time": 762,
+              "rank_score": 27.0,
+              "hook": "Creando una tienda online con Shopify y Claude Code"
+            },
+            {
+              "orden": 7,
+              "start_time": 821,
+              "end_time": 868,
+              "rank_score": 23.0,
+              "hook": "El truco definitivo para que la IA no olvide el contexto"
+            },
+            {
+              "orden": 8,
+              "start_time": 994,
+              "end_time": 1042,
+              "rank_score": 27.0,
+              "hook": "Esta Inteligencia Artificial tiene ojos y corrige sus errores sola"
+            }
+          ],
+          "costo_usd": 0.064487,
+          "costo_por_tarea": {
+            "classifier": 4.9e-05,
+            "analysis": 0.064438
+          },
+          "segundos": 21.8,
+          "metricas": {
+            "n_candidatos": 9,
+            "n_referencias": 14,
+            "n_referencias_a": 6,
+            "recall_completo": 0.5,
+            "recall_completo_ab": 0.5,
+            "recall_parcial": 0.8333,
+            "recall_parcial_ab": 0.6429,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              4,
+              2,
+              2,
+              1
+            ],
+            "min_cuarto": 0.1111,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 1.0,
+            "precision_ref@10": 0.8889,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "completa",
+              "R07": "ausente",
+              "R08": "completa",
+              "R09": "ausente",
+              "R10": "parcial",
+              "R11": "completa",
+              "R12": "ausente",
+              "R13": "parcial",
+              "R14": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 0,
+              "end_time": 37,
+              "rank_score": 23.0,
+              "hook": "¿Sigues usando la IA solo como un chat? Te estás perdiendo el verdadero potencial."
+            },
+            {
+              "orden": 1,
+              "start_time": 38,
+              "end_time": 82,
+              "rank_score": 25.0,
+              "hook": "La diferencia clave entre que te digan cómo hacerlo y que lo hagan por ti."
+            },
+            {
+              "orden": 2,
+              "start_time": 139,
+              "end_time": 195,
+              "rank_score": 27.0,
+              "hook": "Creamos un software financiero profesional en 3 días sin escribir código."
+            },
+            {
+              "orden": 3,
+              "start_time": 249,
+              "end_time": 295,
+              "rank_score": 23.0,
+              "hook": "Cómo clonar o diseñar cualquier página web con solo una captura de pantalla."
+            },
+            {
+              "orden": 4,
+              "start_time": 421,
+              "end_time": 477,
+              "rank_score": 23.0,
+              "hook": "El truco para que la IA trabaje sola mientras te levantas de la silla."
+            },
+            {
+              "orden": 5,
+              "start_time": 540,
+              "end_time": 592,
+              "rank_score": 23.0,
+              "hook": "Cómo conectar tu IA con Gmail, Notion y tus herramientas favoritas."
+            },
+            {
+              "orden": 6,
+              "start_time": 708,
+              "end_time": 762,
+              "rank_score": 26.0,
+              "hook": "Así creamos una tienda de Shopify automatizada usando inteligencia artificial."
+            },
+            {
+              "orden": 7,
+              "start_time": 819,
+              "end_time": 868,
+              "rank_score": 23.0,
+              "hook": "Evita que tu IA pierda el hilo: el truco definitivo para proyectos grandes."
+            },
+            {
+              "orden": 8,
+              "start_time": 994,
+              "end_time": 1054,
+              "rank_score": 25.0,
+              "hook": "La IA ahora tiene ojos y manos para corregir sus propios errores."
+            }
+          ],
+          "costo_usd": 0.032502,
+          "costo_por_tarea": {
+            "classifier": 4.9e-05,
+            "analysis": 0.032453
+          },
+          "segundos": 14.2,
+          "metricas": {
+            "n_candidatos": 9,
+            "n_referencias": 14,
+            "n_referencias_a": 6,
+            "recall_completo": 0.8333,
+            "recall_completo_ab": 0.6429,
+            "recall_parcial": 0.8333,
+            "recall_parcial_ab": 0.6429,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              4,
+              2,
+              2,
+              1
+            ],
+            "min_cuarto": 0.1111,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.8,
+            "precision_ref@10": 0.8889,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "completa",
+              "R07": "ausente",
+              "R08": "completa",
+              "R09": "ausente",
+              "R10": "completa",
+              "R11": "completa",
+              "R12": "ausente",
+              "R13": "completa",
+              "R14": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 3,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 38,
+              "end_time": 82,
+              "rank_score": 23.0,
+              "hook": "La diferencia clave entre Claude y Claude Code que casi nadie entiende"
+            },
+            {
+              "orden": 1,
+              "start_time": 139,
+              "end_time": 195,
+              "rank_score": 26.0,
+              "hook": "Creamos este software financiero en 3 días sin programar"
+            },
+            {
+              "orden": 2,
+              "start_time": 206,
+              "end_time": 248,
+              "rank_score": 21.0,
+              "hook": "Cómo instalar Claude Code y por qué ahora cualquiera lo puede usar"
+            },
+            {
+              "orden": 3,
+              "start_time": 249,
+              "end_time": 297,
+              "rank_score": 24.0,
+              "hook": "El truco para clonar cualquier diseño web con una captura de pantalla"
+            },
+            {
+              "orden": 4,
+              "start_time": 421,
+              "end_time": 472,
+              "rank_score": 22.0,
+              "hook": "Cómo hacer que la IA trabaje por ti en piloto automático"
+            },
+            {
+              "orden": 5,
+              "start_time": 540,
+              "end_time": 592,
+              "rank_score": 23.0,
+              "hook": "Conecta tu IA con herramientas externas para automatizarlo todo"
+            },
+            {
+              "orden": 6,
+              "start_time": 700,
+              "end_time": 762,
+              "rank_score": 26.0,
+              "hook": "Cómo creamos una tienda online en Shopify usando IA"
+            },
+            {
+              "orden": 7,
+              "start_time": 819,
+              "end_time": 868,
+              "rank_score": 22.0,
+              "hook": "El hack definitivo de memoria para que tu IA no olvide nada"
+            },
+            {
+              "orden": 8,
+              "start_time": 994,
+              "end_time": 1054,
+              "rank_score": 25.0,
+              "hook": "La IA ahora tiene ojos y corrige sus propios errores sola"
+            }
+          ],
+          "costo_usd": 0.033681,
+          "costo_por_tarea": {
+            "classifier": 4.9e-05,
+            "analysis": 0.033632
+          },
+          "segundos": 16.7,
+          "metricas": {
+            "n_candidatos": 9,
+            "n_referencias": 14,
+            "n_referencias_a": 6,
+            "recall_completo": 0.8333,
+            "recall_completo_ab": 0.6429,
+            "recall_parcial": 0.8333,
+            "recall_parcial_ab": 0.6429,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              4,
+              2,
+              2,
+              1
+            ],
+            "min_cuarto": 0.1111,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 1.0,
+            "precision_ref@10": 0.8889,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "completa",
+              "R07": "ausente",
+              "R08": "completa",
+              "R09": "ausente",
+              "R10": "completa",
+              "R11": "completa",
+              "R12": "ausente",
+              "R13": "completa",
+              "R14": "ausente"
+            }
+          }
+        }
+      ],
+      "errores": [],
+      "referencias": {
+        "momentos": 14,
+        "validados": 0,
+        "validados_a": 0,
+        "pendientes": 14,
+        "validado_por": []
+      },
+      "duracion_sec": 1159.013,
+      "agregado": {
+        "recall_completo": {
+          "media": 0.7222,
+          "desvio": 0.1924,
+          "n": 3
+        },
+        "recall_completo_ab": {
+          "media": 0.5953,
+          "desvio": 0.0825,
+          "n": 3
+        },
+        "recall_parcial": {
+          "media": 0.8333,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "recall_parcial_ab": {
+          "media": 0.6429,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "historias_partidas": {
+          "media": 0.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "min_cuarto": {
+          "media": 0.1111,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "candidatos_en_exclusion": {
+          "media": 0.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "precision_ref@5": {
+          "media": 0.9333,
+          "desvio": 0.1155,
+          "n": 3
+        },
+        "precision_ref@10": {
+          "media": 0.8889,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "n_candidatos": {
+          "media": 9.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "completa_en_reps": {
+          "R01": 3,
+          "R02": 3,
+          "R03": 3,
+          "R04": 3,
+          "R05": 0,
+          "R06": 3,
+          "R07": 0,
+          "R08": 3,
+          "R09": 0,
+          "R10": 2,
+          "R11": 3,
+          "R12": 0,
+          "R13": 2,
+          "R14": 0
+        }
+      },
+      "costo_usd": 0.13067,
+      "categorias": [
+        "business"
+      ]
+    },
+    {
+      "id": "user_recommended_01",
+      "youtube_id": "MaXgAEI4Vm8",
+      "formato": "charla",
+      "reps": [
+        {
+          "rep": 1,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 162,
+              "end_time": 202,
+              "rank_score": 23.0,
+              "hook": "¿Es el enano Dupont el tipo más morrudo de todos?"
+            },
+            {
+              "orden": 1,
+              "start_time": 338,
+              "end_time": 384,
+              "rank_score": 26.0,
+              "hook": "¿Por qué Endrick siempre tiene cara de culo?"
+            },
+            {
+              "orden": 2,
+              "start_time": 395,
+              "end_time": 440,
+              "rank_score": 23.0,
+              "hook": "Un brasileño que no sabe bailar es indefendible"
+            },
+            {
+              "orden": 3,
+              "start_time": 732,
+              "end_time": 796,
+              "rank_score": 27.0,
+              "hook": "¿Se agarraron a piñas Valverde y Tchouaméni?"
+            },
+            {
+              "orden": 4,
+              "start_time": 797,
+              "end_time": 846,
+              "rank_score": 23.0,
+              "hook": "El parte médico del Real Madrid y el futuro de Valverde"
+            },
+            {
+              "orden": 5,
+              "start_time": 885,
+              "end_time": 934,
+              "rank_score": 24.0,
+              "hook": "¿Sos del Team Valverde o del Team Tchouaméni?"
+            },
+            {
+              "orden": 6,
+              "start_time": 1000,
+              "end_time": 1054,
+              "rank_score": 25.0,
+              "hook": "La patada que desató la guerra en el Real Madrid"
+            },
+            {
+              "orden": 7,
+              "start_time": 1117,
+              "end_time": 1191,
+              "rank_score": 23.0,
+              "hook": "La venganza de Valverde en el entrenamiento"
+            },
+            {
+              "orden": 8,
+              "start_time": 1218,
+              "end_time": 1282,
+              "rank_score": 27.0,
+              "hook": "Encontraron a Valverde semi-inconsciente"
+            },
+            {
+              "orden": 9,
+              "start_time": 1374,
+              "end_time": 1420,
+              "rank_score": 22.0,
+              "hook": "La lentitud de Edu Aguirre para contar chismes"
+            },
+            {
+              "orden": 10,
+              "start_time": 1429,
+              "end_time": 1472,
+              "rank_score": 24.0,
+              "hook": "Dormir a un compañero en el vestuario es de líder"
+            },
+            {
+              "orden": 11,
+              "start_time": 1554,
+              "end_time": 1610,
+              "rank_score": 24.0,
+              "hook": "La misteriosa risa de Mbappé tras la pelea"
+            },
+            {
+              "orden": 12,
+              "start_time": 1654,
+              "end_time": 1712,
+              "rank_score": 22.0,
+              "hook": "Valverde desmiente la pelea de forma sospechosa"
+            },
+            {
+              "orden": 13,
+              "start_time": 1901,
+              "end_time": 1943,
+              "rank_score": 23.0,
+              "hook": "Shakira parece de la misma edad desde hace 20 años"
+            },
+            {
+              "orden": 14,
+              "start_time": 2026,
+              "end_time": 2070,
+              "rank_score": 24.0,
+              "hook": "¿Por qué todas las canciones de mundiales sin Shakira fracasan?"
+            },
+            {
+              "orden": 15,
+              "start_time": 2119,
+              "end_time": 2167,
+              "rank_score": 27.0,
+              "hook": "¿Es Italia 90 el mejor tema de la historia?"
+            },
+            {
+              "orden": 16,
+              "start_time": 2244,
+              "end_time": 2286,
+              "rank_score": 25.0,
+              "hook": "La emocionante reacción de Alfredo al himno de Italia 90"
+            },
+            {
+              "orden": 17,
+              "start_time": 2477,
+              "end_time": 2522,
+              "rank_score": 24.0,
+              "hook": "Hartos de la nostalgia del Mundial 90"
+            },
+            {
+              "orden": 18,
+              "start_time": 2576,
+              "end_time": 2617,
+              "rank_score": 22.0,
+              "hook": "¿Las canciones de ahora parecen hechas para Miami?"
+            },
+            {
+              "orden": 19,
+              "start_time": 2688,
+              "end_time": 2736,
+              "rank_score": 24.0,
+              "hook": "La mística de sufrir y ganar por penales"
+            },
+            {
+              "orden": 20,
+              "start_time": 2786,
+              "end_time": 2844,
+              "rank_score": 23.0,
+              "hook": "¿El tema de mundial que escuchás define tu hombría?"
+            },
+            {
+              "orden": 21,
+              "start_time": 3176,
+              "end_time": 3227,
+              "rank_score": 23.0,
+              "hook": "La polémica foto íntima de Lilia Lemoine en redes"
+            },
+            {
+              "orden": 22,
+              "start_time": 3665,
+              "end_time": 3717,
+              "rank_score": 26.0,
+              "hook": "Carmen Barbieri confiesa: 'No tengo sexo hace 8 años'"
+            },
+            {
+              "orden": 23,
+              "start_time": 3755,
+              "end_time": 3804,
+              "rank_score": 24.0,
+              "hook": "Alfredo acusa a Carmen de buscar 'el clip de la semana'"
+            },
+            {
+              "orden": 24,
+              "start_time": 3915,
+              "end_time": 3971,
+              "rank_score": 23.5,
+              "hook": "La estricta prohibición de Tinelli a sus humoristas"
+            },
+            {
+              "orden": 25,
+              "start_time": 4072,
+              "end_time": 4122,
+              "rank_score": 24.0,
+              "hook": "¿Por qué Tinelli sigue siendo de los más odiados?"
+            },
+            {
+              "orden": 26,
+              "start_time": 4417,
+              "end_time": 4507,
+              "rank_score": 26.0,
+              "hook": "El bizarro pico entre Horacio Pagani y Bonelli"
+            },
+            {
+              "orden": 27,
+              "start_time": 4725,
+              "end_time": 4764,
+              "rank_score": 22.0,
+              "hook": "¿Quién de la mesa es el peor jugando al pool?"
+            },
+            {
+              "orden": 28,
+              "start_time": 5328,
+              "end_time": 5365,
+              "rank_score": 24.0,
+              "hook": "El viejo les da una clase de pool en vivo"
+            },
+            {
+              "orden": 29,
+              "start_time": 5809,
+              "end_time": 5856,
+              "rank_score": 27.0,
+              "hook": "Épica victoria de pool sobre la hora"
+            }
+          ],
+          "costo_usd": 0.150478,
+          "costo_por_tarea": {
+            "classifier": 6.4e-05,
+            "analysis": 0.150414
+          },
+          "segundos": 29.4,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 22,
+            "n_referencias_a": 10,
+            "recall_completo": 0.1,
+            "recall_completo_ab": 0.0455,
+            "recall_parcial": 0.5,
+            "recall_parcial_ab": 0.3636,
+            "historias_partidas": 2,
+            "historias_partidas_ids": [
+              "R03",
+              "R05"
+            ],
+            "candidatos_por_cuarto": [
+              12,
+              10,
+              6,
+              2
+            ],
+            "min_cuarto": 0.0667,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.2,
+            "precision_ref@10": 0.2,
+            "estado_por_referencia": {
+              "R01": "ausente",
+              "R02": "ausente",
+              "R03": "partida",
+              "R04": "ausente",
+              "R05": "partida",
+              "R06": "parcial",
+              "R07": "parcial",
+              "R08": "ausente",
+              "R09": "parcial",
+              "R10": "ausente",
+              "R11": "parcial",
+              "R12": "parcial",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "ausente",
+              "R18": "completa",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 162,
+              "end_time": 208,
+              "rank_score": 23.0,
+              "hook": "¿El mejor jugador del mundo tiene características de 'lata de tomate'? El desternillante debate sobre el rugbista Dupont"
+            },
+            {
+              "orden": 1,
+              "start_time": 247,
+              "end_time": 285,
+              "rank_score": 26.0,
+              "hook": "El clásico dilema: ¿Importa más el diámetro o la longitud? La mesa de Paren la Mano opina sin filtro."
+            },
+            {
+              "orden": 2,
+              "start_time": 338,
+              "end_time": 385,
+              "rank_score": 25.0,
+              "hook": "Lucas Rodríguez explota contra la eterna cara de pocos amigos de Endrick."
+            },
+            {
+              "orden": 3,
+              "start_time": 414,
+              "end_time": 461,
+              "rank_score": 22.0,
+              "hook": "¿Es timidez o simplemente mala onda? El debate sobre la actitud de Endrick se calienta en el estudio."
+            },
+            {
+              "orden": 4,
+              "start_time": 737,
+              "end_time": 796,
+              "rank_score": 27.0,
+              "hook": "¡Escándalo en el Real Madrid! El tenso rumor de piñas entre Valverde y Tchouaméni."
+            },
+            {
+              "orden": 5,
+              "start_time": 801,
+              "end_time": 853,
+              "rank_score": 24.0,
+              "hook": "El parte médico oficial del Real Madrid que confirma la caída de Fede Valverde tras la pelea."
+            },
+            {
+              "orden": 6,
+              "start_time": 876,
+              "end_time": 914,
+              "rank_score": 24.0,
+              "hook": "¿Se puede ser capitán de un equipo si te noquearon en el vestuario?"
+            },
+            {
+              "orden": 7,
+              "start_time": 938,
+              "end_time": 985,
+              "rank_score": 24.0,
+              "hook": "¿De qué lado estás? La mesa elige bando entre Valverde y Tchouaméni tras las piñas."
+            },
+            {
+              "orden": 8,
+              "start_time": 1000,
+              "end_time": 1038,
+              "rank_score": 25.0,
+              "hook": "La venganza de Valverde: paso a paso de cómo se desató la segunda pelea en el Real Madrid."
+            },
+            {
+              "orden": 9,
+              "start_time": 1098,
+              "end_time": 1157,
+              "rank_score": 22.0,
+              "hook": "La violenta patada de entrenamiento que desencadenó el escándalo en el vestuario merengue."
+            },
+            {
+              "orden": 10,
+              "start_time": 1218,
+              "end_time": 1278,
+              "rank_score": 27.0,
+              "hook": "La dramática escena en el vestuario del Real Madrid: Valverde tirado y sangrando."
+            },
+            {
+              "orden": 11,
+              "start_time": 1282,
+              "end_time": 1329,
+              "rank_score": 24.0,
+              "hook": "¡Perdió la memoria! El fuerte traumatismo de Valverde tras chocar contra una mesa en el vestuario."
+            },
+            {
+              "orden": 12,
+              "start_time": 1374,
+              "end_time": 1422,
+              "rank_score": 24.0,
+              "hook": "La mesa de Paren la Mano destruye al periodista español Edu Aguirre."
+            },
+            {
+              "orden": 13,
+              "start_time": 1429,
+              "end_time": 1472,
+              "rank_score": 24.0,
+              "hook": "\"Sos el más poderoso del mundo si dormís a alguien en el vestuario\": El divertido análisis de la pelea."
+            },
+            {
+              "orden": 14,
+              "start_time": 1531,
+              "end_time": 1592,
+              "rank_score": 25.0,
+              "hook": "¿Mbappé detrás de la caída de Valverde? La divertida teoría conspirativa de Paren la Mano."
+            },
+            {
+              "orden": 15,
+              "start_time": 1654,
+              "end_time": 1712,
+              "rank_score": 23.0,
+              "hook": "Valverde rompe el silencio y explica el misterioso 'accidente con una mesa' en el vestuario."
+            },
+            {
+              "orden": 16,
+              "start_time": 1901,
+              "end_time": 1943,
+              "rank_score": 23.0,
+              "hook": "\"Parece la misma persona hace 20 años\": Las divertidas teorías sobre la juventud eterna de Shakira."
+            },
+            {
+              "orden": 17,
+              "start_time": 2024,
+              "end_time": 2070,
+              "rank_score": 26.0,
+              "hook": "\"Todos los temas que no tuvo Shakira fueron una poronga\": Crítica letal a los himnos de los mundiales."
+            },
+            {
+              "orden": 18,
+              "start_time": 2107,
+              "end_time": 2154,
+              "rank_score": 25.0,
+              "hook": "La grieta generacional definitiva: ¿Shakira o el nostálgico himno de Italia 90?"
+            },
+            {
+              "orden": 19,
+              "start_time": 2244,
+              "end_time": 2286,
+              "rank_score": 24.0,
+              "hook": "\"Dame un buzo que me da piel de gallina\": La locura que genera el himno de Italia 90."
+            },
+            {
+              "orden": 20,
+              "start_time": 2346,
+              "end_time": 2393,
+              "rank_score": 22.0,
+              "hook": "¿Por qué todas las canciones de mundiales se graban a fuego en nuestra memoria?"
+            },
+            {
+              "orden": 21,
+              "start_time": 2477,
+              "end_time": 2518,
+              "rank_score": 24.0,
+              "hook": "\"Olor a naftalina\": El contraataque de los jóvenes contra la nostalgia del Mundial 90."
+            },
+            {
+              "orden": 22,
+              "start_time": 2587,
+              "end_time": 2631,
+              "rank_score": 23.0,
+              "hook": "\"Parece que estamos en Miami\": Por qué los nuevos temas de mundiales no tienen alma de fútbol."
+            },
+            {
+              "orden": 23,
+              "start_time": 2776,
+              "end_time": 2824,
+              "rank_score": 24.0,
+              "hook": "\"Si ponés Italia 90 sos un machote\": El disparatado análisis de la mesa."
+            },
+            {
+              "orden": 24,
+              "start_time": 3665,
+              "end_time": 3717,
+              "rank_score": 27.0,
+              "hook": "La sorprendente revelación de Carmen Barbieri: \"No tengo sexo hace 8 años\"."
+            },
+            {
+              "orden": 25,
+              "start_time": 3757,
+              "end_time": 3810,
+              "rank_score": 24.0,
+              "hook": "\"Todo es un clip en la vida\": El análisis sobre la búsqueda de viralidad de los famosos."
+            },
+            {
+              "orden": 26,
+              "start_time": 3874,
+              "end_time": 3934,
+              "rank_score": 25.0,
+              "hook": "El reclamo de José María Listorti a Tinelli tras años de censura y exclusividad."
+            },
+            {
+              "orden": 27,
+              "start_time": 3942,
+              "end_time": 3985,
+              "rank_score": 25.0,
+              "hook": "La insólita anécdota de cómo tuvieron que devolver la plata de una publicidad por culpa de Tinelli."
+            },
+            {
+              "orden": 28,
+              "start_time": 4068,
+              "end_time": 4116,
+              "rank_score": 24.0,
+              "hook": "La gente en la calle revela al famoso que más odia en Argentina."
+            },
+            {
+              "orden": 29,
+              "start_time": 5484,
+              "end_time": 5537,
+              "rank_score": 27.0,
+              "hook": "\"Yo jugaba por la bolsa de merca\": El descontrolado juego de pool de Paren la Mano."
+            }
+          ],
+          "costo_usd": 0.151189,
+          "costo_por_tarea": {
+            "classifier": 6.4e-05,
+            "analysis": 0.151125
+          },
+          "segundos": 31.7,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 22,
+            "n_referencias_a": 10,
+            "recall_completo": 0.0,
+            "recall_completo_ab": 0.0455,
+            "recall_parcial": 0.2,
+            "recall_parcial_ab": 0.1818,
+            "historias_partidas": 1,
+            "historias_partidas_ids": [
+              "R05"
+            ],
+            "candidatos_por_cuarto": [
+              15,
+              9,
+              5,
+              1
+            ],
+            "min_cuarto": 0.0333,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.0,
+            "precision_ref@10": 0.2,
+            "estado_por_referencia": {
+              "R01": "ausente",
+              "R02": "ausente",
+              "R03": "parcial",
+              "R04": "ausente",
+              "R05": "partida",
+              "R06": "ausente",
+              "R07": "parcial",
+              "R08": "ausente",
+              "R09": "completa",
+              "R10": "ausente",
+              "R11": "parcial",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "ausente",
+              "R18": "ausente",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 3,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 178,
+              "end_time": 213,
+              "rank_score": 25.0,
+              "hook": "El debate más absurdo y divertido sobre el físico del enano Dupont"
+            },
+            {
+              "orden": 1,
+              "start_time": 338,
+              "end_time": 380,
+              "rank_score": 25.0,
+              "hook": "Lucas Rodríguez destroza a Endrick por su cara de orto constante"
+            },
+            {
+              "orden": 2,
+              "start_time": 383,
+              "end_time": 422,
+              "rank_score": 23.0,
+              "hook": "La insoportable falta de gracia de Endrick según Lucas"
+            },
+            {
+              "orden": 3,
+              "start_time": 440,
+              "end_time": 489,
+              "rank_score": 27.0,
+              "hook": "El peor baile brasileño de la historia analizado en vivo"
+            },
+            {
+              "orden": 4,
+              "start_time": 542,
+              "end_time": 576,
+              "rank_score": 23.0,
+              "hook": "¿Se terminó la alegría brasileña en el fútbol?"
+            },
+            {
+              "orden": 5,
+              "start_time": 640,
+              "end_time": 680,
+              "rank_score": 22.0,
+              "hook": "La inusual ternura de Alfredo cuando algo le gusta de verdad"
+            },
+            {
+              "orden": 6,
+              "start_time": 681,
+              "end_time": 716,
+              "rank_score": 23.0,
+              "hook": "El repaso de los jugadores más amargos del fútbol de Brasil"
+            },
+            {
+              "orden": 7,
+              "start_time": 738,
+              "end_time": 769,
+              "rank_score": 26.0,
+              "hook": "Escándalo total: Valverde y Tchouaméni a las piñas dos días seguidos"
+            },
+            {
+              "orden": 8,
+              "start_time": 777,
+              "end_time": 820,
+              "rank_score": 24.0,
+              "hook": "El parte médico de Valverde tras caer inconsciente en la pelea"
+            },
+            {
+              "orden": 9,
+              "start_time": 821,
+              "end_time": 861,
+              "rank_score": 22.0,
+              "hook": "¿Puede Valverde seguir siendo el capitán del Real Madrid?"
+            },
+            {
+              "orden": 10,
+              "start_time": 895,
+              "end_time": 947,
+              "rank_score": 25.0,
+              "hook": "¿Team Valverde o Team Tchouaméni? La mesa toma una decisión"
+            },
+            {
+              "orden": 11,
+              "start_time": 1000,
+              "end_time": 1044,
+              "rank_score": 26.0,
+              "hook": "La venganza de Valverde: Así empezó la feroz pelea en el Real Madrid"
+            },
+            {
+              "orden": 12,
+              "start_time": 1117,
+              "end_time": 1157,
+              "rank_score": 22.0,
+              "hook": "Edu Aguirre revela la brutal entrada de Valverde a Tchouaméni"
+            },
+            {
+              "orden": 13,
+              "start_time": 1218,
+              "end_time": 1259,
+              "rank_score": 27.0,
+              "hook": "La aterradora escena del vestuario: Valverde inconsciente y sangrando"
+            },
+            {
+              "orden": 14,
+              "start_time": 1368,
+              "end_time": 1406,
+              "rank_score": 25.0,
+              "hook": "La brutal burla de Lucas Rodríguez a la forma de hablar de Edu Aguirre"
+            },
+            {
+              "orden": 15,
+              "start_time": 1429,
+              "end_time": 1472,
+              "rank_score": 23.0,
+              "hook": "\"Sos el más poderoso del mundo si dormís a alguien en el vestuario\""
+            },
+            {
+              "orden": 16,
+              "start_time": 1531,
+              "end_time": 1570,
+              "rank_score": 24.0,
+              "hook": "La teoría de los 'Halcones y Palomas' en el vestuario del Real Madrid"
+            },
+            {
+              "orden": 17,
+              "start_time": 1654,
+              "end_time": 1712,
+              "rank_score": 22.0,
+              "hook": "El dudoso comunicado de Fede Valverde tras salir del hospital"
+            },
+            {
+              "orden": 18,
+              "start_time": 1901,
+              "end_time": 1943,
+              "rank_score": 25.0,
+              "hook": "La teoría conspirativa sobre la eterna juventud de Shakira"
+            },
+            {
+              "orden": 19,
+              "start_time": 2030,
+              "end_time": 2070,
+              "rank_score": 24.0,
+              "hook": "La dura verdad: Las canciones de los mundiales sin Shakira son pésimas"
+            },
+            {
+              "orden": 20,
+              "start_time": 2118,
+              "end_time": 2160,
+              "rank_score": 26.0,
+              "hook": "La épica batalla generacional: El Mundial 90 contra los jóvenes"
+            },
+            {
+              "orden": 21,
+              "start_time": 2244,
+              "end_time": 2286,
+              "rank_score": 25.0,
+              "hook": "Alfredo se vuelve loco exigiendo silencio para escuchar Italia 90"
+            },
+            {
+              "orden": 22,
+              "start_time": 2346,
+              "end_time": 2396,
+              "rank_score": 24.0,
+              "hook": "Por qué 'Waving Flag' es la mejor canción de mundiales moderna"
+            },
+            {
+              "orden": 23,
+              "start_time": 2477,
+              "end_time": 2518,
+              "rank_score": 25.0,
+              "hook": "Lucas Rodríguez contra la obsesión 'olor a naftalina' del Mundial 90"
+            },
+            {
+              "orden": 24,
+              "start_time": 2533,
+              "end_time": 2587,
+              "rank_score": 22.0,
+              "hook": "El debate definitivo sobre Pitbull y el Mundial de Brasil 2014"
+            },
+            {
+              "orden": 25,
+              "start_time": 2724,
+              "end_time": 2781,
+              "rank_score": 25.0,
+              "hook": "La ridícula comparación de masculinidad según tu canción del Mundial"
+            },
+            {
+              "orden": 26,
+              "start_time": 3665,
+              "end_time": 3717,
+              "rank_score": 26.0,
+              "hook": "La insólita revelación de Carmen Barbieri: \"No tengo sexo hace 8 años\""
+            },
+            {
+              "orden": 27,
+              "start_time": 3741,
+              "end_time": 3795,
+              "rank_score": 24.0,
+              "hook": "Alfredo desenmascara la estrategia de Carmen Barbieri para buscar el 'clip'"
+            },
+            {
+              "orden": 28,
+              "start_time": 3953,
+              "end_time": 3988,
+              "rank_score": 26.0,
+              "hook": "La censura de Tinelli: El día que obligó a devolver la plata de una publicidad"
+            },
+            {
+              "orden": 29,
+              "start_time": 5827,
+              "end_time": 5857,
+              "rank_score": 27.0,
+              "hook": "Épica victoria en vivo: La mesa de Paren la Mano festeja el triunfo de pool"
+            }
+          ],
+          "costo_usd": 0.152215,
+          "costo_por_tarea": {
+            "classifier": 6.4e-05,
+            "analysis": 0.152151
+          },
+          "segundos": 34.2,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 22,
+            "n_referencias_a": 10,
+            "recall_completo": 0.0,
+            "recall_completo_ab": 0.0455,
+            "recall_parcial": 0.3,
+            "recall_parcial_ab": 0.2273,
+            "historias_partidas": 2,
+            "historias_partidas_ids": [
+              "R03",
+              "R05"
+            ],
+            "candidatos_por_cuarto": [
+              17,
+              9,
+              3,
+              1
+            ],
+            "min_cuarto": 0.0333,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.0,
+            "precision_ref@10": 0.1,
+            "estado_por_referencia": {
+              "R01": "ausente",
+              "R02": "ausente",
+              "R03": "partida",
+              "R04": "completa",
+              "R05": "partida",
+              "R06": "ausente",
+              "R07": "parcial",
+              "R08": "ausente",
+              "R09": "parcial",
+              "R10": "ausente",
+              "R11": "ausente",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "ausente",
+              "R18": "ausente",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente"
+            }
+          }
+        }
+      ],
+      "errores": [],
+      "referencias": {
+        "momentos": 22,
+        "validados": 0,
+        "validados_a": 0,
+        "pendientes": 22,
+        "validado_por": []
+      },
+      "duracion_sec": 6508.159,
+      "agregado": {
+        "recall_completo": {
+          "media": 0.0333,
+          "desvio": 0.0577,
+          "n": 3
+        },
+        "recall_completo_ab": {
+          "media": 0.0455,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "recall_parcial": {
+          "media": 0.3333,
+          "desvio": 0.1528,
+          "n": 3
+        },
+        "recall_parcial_ab": {
+          "media": 0.2576,
+          "desvio": 0.0946,
+          "n": 3
+        },
+        "historias_partidas": {
+          "media": 1.6667,
+          "desvio": 0.5774,
+          "n": 3
+        },
+        "min_cuarto": {
+          "media": 0.0444,
+          "desvio": 0.0193,
+          "n": 3
+        },
+        "candidatos_en_exclusion": {
+          "media": 0.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "precision_ref@5": {
+          "media": 0.0667,
+          "desvio": 0.1155,
+          "n": 3
+        },
+        "precision_ref@10": {
+          "media": 0.1667,
+          "desvio": 0.0577,
+          "n": 3
+        },
+        "n_candidatos": {
+          "media": 30.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "completa_en_reps": {
+          "R01": 0,
+          "R02": 0,
+          "R03": 0,
+          "R04": 1,
+          "R05": 0,
+          "R06": 0,
+          "R07": 0,
+          "R08": 0,
+          "R09": 1,
+          "R10": 0,
+          "R11": 0,
+          "R12": 0,
+          "R13": 0,
+          "R14": 0,
+          "R15": 0,
+          "R16": 0,
+          "R17": 0,
+          "R18": 1,
+          "R19": 0,
+          "R20": 0,
+          "R21": 0,
+          "R22": 0
+        }
+      },
+      "costo_usd": 0.453882,
+      "categorias": [
+        "podcast"
+      ]
+    },
+    {
+      "id": "charla_humor_01",
+      "youtube_id": "B60BHDNFNxM",
+      "formato": "charla",
+      "reps": [
+        {
+          "rep": 1,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 288,
+              "end_time": 335,
+              "rank_score": 23.0,
+              "hook": "Cómo llegó la Premier League por primera vez a la televisión abierta argentina"
+            },
+            {
+              "orden": 1,
+              "start_time": 337,
+              "end_time": 372,
+              "rank_score": 22.0,
+              "hook": "El Bambino Pons recuerda los equipos que lo enamoraron de la Premier League"
+            },
+            {
+              "orden": 2,
+              "start_time": 380,
+              "end_time": 413,
+              "rank_score": 25.0,
+              "hook": "La historia detrás de los icónicos cantos de gol de la Premier League"
+            },
+            {
+              "orden": 3,
+              "start_time": 415,
+              "end_time": 453,
+              "rank_score": 25.0,
+              "hook": "¿Por qué los periodistas deportivos nunca revelan su equipo en Argentina?"
+            },
+            {
+              "orden": 4,
+              "start_time": 516,
+              "end_time": 536,
+              "rank_score": 25.0,
+              "hook": "La intimidad de las concentraciones de la selección con Bilardo y Maradona"
+            },
+            {
+              "orden": 5,
+              "start_time": 565,
+              "end_time": 612,
+              "rank_score": 27.0,
+              "hook": "La loca historia del auto de Caniggia en Italia 90 revelada"
+            },
+            {
+              "orden": 6,
+              "start_time": 642,
+              "end_time": 685,
+              "rank_score": 23.0,
+              "hook": "La insólita lista de artistas de rock con los que jugaba el Bambino Pons"
+            },
+            {
+              "orden": 7,
+              "start_time": 718,
+              "end_time": 761,
+              "rank_score": 23.0,
+              "hook": "Por qué la Premier League prohibió los cantos con música en 2013"
+            },
+            {
+              "orden": 8,
+              "start_time": 1174,
+              "end_time": 1210,
+              "rank_score": 27.0,
+              "hook": "El humillante día que echaron al Bambino Pons de Peñarol"
+            },
+            {
+              "orden": 9,
+              "start_time": 1219,
+              "end_time": 1251,
+              "rank_score": 22.0,
+              "hook": "El nacimiento de la camada dorada de periodistas deportivos de Argentina"
+            },
+            {
+              "orden": 10,
+              "start_time": 1319,
+              "end_time": 1362,
+              "rank_score": 23.0,
+              "hook": "Cómo se gestó la llegada de Víctor Hugo Morales a la Argentina"
+            },
+            {
+              "orden": 11,
+              "start_time": 1456,
+              "end_time": 1494,
+              "rank_score": 24.0,
+              "hook": "El día que Marcelo Bielsa enloqueció por perder una final de Libertadores"
+            },
+            {
+              "orden": 12,
+              "start_time": 1533,
+              "end_time": 1563,
+              "rank_score": 27.0,
+              "hook": "La increíble imitación del Oso Yogi del Bambino Pons que explotó en vivo"
+            },
+            {
+              "orden": 13,
+              "start_time": 1651,
+              "end_time": 1699,
+              "rank_score": 21.0,
+              "hook": "La dura realidad del hincha de fútbol y por qué putean al periodista"
+            },
+            {
+              "orden": 14,
+              "start_time": 1957,
+              "end_time": 2005,
+              "rank_score": 27.0,
+              "hook": "La estrategia secreta del Cuti Romero para frenar a Haaland en la Premier"
+            },
+            {
+              "orden": 15,
+              "start_time": 2209,
+              "end_time": 2260,
+              "rank_score": 26.0,
+              "hook": "El dineral que gasta Enzo Fernández en preparadores para jugar en Chelsea"
+            },
+            {
+              "orden": 16,
+              "start_time": 2295,
+              "end_time": 2341,
+              "rank_score": 23.0,
+              "hook": "La curiosa relación de vecinos entre Mohamed Salah y Lisandro Martínez"
+            },
+            {
+              "orden": 17,
+              "start_time": 2634,
+              "end_time": 2671,
+              "rank_score": 25.0,
+              "hook": "El Barcelona de los 80 y el inicio de los problemas de Diego Maradona"
+            },
+            {
+              "orden": 18,
+              "start_time": 2720,
+              "end_time": 2769,
+              "rank_score": 27.0,
+              "hook": "El día que Maradona puso al Nápoles en contra de Italia en el Mundial 90"
+            },
+            {
+              "orden": 19,
+              "start_time": 2791,
+              "end_time": 2835,
+              "rank_score": 25.0,
+              "hook": "El increíble encuentro del Bambino Pons con Mick Jagger en el 82"
+            },
+            {
+              "orden": 20,
+              "start_time": 3057,
+              "end_time": 3089,
+              "rank_score": 24.0,
+              "hook": "Los estrictos mandamientos del bilardismo revelados por Pons"
+            },
+            {
+              "orden": 21,
+              "start_time": 3299,
+              "end_time": 3341,
+              "rank_score": 24.0,
+              "hook": "La polémica por los hinchas de equipos europeos de la Premier League"
+            },
+            {
+              "orden": 22,
+              "start_time": 3429,
+              "end_time": 3466,
+              "rank_score": 22.0,
+              "hook": "Por qué es posible ser hincha pasional de un club de Europa"
+            },
+            {
+              "orden": 23,
+              "start_time": 3638,
+              "end_time": 3681,
+              "rank_score": 24.0,
+              "hook": "La historia del hincha español que defiende al Barça de los chistes"
+            },
+            {
+              "orden": 24,
+              "start_time": 3846,
+              "end_time": 3885,
+              "rank_score": 22.5,
+              "hook": "La discusión de por qué Thierry Henry reina por sobre todos en la Premier"
+            },
+            {
+              "orden": 25,
+              "start_time": 3947,
+              "end_time": 3991,
+              "rank_score": 23.0,
+              "hook": "El rescate de Mikel Arteta al Arsenal de sus peores pesadillas"
+            },
+            {
+              "orden": 26,
+              "start_time": 4126,
+              "end_time": 4180,
+              "rank_score": 24.0,
+              "hook": "¿Hay un ensañamiento del arbitraje inglés contra el Arsenal?"
+            },
+            {
+              "orden": 27,
+              "start_time": 4723,
+              "end_time": 4761,
+              "rank_score": 23.0,
+              "hook": "La polémica jugada que tiene cansados a los hinchas de River"
+            },
+            {
+              "orden": 28,
+              "start_time": 5527,
+              "end_time": 5555,
+              "rank_score": 26.0,
+              "hook": "La dura crítica de Roberto al descargo de Sebastián Villa"
+            },
+            {
+              "orden": 29,
+              "start_time": 5715,
+              "end_time": 5752,
+              "rank_score": 24.0,
+              "hook": "La paradoja de los futbolistas que odian las críticas de los periodistas"
+            }
+          ],
+          "costo_usd": 0.153671,
+          "costo_por_tarea": {
+            "classifier": 6.1e-05,
+            "analysis": 0.15361
+          },
+          "segundos": 27.7,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 25,
+            "n_referencias_a": 15,
+            "recall_completo": 0.2,
+            "recall_completo_ab": 0.24,
+            "recall_parcial": 0.4667,
+            "recall_parcial_ab": 0.48,
+            "historias_partidas": 1,
+            "historias_partidas_ids": [
+              "R02"
+            ],
+            "candidatos_por_cuarto": [
+              13,
+              9,
+              6,
+              2
+            ],
+            "min_cuarto": 0.0667,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.8,
+            "precision_ref@10": 0.5,
+            "estado_por_referencia": {
+              "R16": "parcial",
+              "R01": "parcial",
+              "R20": "ausente",
+              "R02": "partida",
+              "R25": "parcial",
+              "R03": "ausente",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "parcial",
+              "R17": "ausente",
+              "R18": "completa",
+              "R19": "completa",
+              "R07": "parcial",
+              "R08": "ausente",
+              "R09": "completa",
+              "R24": "ausente",
+              "R21": "ausente",
+              "R10": "ausente",
+              "R22": "ausente",
+              "R11": "completa",
+              "R12": "ausente",
+              "R23": "completa",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 288,
+              "end_time": 328,
+              "rank_score": 25.0,
+              "hook": "El día que Romay compró los derechos del fútbol inglés sin saber nada de fútbol"
+            },
+            {
+              "orden": 1,
+              "start_time": 380,
+              "end_time": 423,
+              "rank_score": 27.0,
+              "hook": "¡La historia secreta detrás de las canciones de los relatos de la Premier!"
+            },
+            {
+              "orden": 2,
+              "start_time": 557,
+              "end_time": 612,
+              "rank_score": 27.0,
+              "hook": "La increíble anécdota de Bilardo, Caniggia y Mariana Nannis en Italia 90"
+            },
+            {
+              "orden": 3,
+              "start_time": 1153,
+              "end_time": 1200,
+              "rank_score": 25.0,
+              "hook": "La insólita prueba del Bambino Pons en Peñarol: \"Corre como cienpiés\""
+            },
+            {
+              "orden": 4,
+              "start_time": 1219,
+              "end_time": 1251,
+              "rank_score": 24.0,
+              "hook": "El día que decidí ser periodista deportivo tras fracasar en Peñarol"
+            },
+            {
+              "orden": 5,
+              "start_time": 1453,
+              "end_time": 1484,
+              "rank_score": 25.0,
+              "hook": "¡La locura secreta de Marcelo Bielsa en la final de la Libertadores 92!"
+            },
+            {
+              "orden": 6,
+              "start_time": 1533,
+              "end_time": 1573,
+              "rank_score": 27.0,
+              "hook": "¡El Bambino Pons hace las voces del Oso Yogi en vivo!"
+            },
+            {
+              "orden": 7,
+              "start_time": 1651,
+              "end_time": 1709,
+              "rank_score": 25.0,
+              "hook": "¿Por qué la gente odia tanto a los periodistas deportivos?"
+            },
+            {
+              "orden": 8,
+              "start_time": 1941,
+              "end_time": 1989,
+              "rank_score": 27.0,
+              "hook": "El día que el Cuti Romero tuvo que moler a patadas a Haaland"
+            },
+            {
+              "orden": 9,
+              "start_time": 2209,
+              "end_time": 2265,
+              "rank_score": 25.0,
+              "hook": "¡La millonaria fortuna que gasta Enzo Fernández para competir físicamente!"
+            },
+            {
+              "orden": 10,
+              "start_time": 2300,
+              "end_time": 2341,
+              "rank_score": 24.0,
+              "hook": "La insólita vecindad entre Lisandro Martínez y Salah en Inglaterra"
+            },
+            {
+              "orden": 11,
+              "start_time": 2633,
+              "end_time": 2663,
+              "rank_score": 27.0,
+              "hook": "El oscuro inicio de Diego Maradona en Barcelona en 1982"
+            },
+            {
+              "orden": 12,
+              "start_time": 2711,
+              "end_time": 2745,
+              "rank_score": 27.0,
+              "hook": "¡La legendaria jugada de Diego Maradona para enemistar a Nápoles con Italia!"
+            },
+            {
+              "orden": 13,
+              "start_time": 2791,
+              "end_time": 2835,
+              "rank_score": 25.0,
+              "hook": "El día que me saqué una foto con Mick Jagger... ¡Y la perdí!"
+            },
+            {
+              "orden": 14,
+              "start_time": 3057,
+              "end_time": 3091,
+              "rank_score": 25.0,
+              "hook": "La dura mentalidad bilardista: \"Públicamente no hay hambre ni frío\""
+            },
+            {
+              "orden": 15,
+              "start_time": 3373,
+              "end_time": 3412,
+              "rank_score": 24.0,
+              "hook": "¡La brutal chicana de Bauletti contra Enzo Fernández y el Chelsea!"
+            },
+            {
+              "orden": 16,
+              "start_time": 3429,
+              "end_time": 3463,
+              "rank_score": 22.0,
+              "hook": "¿Se puede ser hincha de un equipo que está a miles de kilómetros?"
+            },
+            {
+              "orden": 17,
+              "start_time": 3638,
+              "end_time": 3673,
+              "rank_score": 25.0,
+              "hook": "El español que domó a toda la tribuna del programa"
+            },
+            {
+              "orden": 18,
+              "start_time": 3733,
+              "end_time": 3782,
+              "rank_score": 24.0,
+              "hook": "¡El hincha del Tottenham que tiene un ídolo indescifrable!"
+            },
+            {
+              "orden": 19,
+              "start_time": 4126,
+              "end_time": 4166,
+              "rank_score": 24.0,
+              "hook": "¡El sistemático choreo arbitral contra el Arsenal en la Premier!"
+            },
+            {
+              "orden": 20,
+              "start_time": 4219,
+              "end_time": 4254,
+              "rank_score": 23.0,
+              "hook": "Por qué la Premier League tiene los peores árbitros del mundo"
+            },
+            {
+              "orden": 21,
+              "start_time": 4441,
+              "end_time": 4481,
+              "rank_score": 24.0,
+              "hook": "Cierren el orto y tengan paciencia con Diego Martínez"
+            },
+            {
+              "orden": 22,
+              "start_time": 4710,
+              "end_time": 4741,
+              "rank_score": 24.0,
+              "hook": "¿De quién es la culpa del gol? ¿Martínez Quarta o Armani?"
+            },
+            {
+              "orden": 23,
+              "start_time": 4871,
+              "end_time": 4905,
+              "rank_score": 24.0,
+              "hook": "El alarmante récord negativo de River que preocupa a todos"
+            },
+            {
+              "orden": 24,
+              "start_time": 5114,
+              "end_time": 5151,
+              "rank_score": 24.0,
+              "hook": "¡El picante cruce por pedir a Ponzio como DT definitivo!"
+            },
+            {
+              "orden": 25,
+              "start_time": 5527,
+              "end_time": 5554,
+              "rank_score": 27.0,
+              "hook": "\"Villa tiene que hacerse cargo de que la gente no lo quiere\""
+            },
+            {
+              "orden": 26,
+              "start_time": 5606,
+              "end_time": 5645,
+              "rank_score": 25.5,
+              "hook": "Por qué Sebastián Villa quedó en ridículo al compararse con Davo"
+            },
+            {
+              "orden": 27,
+              "start_time": 5690,
+              "end_time": 5727,
+              "rank_score": 25.0,
+              "hook": "La gran mentira del futbolista: \"No jugaste al fútbol, no podés hablar\""
+            },
+            {
+              "orden": 28,
+              "start_time": 5803,
+              "end_time": 5842,
+              "rank_score": 27.0,
+              "hook": "El insólito momento en que Villa le dijo vendehumo a Leandro Paredes"
+            },
+            {
+              "orden": 29,
+              "start_time": 6325,
+              "end_time": 6363,
+              "rank_score": 27.0,
+              "hook": "El épico trolleo de la audiencia con un falso consejo de Luis Enrique"
+            }
+          ],
+          "costo_usd": 0.155462,
+          "costo_por_tarea": {
+            "classifier": 6.1e-05,
+            "analysis": 0.155401
+          },
+          "segundos": 52.2,
+          "reintento_de": "APIStatusError: Error code: 402 - {'error': {'message': 'This request would exceed your available credits given your cur",
+          "costo_descartado_usd": null,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 25,
+            "n_referencias_a": 15,
+            "recall_completo": 0.2,
+            "recall_completo_ab": 0.2,
+            "recall_parcial": 0.6,
+            "recall_parcial_ab": 0.56,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              7,
+              8,
+              9,
+              6
+            ],
+            "min_cuarto": 0.2,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.5,
+            "estado_por_referencia": {
+              "R16": "parcial",
+              "R01": "parcial",
+              "R20": "ausente",
+              "R02": "ausente",
+              "R25": "parcial",
+              "R03": "parcial",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "ausente",
+              "R17": "ausente",
+              "R18": "completa",
+              "R19": "parcial",
+              "R07": "parcial",
+              "R08": "ausente",
+              "R09": "completa",
+              "R24": "ausente",
+              "R21": "ausente",
+              "R10": "completa",
+              "R22": "ausente",
+              "R11": "parcial",
+              "R12": "parcial",
+              "R23": "completa",
+              "R13": "parcial",
+              "R14": "ausente",
+              "R15": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 3,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 288,
+              "end_time": 331,
+              "rank_score": 26.0,
+              "hook": "La insólita historia de cómo llegó la Premier League a la Argentina"
+            },
+            {
+              "orden": 1,
+              "start_time": 335,
+              "end_time": 372,
+              "rank_score": 23.0,
+              "hook": "El Bambino Pons y la nostalgia de los 90 en el fútbol inglés"
+            },
+            {
+              "orden": 2,
+              "start_time": 378,
+              "end_time": 424,
+              "rank_score": 27.0,
+              "hook": "Por qué el Bambino Pons no dice de qué cuadro es"
+            },
+            {
+              "orden": 3,
+              "start_time": 564,
+              "end_time": 612,
+              "rank_score": 27.0,
+              "hook": "La desopilante anécdota de Bilardo, Caniggia y el auto en Italia 90"
+            },
+            {
+              "orden": 4,
+              "start_time": 786,
+              "end_time": 825,
+              "rank_score": 22.0,
+              "hook": "El momento exacto en que la Premier se volvió la mejor liga"
+            },
+            {
+              "orden": 5,
+              "start_time": 913,
+              "end_time": 947,
+              "rank_score": 24.0,
+              "hook": "Se hizo hincha del Brighton por el FIFA y lo explica"
+            },
+            {
+              "orden": 6,
+              "start_time": 1022,
+              "end_time": 1063,
+              "rank_score": 24.0,
+              "hook": "Picante cruce entre hinchas de Chelsea y Arsenal en el estudio"
+            },
+            {
+              "orden": 7,
+              "start_time": 1115,
+              "end_time": 1151,
+              "rank_score": 24.0,
+              "hook": "El picante debate: ¿El Barcelona nació en 2008?"
+            },
+            {
+              "orden": 8,
+              "start_time": 1151,
+              "end_time": 1200,
+              "rank_score": 26.0,
+              "hook": "La humillante prueba del Bambino Pons en Peñarol"
+            },
+            {
+              "orden": 9,
+              "start_time": 1216,
+              "end_time": 1250,
+              "rank_score": 22.0,
+              "hook": "Cómo el Bambino Pons decidió ser periodista"
+            },
+            {
+              "orden": 10,
+              "start_time": 1373,
+              "end_time": 1409,
+              "rank_score": 24.0,
+              "hook": "Cómo trajeron a Víctor Hugo Morales a la Argentina"
+            },
+            {
+              "orden": 11,
+              "start_time": 1456,
+              "end_time": 1484,
+              "rank_score": 23.0,
+              "hook": "Bielsa en la final del 92 con Newell's según el Bambino"
+            },
+            {
+              "orden": 12,
+              "start_time": 1528,
+              "end_time": 1573,
+              "rank_score": 27.0,
+              "hook": "El Bambino Pons imita al Oso Yogi en vivo"
+            },
+            {
+              "orden": 13,
+              "start_time": 1650,
+              "end_time": 1708,
+              "rank_score": 26.0,
+              "hook": "Por qué la gente putea tanto al periodista deportivo"
+            },
+            {
+              "orden": 14,
+              "start_time": 1957,
+              "end_time": 2012,
+              "rank_score": 27.0,
+              "hook": "El Cuti Romero revela cómo marcar a Haaland"
+            },
+            {
+              "orden": 15,
+              "start_time": 2209,
+              "end_time": 2265,
+              "rank_score": 26.0,
+              "hook": "Los miles de dólares que invierte Enzo Fernández en su físico"
+            },
+            {
+              "orden": 16,
+              "start_time": 2295,
+              "end_time": 2351,
+              "rank_score": 24.0,
+              "hook": "Las increíbles costumbres y rutinas de Mo Salah"
+            },
+            {
+              "orden": 17,
+              "start_time": 2433,
+              "end_time": 2478,
+              "rank_score": 24.0,
+              "hook": "El día que Thierry Henry humillaba a todos en Highbury"
+            },
+            {
+              "orden": 18,
+              "start_time": 2522,
+              "end_time": 2563,
+              "rank_score": 25.0,
+              "hook": "¿Por qué Messi no fue al Manchester City?"
+            },
+            {
+              "orden": 19,
+              "start_time": 2633,
+              "end_time": 2673,
+              "rank_score": 26.5,
+              "hook": "La dolorosa verdad sobre los 'amigos' de Diego en Barcelona"
+            },
+            {
+              "orden": 20,
+              "start_time": 2711,
+              "end_time": 2748,
+              "rank_score": 26.0,
+              "hook": "El día que Maradona hizo que Nápoles hinche por Argentina"
+            },
+            {
+              "orden": 21,
+              "start_time": 2791,
+              "end_time": 2835,
+              "rank_score": 24.0,
+              "hook": "El día que el Bambino conoció a Mick Jagger y la foto perdida"
+            },
+            {
+              "orden": 22,
+              "start_time": 3057,
+              "end_time": 3091,
+              "rank_score": 26.0,
+              "hook": "La mentalidad y los códigos secretos de los Bilardistas"
+            },
+            {
+              "orden": 23,
+              "start_time": 3373,
+              "end_time": 3415,
+              "rank_score": 24.0,
+              "hook": "Bauletti destroza al Chelsea de Enzo Fernández"
+            },
+            {
+              "orden": 24,
+              "start_time": 4128,
+              "end_time": 4172,
+              "rank_score": 24.0,
+              "hook": "La grave denuncia del robo al Arsenal en la Premier"
+            },
+            {
+              "orden": 25,
+              "start_time": 4437,
+              "end_time": 4481,
+              "rank_score": 24.0,
+              "hook": "Rober Galati defiende el Super Boca pero pide prudencia"
+            },
+            {
+              "orden": 26,
+              "start_time": 4710,
+              "end_time": 4749,
+              "rank_score": 24.0,
+              "hook": "El picante análisis del grosero error en la defensa de River"
+            },
+            {
+              "orden": 27,
+              "start_time": 5054,
+              "end_time": 5099,
+              "rank_score": 22.0,
+              "hook": "El drama del fútbol argentino: No hay directores técnicos"
+            },
+            {
+              "orden": 28,
+              "start_time": 5527,
+              "end_time": 5555,
+              "rank_score": 27.0,
+              "hook": "Duro descargo contra Sebastián Villa por atacar a Davo"
+            },
+            {
+              "orden": 29,
+              "start_time": 6308,
+              "end_time": 6347,
+              "rank_score": 27.0,
+              "hook": "El desopilante chiste sobre Luis Enrique que arruinó el estudio"
+            }
+          ],
+          "costo_usd": 0.155544,
+          "costo_por_tarea": {
+            "classifier": 6.1e-05,
+            "analysis": 0.155483
+          },
+          "segundos": 29.1,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 25,
+            "n_referencias_a": 15,
+            "recall_completo": 0.2667,
+            "recall_completo_ab": 0.24,
+            "recall_parcial": 0.6,
+            "recall_parcial_ab": 0.52,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              13,
+              10,
+              4,
+              3
+            ],
+            "min_cuarto": 0.1,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.7,
+            "estado_por_referencia": {
+              "R16": "parcial",
+              "R01": "parcial",
+              "R20": "ausente",
+              "R02": "ausente",
+              "R25": "parcial",
+              "R03": "parcial",
+              "R04": "completa",
+              "R05": "ausente",
+              "R06": "completa",
+              "R17": "ausente",
+              "R18": "completa",
+              "R19": "completa",
+              "R07": "parcial",
+              "R08": "ausente",
+              "R09": "completa",
+              "R24": "ausente",
+              "R21": "ausente",
+              "R10": "ausente",
+              "R22": "ausente",
+              "R11": "parcial",
+              "R12": "completa",
+              "R23": "ausente",
+              "R13": "parcial",
+              "R14": "ausente",
+              "R15": "ausente"
+            }
+          }
+        }
+      ],
+      "errores": [],
+      "referencias": {
+        "momentos": 25,
+        "validados": 0,
+        "validados_a": 0,
+        "pendientes": 25,
+        "validado_por": []
+      },
+      "duracion_sec": 6640.698,
+      "agregado": {
+        "recall_completo": {
+          "media": 0.2222,
+          "desvio": 0.0385,
+          "n": 3
+        },
+        "recall_completo_ab": {
+          "media": 0.2267,
+          "desvio": 0.0231,
+          "n": 3
+        },
+        "recall_parcial": {
+          "media": 0.5556,
+          "desvio": 0.077,
+          "n": 3
+        },
+        "recall_parcial_ab": {
+          "media": 0.52,
+          "desvio": 0.04,
+          "n": 3
+        },
+        "historias_partidas": {
+          "media": 0.3333,
+          "desvio": 0.5774,
+          "n": 3
+        },
+        "min_cuarto": {
+          "media": 0.1222,
+          "desvio": 0.0694,
+          "n": 3
+        },
+        "candidatos_en_exclusion": {
+          "media": 0.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "precision_ref@5": {
+          "media": 0.6667,
+          "desvio": 0.1155,
+          "n": 3
+        },
+        "precision_ref@10": {
+          "media": 0.5667,
+          "desvio": 0.1155,
+          "n": 3
+        },
+        "n_candidatos": {
+          "media": 30.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "completa_en_reps": {
+          "R16": 0,
+          "R01": 0,
+          "R20": 0,
+          "R02": 0,
+          "R25": 0,
+          "R03": 0,
+          "R04": 3,
+          "R05": 0,
+          "R06": 1,
+          "R17": 0,
+          "R18": 3,
+          "R19": 2,
+          "R07": 0,
+          "R08": 0,
+          "R09": 3,
+          "R24": 0,
+          "R21": 0,
+          "R10": 1,
+          "R22": 0,
+          "R11": 1,
+          "R12": 1,
+          "R23": 2,
+          "R13": 0,
+          "R14": 0,
+          "R15": 0
+        }
+      },
+      "costo_usd": 0.464677,
+      "categorias": [
+        "podcast"
+      ]
+    },
+    {
+      "id": "charla_humor_02",
+      "youtube_id": "Nn0kxFXDfX4",
+      "formato": "charla",
+      "reps": [
+        {
+          "rep": 1,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 20,
+              "end_time": 52,
+              "rank_score": 23.0,
+              "hook": "Cuando tu streamer favorito de la nueva generación admite que te ama"
+            },
+            {
+              "orden": 1,
+              "start_time": 73,
+              "end_time": 100,
+              "rank_score": 22.0,
+              "hook": "El nivel de ego de Josema Listorti en vivo"
+            },
+            {
+              "orden": 2,
+              "start_time": 220,
+              "end_time": 235,
+              "rank_score": 24.0,
+              "hook": "La gran diferencia entre la televisión y el streaming"
+            },
+            {
+              "orden": 3,
+              "start_time": 415,
+              "end_time": 435,
+              "rank_score": 25.5,
+              "hook": "La deuda histórica que Mario Pergolini nunca pagó"
+            },
+            {
+              "orden": 4,
+              "start_time": 502,
+              "end_time": 528,
+              "rank_score": 24.0,
+              "hook": "La entrevista secreta que Mario Pergolini nunca emitió"
+            },
+            {
+              "orden": 5,
+              "start_time": 610,
+              "end_time": 642,
+              "rank_score": 22.0,
+              "hook": "La frase definitiva para saltar al estrellato"
+            },
+            {
+              "orden": 6,
+              "start_time": 831,
+              "end_time": 883,
+              "rank_score": 27.0,
+              "hook": "Cuando hacés pogo con un ex presidente"
+            },
+            {
+              "orden": 7,
+              "start_time": 1011,
+              "end_time": 1032,
+              "rank_score": 25.0,
+              "hook": "Un encuentro con Mauricio Macri en el baño"
+            },
+            {
+              "orden": 8,
+              "start_time": 1045,
+              "end_time": 1062,
+              "rank_score": 22.0,
+              "hook": "El perfume presidencial de los casamientos"
+            },
+            {
+              "orden": 9,
+              "start_time": 1241,
+              "end_time": 1271,
+              "rank_score": 23.0,
+              "hook": "Por qué las películas de videojuegos son tan malas"
+            },
+            {
+              "orden": 10,
+              "start_time": 1378,
+              "end_time": 1411,
+              "rank_score": 25.0,
+              "hook": "La grieta definitiva del mundo gamer"
+            },
+            {
+              "orden": 11,
+              "start_time": 1415,
+              "end_time": 1441,
+              "rank_score": 23.0,
+              "hook": "Qué significa realmente ser un 'pete'"
+            },
+            {
+              "orden": 12,
+              "start_time": 1664,
+              "end_time": 1688,
+              "rank_score": 26.0,
+              "hook": "El Counter Strike es el nuevo Tinder"
+            },
+            {
+              "orden": 13,
+              "start_time": 1746,
+              "end_time": 1764,
+              "rank_score": 24.0,
+              "hook": "Buscando pareja en el Counter Strike 2"
+            },
+            {
+              "orden": 14,
+              "start_time": 1801,
+              "end_time": 1832,
+              "rank_score": 23.0,
+              "hook": "Viciar en pandemia hasta que amanezca"
+            },
+            {
+              "orden": 15,
+              "start_time": 1832,
+              "end_time": 1858,
+              "rank_score": 27.0,
+              "hook": "¡No se puede pausar un juego online!"
+            },
+            {
+              "orden": 16,
+              "start_time": 1921,
+              "end_time": 1952,
+              "rank_score": 24.0,
+              "hook": "Alerta por la caída del uso del preservativo"
+            },
+            {
+              "orden": 17,
+              "start_time": 2163,
+              "end_time": 2193,
+              "rank_score": 23.0,
+              "hook": "La crisis oculta detrás del mercado de preservativos"
+            },
+            {
+              "orden": 18,
+              "start_time": 2351,
+              "end_time": 2395,
+              "rank_score": 26.0,
+              "hook": "La paradoja económica: Por qué crece el PBI pero no hay plata"
+            },
+            {
+              "orden": 19,
+              "start_time": 2724,
+              "end_time": 2751,
+              "rank_score": 24.0,
+              "hook": "Los difíciles comienzos de Pachu y Pablo en Rosario"
+            },
+            {
+              "orden": 20,
+              "start_time": 2781,
+              "end_time": 2814,
+              "rank_score": 24.0,
+              "hook": "¿Se pelearon alguna vez Pachu y Pablo?"
+            },
+            {
+              "orden": 21,
+              "start_time": 2871,
+              "end_time": 2900,
+              "rank_score": 21.0,
+              "hook": "El ping-pong sin filtro a Pachu Peña"
+            },
+            {
+              "orden": 22,
+              "start_time": 2911,
+              "end_time": 2940,
+              "rank_score": 22.0,
+              "hook": "La profunda filosofía de vida de Pachu Peña"
+            },
+            {
+              "orden": 23,
+              "start_time": 3155,
+              "end_time": 3189,
+              "rank_score": 26.0,
+              "hook": "Las anécdotas falsas de la televisión y reírse en velorios"
+            },
+            {
+              "orden": 24,
+              "start_time": 3441,
+              "end_time": 3486,
+              "rank_score": 24.0,
+              "hook": "El inigualable egocentrismo de Luis Ventura"
+            },
+            {
+              "orden": 25,
+              "start_time": 3488,
+              "end_time": 3525,
+              "rank_score": 27.0,
+              "hook": "La vez que Luis Ventura se tiró un gas al aire"
+            },
+            {
+              "orden": 26,
+              "start_time": 3959,
+              "end_time": 3988,
+              "rank_score": 24.0,
+              "hook": "Cuando te confunden con Ricardo Darín en la calle"
+            },
+            {
+              "orden": 27,
+              "start_time": 4154,
+              "end_time": 4183,
+              "rank_score": 24.0,
+              "hook": "¿Se pueden hacer cámaras ocultas hoy en día?"
+            },
+            {
+              "orden": 28,
+              "start_time": 4272,
+              "end_time": 4302,
+              "rank_score": 23.0,
+              "hook": "La insólita prohibición infantil de Casi Ángeles"
+            },
+            {
+              "orden": 29,
+              "start_time": 4961,
+              "end_time": 5021,
+              "rank_score": 27.0,
+              "hook": "La desubicada broma de un mozo que casi termina a las piñas"
+            }
+          ],
+          "costo_usd": 0.136719,
+          "costo_por_tarea": {
+            "classifier": 6.3e-05,
+            "analysis": 0.136656
+          },
+          "segundos": 34.3,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 27,
+            "n_referencias_a": 12,
+            "recall_completo": 0.25,
+            "recall_completo_ab": 0.1852,
+            "recall_parcial": 0.3333,
+            "recall_parcial_ab": 0.2593,
+            "historias_partidas": 0,
+            "historias_partidas_ids": [],
+            "candidatos_por_cuarto": [
+              10,
+              9,
+              7,
+              4
+            ],
+            "min_cuarto": 0.1333,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.4,
+            "precision_ref@10": 0.3,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "ausente",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "parcial",
+              "R06": "ausente",
+              "R07": "ausente",
+              "R08": "parcial",
+              "R09": "ausente",
+              "R10": "ausente",
+              "R11": "ausente",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "completa",
+              "R18": "ausente",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente",
+              "R23": "ausente",
+              "R24": "ausente",
+              "R25": "ausente",
+              "R26": "ausente",
+              "R27": "completa"
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 20,
+              "end_time": 66,
+              "rank_score": 23.0,
+              "hook": "¡Josema presume de los elogios que le tiró Coscu!"
+            },
+            {
+              "orden": 1,
+              "start_time": 352,
+              "end_time": 418,
+              "rank_score": 27.0,
+              "hook": "La insólita deuda que Pergolini tiene con Josema desde el 93"
+            },
+            {
+              "orden": 2,
+              "start_time": 419,
+              "end_time": 452,
+              "rank_score": 24.0,
+              "hook": "La cuenta de cuánto le debe Pergolini a Josema hoy"
+            },
+            {
+              "orden": 3,
+              "start_time": 462,
+              "end_time": 482,
+              "rank_score": 21.0,
+              "hook": "Josema revela qué auto se compró gracias a CQC"
+            },
+            {
+              "orden": 4,
+              "start_time": 485,
+              "end_time": 535,
+              "rank_score": 25.0,
+              "hook": "El programa secreto de Pergolini que nunca salió al aire"
+            },
+            {
+              "orden": 5,
+              "start_time": 610,
+              "end_time": 642,
+              "rank_score": 25.0,
+              "hook": "El consejo definitivo de Josema a Pedro Alfonso"
+            },
+            {
+              "orden": 6,
+              "start_time": 673,
+              "end_time": 737,
+              "rank_score": 22.0,
+              "hook": "El origen secreto de la imitación de Mariano Closs"
+            },
+            {
+              "orden": 7,
+              "start_time": 831,
+              "end_time": 888,
+              "rank_score": 28.0,
+              "hook": "¡Increíble pogo con Mauricio Macri en un casamiento!"
+            },
+            {
+              "orden": 8,
+              "start_time": 922,
+              "end_time": 986,
+              "rank_score": 24.0,
+              "hook": "Los secretos de la mesa de Macri en la boda"
+            },
+            {
+              "orden": 9,
+              "start_time": 1011,
+              "end_time": 1062,
+              "rank_score": 27.0,
+              "hook": "La bizarra coincidencia con Macri en el baño"
+            },
+            {
+              "orden": 10,
+              "start_time": 1063,
+              "end_time": 1102,
+              "rank_score": 24.0,
+              "hook": "El picante retruco de Josema sobre Tinelli"
+            },
+            {
+              "orden": 11,
+              "start_time": 1108,
+              "end_time": 1182,
+              "rank_score": 24.0,
+              "hook": "La foto viral de Macri y Kicillof dándose la mano"
+            },
+            {
+              "orden": 12,
+              "start_time": 1235,
+              "end_time": 1271,
+              "rank_score": 22.0,
+              "hook": "Por qué las películas de videojuegos son malísimas"
+            },
+            {
+              "orden": 13,
+              "start_time": 1348,
+              "end_time": 1376,
+              "rank_score": 24.0,
+              "hook": "La divertida imitación de la caminata del GTA"
+            },
+            {
+              "orden": 14,
+              "start_time": 1376,
+              "end_time": 1441,
+              "rank_score": 25.0,
+              "hook": "La polémica: ¿Dota 2 es para profesionales y LOL es fácil?"
+            },
+            {
+              "orden": 15,
+              "start_time": 1458,
+              "end_time": 1512,
+              "rank_score": 24.0,
+              "hook": "La explicación de por qué los del LOL no tienen relaciones"
+            },
+            {
+              "orden": 16,
+              "start_time": 1664,
+              "end_time": 1711,
+              "rank_score": 26.0,
+              "hook": "¡El Counter Strike es el nuevo Tinder!"
+            },
+            {
+              "orden": 17,
+              "start_time": 1766,
+              "end_time": 1797,
+              "rank_score": 27.0,
+              "hook": "La Colo responde: ¿se puede viciar y tener líbido?"
+            },
+            {
+              "orden": 18,
+              "start_time": 1801,
+              "end_time": 1863,
+              "rank_score": 26.0,
+              "hook": "Padres: ¡Los juegos online no se pueden pausar!"
+            },
+            {
+              "orden": 19,
+              "start_time": 1905,
+              "end_time": 1952,
+              "rank_score": 22.0,
+              "hook": "La insólita razón de la caída de ventas de Tulipán"
+            },
+            {
+              "orden": 20,
+              "start_time": 2012,
+              "end_time": 2053,
+              "rank_score": 24.0,
+              "hook": "El bizarro hack del calzoncillo antiguo"
+            },
+            {
+              "orden": 21,
+              "start_time": 2202,
+              "end_time": 2241,
+              "rank_score": 26.0,
+              "hook": "Josema y Pachu bromean sobre la próstata"
+            },
+            {
+              "orden": 22,
+              "start_time": 2738,
+              "end_time": 2780,
+              "rank_score": 22.0,
+              "hook": "Pachu Peña recuerda sus inicios a pulmón en Rosario"
+            },
+            {
+              "orden": 23,
+              "start_time": 2781,
+              "end_time": 2814,
+              "rank_score": 21.0,
+              "hook": "La verdad sobre las peleas entre Pachu y Pablo"
+            },
+            {
+              "orden": 24,
+              "start_time": 2871,
+              "end_time": 2924,
+              "rank_score": 23.0,
+              "hook": "Pachu Peña reflexiona sobre la eutanasia"
+            },
+            {
+              "orden": 25,
+              "start_time": 2974,
+              "end_time": 3034,
+              "rank_score": 22.0,
+              "hook": "En qué se gastó Pachu Peña su primer sueldo de VideoMatch"
+            },
+            {
+              "orden": 26,
+              "start_time": 3070,
+              "end_time": 3109,
+              "rank_score": 21.0,
+              "hook": "La insólita reencarnación que desea Pachu Peña"
+            },
+            {
+              "orden": 27,
+              "start_time": 3118,
+              "end_time": 3173,
+              "rank_score": 26.0,
+              "hook": "El truco de inventar anécdotas falsas en televisión"
+            },
+            {
+              "orden": 28,
+              "start_time": 3438,
+              "end_time": 3487,
+              "rank_score": 25.0,
+              "hook": "Luis Ventura cree que es mejor que Zidane"
+            },
+            {
+              "orden": 29,
+              "start_time": 4957,
+              "end_time": 5028,
+              "rank_score": 27.0,
+              "hook": "El día que Pachu casi le pega a un mozo"
+            }
+          ],
+          "costo_usd": 0.174294,
+          "costo_por_tarea": {
+            "classifier": 6.3e-05,
+            "analysis": 0.174231
+          },
+          "segundos": 58.2,
+          "reintento_de": "APIStatusError: Error code: 402 - {'error': {'message': 'This request would exceed your available credits given your cur",
+          "costo_descartado_usd": null,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 27,
+            "n_referencias_a": 12,
+            "recall_completo": 0.4167,
+            "recall_completo_ab": 0.2222,
+            "recall_parcial": 0.5833,
+            "recall_parcial_ab": 0.5185,
+            "historias_partidas": 2,
+            "historias_partidas_ids": [
+              "R02",
+              "R06"
+            ],
+            "candidatos_por_cuarto": [
+              13,
+              9,
+              7,
+              1
+            ],
+            "min_cuarto": 0.0333,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.6,
+            "estado_por_referencia": {
+              "R01": "ausente",
+              "R02": "partida",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "parcial",
+              "R06": "partida",
+              "R07": "parcial",
+              "R08": "parcial",
+              "R09": "completa",
+              "R10": "ausente",
+              "R11": "completa",
+              "R12": "parcial",
+              "R13": "parcial",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "completa",
+              "R17": "parcial",
+              "R18": "ausente",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente",
+              "R23": "ausente",
+              "R24": "ausente",
+              "R25": "ausente",
+              "R26": "ausente",
+              "R27": "completa"
+            }
+          }
+        },
+        {
+          "rep": 3,
+          "categoria": "podcast",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 406,
+              "end_time": 435,
+              "rank_score": 23.5,
+              "hook": "La increíble deuda histórica que Mario Pergolini tiene con Josema"
+            },
+            {
+              "orden": 1,
+              "start_time": 502,
+              "end_time": 535,
+              "rank_score": 24.0,
+              "hook": "El programa secreto de Pergolini que nunca salió al aire"
+            },
+            {
+              "orden": 2,
+              "start_time": 831,
+              "end_time": 878,
+              "rank_score": 27.0,
+              "hook": "Hice pogo con Mauricio Macri en un casamiento"
+            },
+            {
+              "orden": 3,
+              "start_time": 1011,
+              "end_time": 1061,
+              "rank_score": 27.0,
+              "hook": "Compartí el desodorante de Mauricio Macri en el baño"
+            },
+            {
+              "orden": 4,
+              "start_time": 1348,
+              "end_time": 1376,
+              "rank_score": 23.0,
+              "hook": "El debate sin filtro de los personajes del GTA"
+            },
+            {
+              "orden": 5,
+              "start_time": 1378,
+              "end_time": 1414,
+              "rank_score": 24.0,
+              "hook": "La grieta entre los gamers de Dota y LOL"
+            },
+            {
+              "orden": 6,
+              "start_time": 1657,
+              "end_time": 1707,
+              "rank_score": 26.0,
+              "hook": "Conocí a mis dos novios jugando al Counter-Strike"
+            },
+            {
+              "orden": 7,
+              "start_time": 1715,
+              "end_time": 1764,
+              "rank_score": 24.0,
+              "hook": "Buscando novio en Counter Strike 2"
+            },
+            {
+              "orden": 8,
+              "start_time": 1901,
+              "end_time": 1945,
+              "rank_score": 23.0,
+              "hook": "¿Por qué se desplomó la venta de Tulipán?"
+            },
+            {
+              "orden": 9,
+              "start_time": 2163,
+              "end_time": 2198,
+              "rank_score": 23.0,
+              "hook": "La peligrosa tendencia de los jóvenes de no usar preservativo"
+            },
+            {
+              "orden": 10,
+              "start_time": 2780,
+              "end_time": 2814,
+              "rank_score": 24.0,
+              "hook": "¿Se pelearon alguna vez Pachu y Pablo?"
+            },
+            {
+              "orden": 11,
+              "start_time": 2871,
+              "end_time": 2909,
+              "rank_score": 24.0,
+              "hook": "Pachu responde sin filtro: Eutanasia, justicia y muerte"
+            },
+            {
+              "orden": 12,
+              "start_time": 2925,
+              "end_time": 2957,
+              "rank_score": 24.0,
+              "hook": "La profunda definición de la felicidad según Pachu Peña"
+            },
+            {
+              "orden": 13,
+              "start_time": 3155,
+              "end_time": 3189,
+              "rank_score": 27.0,
+              "hook": "La terrible confesión de Pachu: Tentarse en un velorio"
+            },
+            {
+              "orden": 14,
+              "start_time": 3488,
+              "end_time": 3523,
+              "rank_score": 25.0,
+              "hook": "El día que Luis Ventura se tiró un gas al aire"
+            },
+            {
+              "orden": 15,
+              "start_time": 3638,
+              "end_time": 3670,
+              "rank_score": 23.0,
+              "hook": "La insólita silla de plástico que Luis Ventura lleva a las canchas"
+            },
+            {
+              "orden": 16,
+              "start_time": 3775,
+              "end_time": 3798,
+              "rank_score": 24.0,
+              "hook": "Bailé folklore con Mariano Martínez en la escuela"
+            },
+            {
+              "orden": 17,
+              "start_time": 3962,
+              "end_time": 3992,
+              "rank_score": 26.0,
+              "hook": "Me confundieron con Ricardo Darín en la calle"
+            },
+            {
+              "orden": 18,
+              "start_time": 4040,
+              "end_time": 4075,
+              "rank_score": 23.0,
+              "hook": "La historia secreta de Pachu en el Macho Bus"
+            },
+            {
+              "orden": 19,
+              "start_time": 4154,
+              "end_time": 4189,
+              "rank_score": 25.0,
+              "hook": "¿Por qué hoy no se pueden hacer cámaras ocultas?"
+            },
+            {
+              "orden": 20,
+              "start_time": 4272,
+              "end_time": 4312,
+              "rank_score": 22.0,
+              "hook": "Mi mamá no me dejaba ver Casi Ángeles"
+            },
+            {
+              "orden": 21,
+              "start_time": 4460,
+              "end_time": 4510,
+              "rank_score": 26.0,
+              "hook": "La insólita aclaración de Pachu: No huelo ropa interior"
+            },
+            {
+              "orden": 22,
+              "start_time": 4562,
+              "end_time": 4585,
+              "rank_score": 23.0,
+              "hook": "Viajamos a Paraguay para comprar perfumes baratos"
+            },
+            {
+              "orden": 23,
+              "start_time": 4825,
+              "end_time": 4875,
+              "rank_score": 24.0,
+              "hook": "Cómo cambió el humor y el respeto en la televisión"
+            },
+            {
+              "orden": 24,
+              "start_time": 4879,
+              "end_time": 4899,
+              "rank_score": 24.0,
+              "hook": "¿Por qué el streaming destruyó a la televisión?"
+            },
+            {
+              "orden": 25,
+              "start_time": 4961,
+              "end_time": 5022,
+              "rank_score": 27.0,
+              "hook": "La anécdota de Pachu: Casi me voy a las piñas con un mozo"
+            },
+            {
+              "orden": 26,
+              "start_time": 5028,
+              "end_time": 5048,
+              "rank_score": 21.0,
+              "hook": "El peligro de tener cara de buen tipo en la calle"
+            },
+            {
+              "orden": 27,
+              "start_time": 220,
+              "end_time": 242,
+              "rank_score": 24.0,
+              "hook": "Hacer streaming es más lindo porque no tenés la presión del rating"
+            },
+            {
+              "orden": 28,
+              "start_time": 610,
+              "end_time": 642,
+              "rank_score": 24.0,
+              "hook": "La cruda frase que Josema le dijo a Pedro Alfonso en su inicio"
+            },
+            {
+              "orden": 29,
+              "start_time": 1832,
+              "end_time": 1863,
+              "rank_score": 26.0,
+              "hook": "Padres: ¡Los juegos online de hoy no se pueden pausar!"
+            }
+          ],
+          "costo_usd": 0.132705,
+          "costo_por_tarea": {
+            "classifier": 6.3e-05,
+            "analysis": 0.132642
+          },
+          "segundos": 32.3,
+          "reintento_de": "RuntimeError: la Pasada A cayó al mega-prompt de respaldo (marcada a posteriori): repetición inválida",
+          "costo_descartado_usd": 0.105582,
+          "metricas": {
+            "n_candidatos": 30,
+            "n_referencias": 27,
+            "n_referencias_a": 12,
+            "recall_completo": 0.25,
+            "recall_completo_ab": 0.1852,
+            "recall_parcial": 0.5,
+            "recall_parcial_ab": 0.3333,
+            "historias_partidas": 1,
+            "historias_partidas_ids": [
+              "R10"
+            ],
+            "candidatos_por_cuarto": [
+              6,
+              7,
+              7,
+              10
+            ],
+            "min_cuarto": 0.2,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.3,
+            "estado_por_referencia": {
+              "R01": "ausente",
+              "R02": "parcial",
+              "R03": "completa",
+              "R04": "completa",
+              "R05": "parcial",
+              "R06": "ausente",
+              "R07": "ausente",
+              "R08": "ausente",
+              "R09": "ausente",
+              "R10": "partida",
+              "R11": "ausente",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "ausente",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "completa",
+              "R18": "ausente",
+              "R19": "completa",
+              "R20": "parcial",
+              "R21": "parcial",
+              "R22": "ausente",
+              "R23": "ausente",
+              "R24": "ausente",
+              "R25": "ausente",
+              "R26": "ausente",
+              "R27": "completa"
+            }
+          }
+        }
+      ],
+      "errores": [],
+      "referencias": {
+        "momentos": 27,
+        "validados": 0,
+        "validados_a": 0,
+        "pendientes": 27,
+        "validado_por": []
+      },
+      "duracion_sec": 5170.741,
+      "agregado": {
+        "recall_completo": {
+          "media": 0.3056,
+          "desvio": 0.0962,
+          "n": 3
+        },
+        "recall_completo_ab": {
+          "media": 0.1975,
+          "desvio": 0.0214,
+          "n": 3
+        },
+        "recall_parcial": {
+          "media": 0.4722,
+          "desvio": 0.1273,
+          "n": 3
+        },
+        "recall_parcial_ab": {
+          "media": 0.3704,
+          "desvio": 0.1335,
+          "n": 3
+        },
+        "historias_partidas": {
+          "media": 1.0,
+          "desvio": 1.0,
+          "n": 3
+        },
+        "min_cuarto": {
+          "media": 0.1222,
+          "desvio": 0.0839,
+          "n": 3
+        },
+        "candidatos_en_exclusion": {
+          "media": 0.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "precision_ref@5": {
+          "media": 0.5333,
+          "desvio": 0.1155,
+          "n": 3
+        },
+        "precision_ref@10": {
+          "media": 0.4,
+          "desvio": 0.1732,
+          "n": 3
+        },
+        "n_candidatos": {
+          "media": 30.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "completa_en_reps": {
+          "R01": 1,
+          "R02": 0,
+          "R03": 3,
+          "R04": 3,
+          "R05": 0,
+          "R06": 0,
+          "R07": 0,
+          "R08": 0,
+          "R09": 1,
+          "R10": 0,
+          "R11": 1,
+          "R12": 0,
+          "R13": 0,
+          "R14": 0,
+          "R15": 0,
+          "R16": 1,
+          "R17": 2,
+          "R18": 0,
+          "R19": 1,
+          "R20": 0,
+          "R21": 0,
+          "R22": 0,
+          "R23": 0,
+          "R24": 0,
+          "R25": 0,
+          "R26": 0,
+          "R27": 3
+        }
+      },
+      "costo_usd": 0.5493,
+      "categorias": [
+        "podcast"
+      ]
+    },
+    {
+      "id": "monologo_coach_01",
+      "youtube_id": "oeGWtyMAbKk",
+      "formato": "monólogo",
+      "reps": [
+        {
+          "rep": 1,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 33,
+              "end_time": 54,
+              "rank_score": 23.0,
+              "hook": "Tenía todo lo que el mundo considera éxito, pero me di cuenta de que no era feliz."
+            },
+            {
+              "orden": 1,
+              "start_time": 54,
+              "end_time": 78,
+              "rank_score": 25.0,
+              "hook": "La Universidad de Harvard dice que sufriremos cuatro grandes golpes en la vida."
+            },
+            {
+              "orden": 2,
+              "start_time": 138,
+              "end_time": 164,
+              "rank_score": 25.0,
+              "hook": "Los niños ríen 300 veces al día; nosotros no llegamos a 20 al mes."
+            },
+            {
+              "orden": 3,
+              "start_time": 168,
+              "end_time": 203,
+              "rank_score": 25.0,
+              "hook": "Al final de la vida lo único que importa es la gente que has querido."
+            },
+            {
+              "orden": 4,
+              "start_time": 205,
+              "end_time": 254,
+              "rank_score": 27.0,
+              "hook": "Este experimento científico demuestra por qué la esperanza te mantiene con vida."
+            },
+            {
+              "orden": 5,
+              "start_time": 261,
+              "end_time": 290,
+              "rank_score": 24.0,
+              "hook": "¿Por qué la escuela nos enseña matemáticas pero no a superar la adversidad?"
+            },
+            {
+              "orden": 6,
+              "start_time": 300,
+              "end_time": 340,
+              "rank_score": 25.0,
+              "hook": "El objetivo de la vida es irse a dormir sin miedo y despertarse sin angustia."
+            },
+            {
+              "orden": 7,
+              "start_time": 341,
+              "end_time": 370,
+              "rank_score": 25.0,
+              "hook": "La vida cambia en un instante: la revelación de un sobreviviente del río Hudson."
+            },
+            {
+              "orden": 8,
+              "start_time": 391,
+              "end_time": 420,
+              "rank_score": 26.0,
+              "hook": "Prefiero ser feliz antes que tener razón: la gran lección al borde de la muerte."
+            },
+            {
+              "orden": 9,
+              "start_time": 422,
+              "end_time": 453,
+              "rank_score": 25.0,
+              "hook": "Morir no da miedo, pero es muy triste cuando no has estado presente."
+            },
+            {
+              "orden": 10,
+              "start_time": 477,
+              "end_time": 515,
+              "rank_score": 26.0,
+              "hook": "Se gastaron millones para descubrir que el secreto de la felicidad es la familia y el bar."
+            },
+            {
+              "orden": 11,
+              "start_time": 579,
+              "end_time": 615,
+              "rank_score": 24.0,
+              "hook": "El estrés moderno es como escuchar dos de tus canciones favoritas al mismo tiempo."
+            },
+            {
+              "orden": 12,
+              "start_time": 615,
+              "end_time": 649,
+              "rank_score": 24.0,
+              "hook": "¿Cuándo dejas de ser feliz? Cuando intentas hacerlo todo a la vez."
+            },
+            {
+              "orden": 13,
+              "start_time": 672,
+              "end_time": 699,
+              "rank_score": 27.0,
+              "hook": "La dopamina da placer momentáneo, pero la serotonina te da felicidad real."
+            },
+            {
+              "orden": 14,
+              "start_time": 700,
+              "end_time": 721,
+              "rank_score": 23.5,
+              "hook": "Cambiamos el amor real por contar cuántos likes tenemos en una pantalla."
+            },
+            {
+              "orden": 15,
+              "start_time": 746,
+              "end_time": 772,
+              "rank_score": 25.0,
+              "hook": "El experimento de la chocolatina que predice el éxito de los niños en el futuro."
+            },
+            {
+              "orden": 16,
+              "start_time": 773,
+              "end_time": 805,
+              "rank_score": 27.0,
+              "hook": "Los niños que resistieron la tentación tuvieron vidas infinitamente más exitosas."
+            },
+            {
+              "orden": 17,
+              "start_time": 806,
+              "end_time": 831,
+              "rank_score": 24.0,
+              "hook": "La inmediatez actual está generando una epidemia de ansiedad infantil."
+            },
+            {
+              "orden": 18,
+              "start_time": 939,
+              "end_time": 966,
+              "rank_score": 24.0,
+              "hook": "El objetivo no es poner años a la vida, sino vida a los años."
+            },
+            {
+              "orden": 19,
+              "start_time": 1023,
+              "end_time": 1052,
+              "rank_score": 27.0,
+              "hook": "Solo puedes vivir feliz si tienes un por qué levantarte cada mañana."
+            },
+            {
+              "orden": 20,
+              "start_time": 1053,
+              "end_time": 1076,
+              "rank_score": 25.0,
+              "hook": "Un abrazo sentido de 7 segundos cambia instantáneamente tu química cerebral."
+            },
+            {
+              "orden": 21,
+              "start_time": 1182,
+              "end_time": 1205,
+              "rank_score": 26.0,
+              "hook": "¿Eres abeja o eres mosca? La explicación de por qué tu mente busca siempre el fallo."
+            },
+            {
+              "orden": 22,
+              "start_time": 1305,
+              "end_time": 1336,
+              "rank_score": 27.0,
+              "hook": "Los grandes arrepentimientos de la gente antes de morir: no vendas tu vida."
+            },
+            {
+              "orden": 23,
+              "start_time": 1340,
+              "end_time": 1371,
+              "rank_score": 24.0,
+              "hook": "El éxito no está en Silicon Valley si estás solo como una bola."
+            },
+            {
+              "orden": 24,
+              "start_time": 1387,
+              "end_time": 1412,
+              "rank_score": 26.0,
+              "hook": "La regla de oro de una sobreviviente del Holocausto: nunca te vayas a dormir enojado."
+            },
+            {
+              "orden": 25,
+              "start_time": 1518,
+              "end_time": 1547,
+              "rank_score": 25.0,
+              "hook": "¿Cómo pudo una madre reír y ser feliz en un campo de concentración?"
+            },
+            {
+              "orden": 26,
+              "start_time": 1565,
+              "end_time": 1595,
+              "rank_score": 24.0,
+              "hook": "Sé que existe lo malo, pero decido fijarme en lo bueno."
+            },
+            {
+              "orden": 27,
+              "start_time": 1643,
+              "end_time": 1693,
+              "rank_score": 27.0,
+              "hook": "La vida es exactamente igual para todos; lo único que cambia es cómo la interpretas."
+            }
+          ],
+          "costo_usd": 0.140392,
+          "costo_por_tarea": {
+            "classifier": 5.2e-05,
+            "analysis": 0.14034
+          },
+          "segundos": 44.8,
+          "reintento_de": "APIStatusError: Error code: 402 - {'error': {'message': 'This request would exceed your available credits given your cur",
+          "costo_descartado_usd": null,
+          "metricas": {
+            "n_candidatos": 28,
+            "n_referencias": 28,
+            "n_referencias_a": 19,
+            "recall_completo": 0.1579,
+            "recall_completo_ab": 0.1429,
+            "recall_parcial": 0.3684,
+            "recall_parcial_ab": 0.3214,
+            "historias_partidas": 3,
+            "historias_partidas_ids": [
+              "R01",
+              "R06",
+              "R08"
+            ],
+            "candidatos_por_cuarto": [
+              18,
+              10,
+              0,
+              0
+            ],
+            "min_cuarto": 0.0,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.6,
+            "precision_ref@10": 0.5,
+            "estado_por_referencia": {
+              "R01": "partida",
+              "R02": "ausente",
+              "R03": "completa",
+              "R04": "ausente",
+              "R05": "parcial",
+              "R06": "partida",
+              "R07": "completa",
+              "R08": "partida",
+              "R09": "ausente",
+              "R10": "ausente",
+              "R11": "parcial",
+              "R12": "ausente",
+              "R13": "ausente",
+              "R14": "completa",
+              "R15": "ausente",
+              "R16": "ausente",
+              "R17": "ausente",
+              "R18": "completa",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente",
+              "R23": "ausente",
+              "R24": "ausente",
+              "R25": "ausente",
+              "R26": "ausente",
+              "R27": "ausente",
+              "R28": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 2,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 33,
+              "end_time": 70,
+              "rank_score": 25.0,
+              "hook": "Tenía éxito empresarial y todo me funcionaba, pero me di cuenta de que no era feliz."
+            },
+            {
+              "orden": 1,
+              "start_time": 71,
+              "end_time": 109,
+              "rank_score": 26.0,
+              "hook": "La vida es un código de barras con rayas blancas y negras. Lo importante es cómo ves más blancas."
+            },
+            {
+              "orden": 2,
+              "start_time": 138,
+              "end_time": 168,
+              "rank_score": 26.0,
+              "hook": "Los niños ríen 300 veces al día. Nosotros los adultos no llegamos a 20 al mes."
+            },
+            {
+              "orden": 3,
+              "start_time": 168,
+              "end_time": 192,
+              "rank_score": 25.0,
+              "hook": "Al final de la vida, lo único que te importa son los seres que has querido."
+            },
+            {
+              "orden": 4,
+              "start_time": 205,
+              "end_time": 253,
+              "rank_score": 27.0,
+              "hook": "El experimento científico que demuestra cómo la esperanza multiplica la resistencia humana."
+            },
+            {
+              "orden": 5,
+              "start_time": 253,
+              "end_time": 289,
+              "rank_score": 25.0,
+              "hook": "¿Por qué la escuela nos enseña matemáticas pero no cómo superar los malos momentos?"
+            },
+            {
+              "orden": 6,
+              "start_time": 300,
+              "end_time": 340,
+              "rank_score": 26.0,
+              "hook": "El objetivo de la vida es irse a dormir sin miedo y despertarse sin angustia."
+            },
+            {
+              "orden": 7,
+              "start_time": 341,
+              "end_time": 397,
+              "rank_score": 26.0,
+              "hook": "Si saliese vivo de este avión, guardaría el vino malo y me tomaría el bueno."
+            },
+            {
+              "orden": 8,
+              "start_time": 398,
+              "end_time": 447,
+              "rank_score": 26.0,
+              "hook": "Prefiero ser feliz a tener la razón: la lección definitiva de un sobreviviente de avión."
+            },
+            {
+              "orden": 9,
+              "start_time": 482,
+              "end_time": 515,
+              "rank_score": 25.0,
+              "hook": "Se gastaron una fortuna en un estudio para descubrir la importancia del bar y la familia."
+            },
+            {
+              "orden": 10,
+              "start_time": 604,
+              "end_time": 639,
+              "rank_score": 25.0,
+              "hook": "¿Por qué dejamos de ser felices? El peligro de hacer todo al mismo tiempo."
+            },
+            {
+              "orden": 11,
+              "start_time": 645,
+              "end_time": 699,
+              "rank_score": 27.0,
+              "hook": "La dopamina da placer momentáneo, pero la serotonina es la que da felicidad real."
+            },
+            {
+              "orden": 12,
+              "start_time": 700,
+              "end_time": 727,
+              "rank_score": 25.0,
+              "hook": "Buscamos amor frente a una pantalla plana mendigando likes."
+            },
+            {
+              "orden": 13,
+              "start_time": 746,
+              "end_time": 799,
+              "rank_score": 27.0,
+              "hook": "El test de la chocolatina: el secreto científico del éxito en la vida adulta."
+            },
+            {
+              "orden": 14,
+              "start_time": 800,
+              "end_time": 835,
+              "rank_score": 24.0,
+              "hook": "La incapacidad de diferir recompensas es el origen de la ansiedad moderna."
+            },
+            {
+              "orden": 15,
+              "start_time": 944,
+              "end_time": 993,
+              "rank_score": 25.0,
+              "hook": "El objetivo de la vida no es poner años a la vida, sino vida a los años."
+            },
+            {
+              "orden": 16,
+              "start_time": 994,
+              "end_time": 1044,
+              "rank_score": 26.0,
+              "hook": "La vida solo es maravillosa cuando tienes un porqué, no solo un cómo."
+            },
+            {
+              "orden": 17,
+              "start_time": 1053,
+              "end_time": 1101,
+              "rank_score": 27.0,
+              "hook": "Prueba a dar un abrazo sentido de 7 segundos y mira cómo cambia todo."
+            },
+            {
+              "orden": 18,
+              "start_time": 1182,
+              "end_time": 1212,
+              "rank_score": 25.0,
+              "hook": "¿Tu mente es una abeja o una mosca? Por qué siempre ves lo negativo."
+            },
+            {
+              "orden": 19,
+              "start_time": 1214,
+              "end_time": 1248,
+              "rank_score": 24.0,
+              "hook": "¿Cuándo fue la última vez que cantaste por la mañana?"
+            },
+            {
+              "orden": 20,
+              "start_time": 1268,
+              "end_time": 1322,
+              "rank_score": 27.0,
+              "hook": "El primer gran arrepentimiento de la gente al morir: no vivir su propia vida."
+            },
+            {
+              "orden": 21,
+              "start_time": 1331,
+              "end_time": 1371,
+              "rank_score": 26.0,
+              "hook": "Trabajad duro, pero nunca a costa de vuestra familia o salud."
+            },
+            {
+              "orden": 22,
+              "start_time": 1387,
+              "end_time": 1421,
+              "rank_score": 26.0,
+              "hook": "El consejo definitivo de una sobreviviente nazi: nunca te vayas a dormir con dudas."
+            },
+            {
+              "orden": 23,
+              "start_time": 1528,
+              "end_time": 1572,
+              "rank_score": 25.0,
+              "hook": "Sé que existe lo malo, pero decido fijarme en lo bueno."
+            },
+            {
+              "orden": 24,
+              "start_time": 1595,
+              "end_time": 1645,
+              "rank_score": 26.0,
+              "hook": "Estás colgando de la farola. ¡Céntrate en bajar y no busques excusas!"
+            },
+            {
+              "orden": 25,
+              "start_time": 1821,
+              "end_time": 1854,
+              "rank_score": 26.0,
+              "hook": "¿Te imaginas viajar a la luna encerrado con un pesimista?"
+            },
+            {
+              "orden": 26,
+              "start_time": 1939,
+              "end_time": 1973,
+              "rank_score": 26.0,
+              "hook": "La mentira de que todo depende de ti. El peligro de la autoayuda tóxica."
+            },
+            {
+              "orden": 27,
+              "start_time": 2092,
+              "end_time": 2135,
+              "rank_score": 27.0,
+              "hook": "El experimento científico que explica por qué compararte con otros te destruye la vida."
+            }
+          ],
+          "costo_usd": 0.15058,
+          "costo_por_tarea": {
+            "classifier": 5.2e-05,
+            "analysis": 0.150528
+          },
+          "segundos": 49.1,
+          "reintento_de": "APIStatusError: Error code: 402 - {'error': {'message': 'This request would exceed your available credits given your cur",
+          "costo_descartado_usd": null,
+          "metricas": {
+            "n_candidatos": 28,
+            "n_referencias": 28,
+            "n_referencias_a": 19,
+            "recall_completo": 0.3684,
+            "recall_completo_ab": 0.3929,
+            "recall_parcial": 0.5263,
+            "recall_parcial_ab": 0.5357,
+            "historias_partidas": 1,
+            "historias_partidas_ids": [
+              "R04"
+            ],
+            "candidatos_por_cuarto": [
+              15,
+              10,
+              3,
+              0
+            ],
+            "min_cuarto": 0.0,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 1.0,
+            "precision_ref@10": 0.7,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "completa",
+              "R04": "partida",
+              "R05": "parcial",
+              "R06": "completa",
+              "R07": "completa",
+              "R08": "completa",
+              "R09": "ausente",
+              "R10": "completa",
+              "R11": "completa",
+              "R12": "ausente",
+              "R13": "completa",
+              "R14": "parcial",
+              "R15": "parcial",
+              "R16": "ausente",
+              "R17": "completa",
+              "R18": "ausente",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente",
+              "R23": "completa",
+              "R24": "ausente",
+              "R25": "ausente",
+              "R26": "ausente",
+              "R27": "ausente",
+              "R28": "ausente"
+            }
+          }
+        },
+        {
+          "rep": 3,
+          "categoria": "business",
+          "candidatos": [
+            {
+              "orden": 0,
+              "start_time": 33,
+              "end_time": 70,
+              "rank_score": 25.0,
+              "hook": "Tenerlo todo y no ser feliz: la confesión de Emilio Duró a sus 64 años"
+            },
+            {
+              "orden": 1,
+              "start_time": 92,
+              "end_time": 117,
+              "rank_score": 22.0,
+              "hook": "La vida es como el Camino de Santiago: por qué la gente va y viene"
+            },
+            {
+              "orden": 2,
+              "start_time": 138,
+              "end_time": 164,
+              "rank_score": 25.0,
+              "hook": "Los niños ríen 300 veces al día; los adultos no llegamos a 20 al mes"
+            },
+            {
+              "orden": 3,
+              "start_time": 168,
+              "end_time": 182,
+              "rank_score": 26.0,
+              "hook": "Al final de la vida, lo único que importa es a quién has querido"
+            },
+            {
+              "orden": 4,
+              "start_time": 205,
+              "end_time": 253,
+              "rank_score": 27.0,
+              "hook": "El brutal experimento de Harvard que demuestra el poder de la esperanza"
+            },
+            {
+              "orden": 5,
+              "start_time": 261,
+              "end_time": 290,
+              "rank_score": 25.0,
+              "hook": "¿Por qué la escuela nos enseña matemáticas pero no a superar la adversidad?"
+            },
+            {
+              "orden": 6,
+              "start_time": 300,
+              "end_time": 340,
+              "rank_score": 24.0,
+              "hook": "El verdadero objetivo de la vida: irse a dormir sin miedo"
+            },
+            {
+              "orden": 7,
+              "start_time": 341,
+              "end_time": 396,
+              "rank_score": 27.0,
+              "hook": "Salió vivo de un accidente aéreo y aprendió esto sobre el tiempo"
+            },
+            {
+              "orden": 8,
+              "start_time": 404,
+              "end_time": 420,
+              "rank_score": 26.0,
+              "hook": "Prefiero ser feliz a tener razón: la lección de un avión cayendo"
+            },
+            {
+              "orden": 9,
+              "start_time": 422,
+              "end_time": 453,
+              "rank_score": 25.0,
+              "hook": "Lo que realmente importa cuando sabes que vas a morir"
+            },
+            {
+              "orden": 10,
+              "start_time": 487,
+              "end_time": 515,
+              "rank_score": 27.0,
+              "hook": "Estudios millonarios para descubrir que la felicidad era la familia y el bar"
+            },
+            {
+              "orden": 11,
+              "start_time": 604,
+              "end_time": 633,
+              "rank_score": 24.0,
+              "hook": "Por qué intentar hacerlo todo a la vez destruye tu felicidad"
+            },
+            {
+              "orden": 12,
+              "start_time": 673,
+              "end_time": 699,
+              "rank_score": 25.0,
+              "hook": "La dopamina te da placer, pero destruye tu felicidad"
+            },
+            {
+              "orden": 13,
+              "start_time": 700,
+              "end_time": 727,
+              "rank_score": 24.0,
+              "hook": "Buscamos amor verdadero en los likes de una pantalla"
+            },
+            {
+              "orden": 14,
+              "start_time": 746,
+              "end_time": 805,
+              "rank_score": 25.0,
+              "hook": "El test de la chocolatina: el secreto de los niños exitosos"
+            },
+            {
+              "orden": 15,
+              "start_time": 821,
+              "end_time": 853,
+              "rank_score": 24.0,
+              "hook": "Por qué la inmediatez está disparando la depresión en niños"
+            },
+            {
+              "orden": 16,
+              "start_time": 905,
+              "end_time": 930,
+              "rank_score": 24.0,
+              "hook": "Por qué seguimos acumulando cosas como si viviéramos en la jungla"
+            },
+            {
+              "orden": 17,
+              "start_time": 943,
+              "end_time": 966,
+              "rank_score": 24.0,
+              "hook": "El objetivo de la vida no es poner años, sino poner vida"
+            },
+            {
+              "orden": 18,
+              "start_time": 1025,
+              "end_time": 1052,
+              "rank_score": 25.0,
+              "hook": "Viktor Frankl y el secreto de sobrevivir a lo imposible"
+            },
+            {
+              "orden": 19,
+              "start_time": 1054,
+              "end_time": 1101,
+              "rank_score": 27.0,
+              "hook": "El poder científico de un abrazo de 7 segundos"
+            },
+            {
+              "orden": 20,
+              "start_time": 1180,
+              "end_time": 1210,
+              "rank_score": 24.0,
+              "hook": "¿Tu mente es una abeja o una mosca? Aprende a elegir"
+            },
+            {
+              "orden": 21,
+              "start_time": 1307,
+              "end_time": 1345,
+              "rank_score": 27.0,
+              "hook": "Las 5 cosas de las que se arrepiente la gente al morir"
+            },
+            {
+              "orden": 22,
+              "start_time": 1386,
+              "end_time": 1420,
+              "rank_score": 24.5,
+              "hook": "La promesa de una niña sobreviviente de los campos nazis"
+            },
+            {
+              "orden": 23,
+              "start_time": 1475,
+              "end_time": 1509,
+              "rank_score": 25.0,
+              "hook": "La lección de humor de una mujer de 108 años"
+            },
+            {
+              "orden": 24,
+              "start_time": 1528,
+              "end_time": 1572,
+              "rank_score": 25.0,
+              "hook": "Sonreír en un campo de concentración: la historia de Alice"
+            },
+            {
+              "orden": 25,
+              "start_time": 1690,
+              "end_time": 1730,
+              "rank_score": 26.0,
+              "hook": "Por qué la frase 'si quieres puedes' es una gran mentira"
+            },
+            {
+              "orden": 26,
+              "start_time": 1939,
+              "end_time": 1973,
+              "rank_score": 26.0,
+              "hook": "Por qué obligar a estar positivo destruye a la gente"
+            },
+            {
+              "orden": 27,
+              "start_time": 2746,
+              "end_time": 2810,
+              "rank_score": 24.0,
+              "hook": "Por qué el 82% cae en el valle de las excusas"
+            }
+          ],
+          "costo_usd": 0.106966,
+          "costo_por_tarea": {
+            "classifier": 5.2e-05,
+            "analysis": 0.106914
+          },
+          "segundos": 31.5,
+          "reintento_de": "APIStatusError: Error code: 402 - {'error': {'message': 'This request would exceed your available credits given your cur",
+          "costo_descartado_usd": null,
+          "metricas": {
+            "n_candidatos": 28,
+            "n_referencias": 28,
+            "n_referencias_a": 19,
+            "recall_completo": 0.4737,
+            "recall_completo_ab": 0.3929,
+            "recall_parcial": 0.4737,
+            "recall_parcial_ab": 0.4643,
+            "historias_partidas": 1,
+            "historias_partidas_ids": [
+              "R04"
+            ],
+            "candidatos_por_cuarto": [
+              16,
+              10,
+              1,
+              1
+            ],
+            "min_cuarto": 0.0357,
+            "candidatos_en_exclusion": 0,
+            "precision_ref@5": 0.8,
+            "precision_ref@10": 0.5,
+            "estado_por_referencia": {
+              "R01": "completa",
+              "R02": "completa",
+              "R03": "completa",
+              "R04": "partida",
+              "R05": "parcial",
+              "R06": "completa",
+              "R07": "completa",
+              "R08": "completa",
+              "R09": "ausente",
+              "R10": "ausente",
+              "R11": "completa",
+              "R12": "parcial",
+              "R13": "ausente",
+              "R14": "completa",
+              "R15": "ausente",
+              "R16": "completa",
+              "R17": "completa",
+              "R18": "ausente",
+              "R19": "ausente",
+              "R20": "ausente",
+              "R21": "ausente",
+              "R22": "ausente",
+              "R23": "ausente",
+              "R24": "ausente",
+              "R25": "ausente",
+              "R26": "completa",
+              "R27": "ausente",
+              "R28": "ausente"
+            }
+          }
+        }
+      ],
+      "errores": [],
+      "referencias": {
+        "momentos": 28,
+        "validados": 0,
+        "validados_a": 0,
+        "pendientes": 28,
+        "validado_por": []
+      },
+      "duracion_sec": 3459.504,
+      "agregado": {
+        "recall_completo": {
+          "media": 0.3333,
+          "desvio": 0.1608,
+          "n": 3
+        },
+        "recall_completo_ab": {
+          "media": 0.3096,
+          "desvio": 0.1443,
+          "n": 3
+        },
+        "recall_parcial": {
+          "media": 0.4561,
+          "desvio": 0.0804,
+          "n": 3
+        },
+        "recall_parcial_ab": {
+          "media": 0.4405,
+          "desvio": 0.1091,
+          "n": 3
+        },
+        "historias_partidas": {
+          "media": 1.6667,
+          "desvio": 1.1547,
+          "n": 3
+        },
+        "min_cuarto": {
+          "media": 0.0119,
+          "desvio": 0.0206,
+          "n": 3
+        },
+        "candidatos_en_exclusion": {
+          "media": 0.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "precision_ref@5": {
+          "media": 0.8,
+          "desvio": 0.2,
+          "n": 3
+        },
+        "precision_ref@10": {
+          "media": 0.5667,
+          "desvio": 0.1155,
+          "n": 3
+        },
+        "n_candidatos": {
+          "media": 28.0,
+          "desvio": 0.0,
+          "n": 3
+        },
+        "completa_en_reps": {
+          "R01": 2,
+          "R02": 2,
+          "R03": 3,
+          "R04": 0,
+          "R05": 0,
+          "R06": 2,
+          "R07": 3,
+          "R08": 2,
+          "R09": 0,
+          "R10": 1,
+          "R11": 2,
+          "R12": 0,
+          "R13": 1,
+          "R14": 2,
+          "R15": 0,
+          "R16": 1,
+          "R17": 2,
+          "R18": 1,
+          "R19": 0,
+          "R20": 0,
+          "R21": 0,
+          "R22": 0,
+          "R23": 1,
+          "R24": 0,
+          "R25": 0,
+          "R26": 1,
+          "R27": 0,
+          "R28": 0
+        }
+      },
+      "costo_usd": 0.397938,
+      "categorias": [
+        "business"
+      ]
+    }
+  ],
+  "wall_seconds": 233.6,
+  "agregado": {
+    "recall_completo": {
+      "media": 0.296,
+      "desvio": 0.2156,
+      "n": 7
+    },
+    "recall_completo_ab": {
+      "media": 0.2542,
+      "desvio": 0.1713,
+      "n": 7
+    },
+    "recall_parcial": {
+      "media": 0.5072,
+      "desvio": 0.1604,
+      "n": 7
+    },
+    "recall_parcial_ab": {
+      "media": 0.434,
+      "desvio": 0.1216,
+      "n": 7
+    },
+    "historias_partidas": {
+      "media": 1.0,
+      "desvio": 0.7935,
+      "n": 7
+    },
+    "min_cuarto": {
+      "media": 0.0747,
+      "desvio": 0.0436,
+      "n": 7
+    },
+    "candidatos_en_exclusion": {
+      "media": 0.7619,
+      "desvio": 2.0158,
+      "n": 7
+    },
+    "precision_ref@5": {
+      "media": 0.5905,
+      "desvio": 0.2733,
+      "n": 7
+    },
+    "precision_ref@10": {
+      "media": 0.5175,
+      "desvio": 0.2178,
+      "n": 7
+    },
+    "n_candidatos": {
+      "media": 26.7143,
+      "desvio": 7.8467,
+      "n": 7
+    }
+  },
+  "costo_total_usd": 2.829936,
+  "models": {
+    "analysis": "google/gemini-3.5-flash",
+    "copy": "google/gemini-3.5-flash",
+    "judge": "openai/gpt-5.4-nano",
+    "classifier": "google/gemini-2.5-flash-lite"
+  },
+  "prompt_version": "v8",
+  "run_at": "2026-09-23T23:50:22+00:00",
+  "git_commit": "258ed53",
+  "env": {
+    "MODEL_ANALYSIS_REASONING": "low"
+  },
+  "completada": [
+    {
+      "reps_rehechas": 6,
+      "segundos": 135.0
+    }
+  ]
+}

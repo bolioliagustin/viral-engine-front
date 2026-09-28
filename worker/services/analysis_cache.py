@@ -8,9 +8,20 @@ al modelo de nuevo. Ahorra ~30-60s + el costo de la API por cache hit.
 Invalidación: si cambiás los prompts del worker, bumpeá `PROMPT_VERSION`
 de abajo. Eso fuerza re-análisis de todos los videos (las filas viejas
 quedan pero no van a matchear el nuevo prompt_version).
+
+W18 (docs/briefs/W18-cache-integra.md, job fb287cba):
+  - El análisis guarda la **Huella del transcript** con el que se calculó
+    (`result["_transcript_fingerprint"]`, ver transcript_cache) y solo se
+    reutiliza si coincide con la del transcript actual. Sin huella (filas
+    viejas) o con otra, se recalcula y el upsert pisa la misma fila.
+  - La Pasada A no usa el tono: en dos pasadas la columna `tone` guarda el
+    centinela `PASADA_A_TONE` y el análisis se comparte entre tonos. El
+    mega-prompt legacy sí depende del tono y lo conserva en la clave.
+  - `effective_prompt_version` acepta los flags que cambian la Pasada A.
 """
 import json
-from typing import Optional
+import os
+from typing import Iterable, Optional
 
 from services.supabase_client import get_supabase
 
@@ -40,19 +51,49 @@ from services.supabase_client import get_supabase
 PROMPT_VERSION = "v8"
 
 
-def effective_prompt_version(transcript_source: str | None = None) -> str:
+# W18: valor de la columna `tone` para un análisis de la Pasada A (dos
+# pasadas), que no depende del tono. Empieza con "_" para no chocar con un
+# tono real (profesional, casual, …).
+PASADA_A_TONE = "_pasada_a"
+
+# Clave dentro de `result` con la Huella del transcript (W18).
+FINGERPRINT_KEY = "_transcript_fingerprint"
+
+
+def effective_prompt_version(
+    transcript_source: str | None = None,
+    flags: Iterable[str] = (),
+) -> str:
     """
     Versión de prompt con la que se lee/escribe el cache. W4: la Pasada A
     recibe un transcript distinto según la fuente (`TRANSCRIPT_SOURCE`), así
     que el cache se separa por fuente sin bumpear `PROMPT_VERSION`:
     `v5` (supadata, igual que siempre) / `v5+whisper_full` / `v5+hybrid`.
     `transcript_source` explícito (lo que trae el transcript) pisa el env.
+
+    W18 (PLAN_MEJORA §4.1): `flags` son los flags prendidos que cambian la
+    Pasada A (W21 ventanas, W22 formatos, …). Van ordenados y sin repetir
+    después de la fuente (`v8+whisper_full+formatos+ventanas`), así un
+    análisis calculado con un flag prendido nunca se sirve con el flag
+    apagado, ni al revés. Hoy ningún flag se pasa.
     """
-    import os
     source = (transcript_source or os.getenv("TRANSCRIPT_SOURCE") or "supadata").strip().lower()
+    version = PROMPT_VERSION
     if source in ("whisper_full", "hybrid"):
-        return f"{PROMPT_VERSION}+{source}"
-    return PROMPT_VERSION
+        version = f"{version}+{source}"
+    for flag in sorted({(f or "").strip().lower() for f in flags} - {""}):
+        version = f"{version}+{flag}"
+    return version
+
+
+def two_pass_enabled() -> bool:
+    """Dos pasadas (Pasada A + Pasada B) es el default; TWO_PASS_ANALYSIS=false fuerza el legacy."""
+    return os.getenv("TWO_PASS_ANALYSIS", "true").lower() not in ("false", "0", "no")
+
+
+def analysis_cache_tone(tone: str, two_pass: bool) -> str:
+    """Valor de la columna `tone` en la clave (W18): centinela en dos pasadas, tono real en legacy."""
+    return PASADA_A_TONE if two_pass else tone
 
 
 # ─── Analysis cache (resultado completo del análisis) ───────────────────────
@@ -61,9 +102,14 @@ def get_cached_analysis(
     model: str,
     tone: str = "profesional",
     prompt_version: str | None = None,
+    fingerprint: str | None = None,
 ) -> Optional[dict]:
     """
     Busca un AnalysisResult cacheado. Retorna el dict crudo o None.
+
+    `tone` es el valor de la columna (ver `analysis_cache_tone`). W18: con
+    `fingerprint`, la fila solo sirve si guardó esa misma Huella del
+    transcript; si falta o es otra, devuelve None y el llamador recalcula.
     """
     supabase = get_supabase()
     if not supabase:
@@ -87,6 +133,15 @@ def get_cached_analysis(
         result = row["result"]
         if isinstance(result, str):
             result = json.loads(result)
+        if fingerprint is not None:
+            stored = (result or {}).get(FINGERPRINT_KEY)
+            if stored != fingerprint:
+                print(
+                    f"   ♻️ analysis_cache de {video_id} descartado: huella del transcript "
+                    f"{'ausente (fila vieja)' if not stored else 'distinta'} "
+                    f"({stored or '—'} ≠ {fingerprint}). Se recalcula."
+                )
+                return None
         print(f"   ✅ Cache hit: análisis ya existe para {video_id} (skip Gemini)")
         return result
     except Exception as e:
@@ -99,6 +154,7 @@ def get_cached_analysis_row(
     model: str,
     tone: str = "profesional",
     prompt_version: str | None = None,
+    fingerprint: str | None = None,
 ) -> Optional[dict]:
     """
     Como `get_cached_analysis` pero devuelve la fila completa (`result` +
@@ -127,6 +183,8 @@ def get_cached_analysis_row(
         result = row["result"]
         if isinstance(result, str):
             result = json.loads(result)
+        if fingerprint is not None and (result or {}).get(FINGERPRINT_KEY) != fingerprint:
+            return None
         return {"result": result, "category_detected": row.get("category_detected")}
     except Exception as e:
         print(f"   ⚠️ analysis_cache lookup (row) falló (no fatal): {e}")
@@ -141,6 +199,7 @@ def save_analysis(
     category_detected: Optional[str] = None,
     prompt_chars: Optional[int] = None,
     prompt_version: str | None = None,
+    fingerprint: str | None = None,
 ) -> bool:
     """
     Guarda un AnalysisResult al cache. Upsert por la unique key
@@ -151,10 +210,16 @@ def save_analysis(
     `rank_score`, ver moment_selector.rank_and_prune_candidates). Se guarda
     tal cual dentro del JSON de `result`, sin cambio de esquema; al leerlo,
     AnalysisResult(**cached) ignora la clave extra.
+
+    W18: con `fingerprint`, la Huella del transcript viaja dentro de
+    `result` (`FINGERPRINT_KEY`). Sin él se conserva la que ya traiga
+    `result` (p. ej. al reescribir `candidates_all` con las notas del juez).
     """
     supabase = get_supabase()
     if not supabase:
         return False
+    if fingerprint is not None:
+        result = {**result, FINGERPRINT_KEY: fingerprint}
 
     try:
         payload = {

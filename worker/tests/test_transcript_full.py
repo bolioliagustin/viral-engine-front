@@ -579,7 +579,9 @@ class TestTranscriptCache:
         with patch.object(tc, "get_supabase", return_value=None), patch.object(tc, "_LOCAL_DIR", tmp_path):
             assert tc.get_cached_transcript("vid", source="whisper_full", model="m") is None
             assert tc.save_transcript("vid", {"lines": [1]}, source="whisper_full", model="m")
-            assert tc.get_cached_transcript("vid", source="whisper_full", model="m") == {"lines": [1]}
+            got = tc.get_cached_transcript("vid", source="whisper_full", model="m")
+            assert got["lines"] == [1]
+            assert got["fingerprint"] == tc.transcript_fingerprint({"lines": [1]})  # W18
             # supadata: sin Supabase no hay cache local (comportamiento de siempre)
             assert not tc.save_transcript("vid", {"segments": []})
             assert tc.get_cached_transcript("vid") is None
