@@ -24,14 +24,12 @@
     {
       "inicio": 2656.0,
       "fin": 2723.0,
-      "motivo": "Publicidad de cerveza Oslava/Día.",
-      "autor": "borrador:anthropic/claude-sonnet-5"
+      "motivo": "Publicidad de cerveza Oslava/Día."
     },
     {
       "inicio": 4104.0,
       "fin": 4121.0,
-      "motivo": "Repetición de publicidad de cerveza Oslava/Día.",
-      "autor": "borrador:anthropic/claude-sonnet-5"
+      "motivo": "Repetición de publicidad de cerveza Oslava/Día."
     }
   ],
   "momentos": [
@@ -48,8 +46,9 @@
       "cita_inicio": "¿Vos viste lo que dijo Coscu?",
       "cita_fin": "9 y medio Uy, qué conchuga",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R02",
@@ -64,8 +63,9 @@
       "cita_inicio": "Yo, cuando fui a Papa de Mario",
       "cita_fin": "no le hice juicio por trabajar en negro.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R03",
@@ -80,8 +80,9 @@
       "cita_inicio": "Nadie nunca supo eso",
       "cita_fin": "Yo fui el primero de todos.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R04",
@@ -96,24 +97,9 @@
       "cita_inicio": "Sopa, esta frase se la dije una vez a Pedro Alfonso.",
       "cita_fin": "Te espero en mi despacho",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R05",
-      "inicio": 741.0,
-      "fin": 880.0,
-      "nucleo_inicio": 818.0,
-      "nucleo_fin": 867.0,
-      "tipo": "anécdota",
-      "calidad": "A",
-      "titulo": "¿Quién bailó pogo con Macri?",
-      "por_que": "Juego de adivinanza con remate sorpresa muy divertido sobre quién bailó con el expresidente.",
-      "cita_inicio": "Señoras y señores, el que estuvo en el casamiento",
-      "cita_fin": "Bailé Pogo con él",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R06",
@@ -128,8 +114,9 @@
       "cita_inicio": "en el baño, viste que a veces",
       "cita_fin": "habría que ser un desodorulo.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R07",
@@ -144,8 +131,9 @@
       "cita_inicio": "Ahí lo tenés, Para mí alguien le afanó el reloj",
       "cita_fin": "Pero fue sumamente irónico.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R08",
@@ -160,8 +148,10 @@
       "cita_inicio": "Muy fuerte Mariana acaba de decir petes.",
       "cita_fin": "Parece que no da.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "es flojo pero sirve como contenido extra"
     },
     {
       "id": "R09",
@@ -176,8 +166,10 @@
       "cita_inicio": "No estoy teniendo relaciones.",
       "cita_fin": "Es más higiénico, ¿no?",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "es flojo pero sirve como extra"
     },
     {
       "id": "R10",
@@ -192,8 +184,9 @@
       "cita_inicio": "Tuve dos novios en mi vida.",
       "cita_fin": "que es el último que salió.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R11",
@@ -208,8 +201,9 @@
       "cita_inicio": "Pregunto, digo Mientras juegan,",
       "cita_fin": "Nada sexual.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R12",
@@ -224,8 +218,9 @@
       "cita_inicio": "Hay que empezar a usar el calzoncillo",
       "cita_fin": "Es un pedo mal puesto.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R13",
@@ -240,8 +235,151 @@
       "cita_inicio": "Pero pará, pará, pará.",
       "cita_fin": "Es Blender.",
       "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
+    },
+    {
+      "id": "R15",
+      "inicio": 2890.0,
+      "fin": 2977.0,
+      "nucleo_inicio": 2895.0,
+      "nucleo_fin": 2973.0,
+      "tipo": "cruce con el público",
+      "calidad": "A",
+      "titulo": "Preguntas íntimas a Pachu: eutanasia, edad y pastillas",
+      "por_que": "Batería de preguntas rápidas con respuestas honestas y divertidas, ritmo ideal para clip corto.",
+      "cita_inicio": "Pachu, eutanasia, ¿sí o no?",
+      "cita_fin": "Tim vacío.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
+    },
+    {
+      "id": "R16",
+      "inicio": 3069.0,
+      "fin": 3111.0,
+      "nucleo_inicio": 3075.0,
+      "nucleo_fin": 3105.0,
+      "tipo": "frase citable",
+      "calidad": "B",
+      "titulo": "Pachu quiere reencarnarse en gaviota",
+      "por_que": "Respuesta tierna y original sobre la muerte y la reencarnación, con humor liviano.",
+      "cita_inicio": "en un ave en una gaviota",
+      "cita_fin": "En un velmo",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
+    },
+    {
+      "id": "R19",
+      "inicio": 3628.0,
+      "fin": 3671.0,
+      "nucleo_inicio": 3636.0,
+      "nucleo_fin": 3668.0,
+      "tipo": "anécdota",
+      "calidad": "B",
+      "titulo": "La sillita de plástico de Luis Ventura",
+      "por_que": "Detalle insólito y visual contado con gracia sobre una figura conocida.",
+      "cita_inicio": "¿Sabés lo que hace Luis Ventura, no?",
+      "cita_fin": "no puede estar parado.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
+    },
+    {
+      "id": "R20",
+      "inicio": 3715.0,
+      "fin": 3810.0,
+      "nucleo_inicio": 3774.0,
+      "nucleo_fin": 3801.0,
+      "tipo": "anécdota",
+      "calidad": "B",
+      "titulo": "Bailé folclore con Mariano Martínez a los 13",
+      "por_que": "Anécdota curiosa y con dato inesperado sobre un actor conocido.",
+      "cita_inicio": "Yo bailé folclore con Mariano Martínez",
+      "cita_fin": "para hacer una nena.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "es moy acorado igual."
+    },
+    {
+      "id": "R25",
+      "inicio": 4585.0,
+      "fin": 4634.0,
+      "nucleo_inicio": 4601.0,
+      "nucleo_fin": 4629.0,
+      "tipo": "frase citable",
+      "calidad": "B",
+      "titulo": "Me río de nervios: el gol anulado de Newell's",
+      "por_que": "Reacción cómica en vivo a una mala noticia deportiva mientras debe seguir trabajando.",
+      "cita_inicio": "¡Es limitado! Me ríe de nervios,",
+      "cita_fin": "Y así te pagan.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
+    },
+    {
+      "id": "R26",
+      "inicio": 4700.0,
+      "fin": 4855.0,
+      "nucleo_inicio": 4794.0,
+      "nucleo_fin": 4848.0,
+      "tipo": "opinión",
+      "calidad": "B",
+      "titulo": "¿Se puede hacer humor político hoy?",
+      "por_que": "Reflexión filosa sobre la autocensura de los comediantes con remate optimista sobre la tele.",
+      "cita_inicio": "Amarillo. ¿Por qué?",
+      "cita_fin": "La tele todavía tiene futuro.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "arranca muy temprano, pero es bueno"
+    },
+    {
+      "id": "R27",
+      "inicio": 4950.0,
+      "fin": 5040.0,
+      "nucleo_inicio": 4961.0,
+      "nucleo_fin": 5020.0,
+      "tipo": "anécdota",
+      "calidad": "A",
+      "titulo": "El mozo que le insistía \"dale, maricón, comete un plato\"",
+      "por_que": "Anécdota fuerte y real con tensión creciente y remate contundente sobre el exceso de confianza.",
+      "cita_inicio": "Estamos haciendo una comedia con Pedro en Azul,",
+      "cita_fin": "No, me estaba sacando.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
+    }
+  ],
+  "descartados": [
+    {
+      "id": "R05",
+      "inicio": 741.0,
+      "fin": 880.0,
+      "nucleo_inicio": 818.0,
+      "nucleo_fin": 867.0,
+      "tipo": "anécdota",
+      "calidad": "A",
+      "titulo": "¿Quién bailó pogo con Macri?",
+      "por_que": "Juego de adivinanza con remate sorpresa muy divertido sobre quién bailó con el expresidente.",
+      "cita_inicio": "Señoras y señores, el que estuvo en el casamiento",
+      "cita_fin": "Bailé Pogo con él",
+      "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "demora mucho en llegar al nucleo"
     },
     {
       "id": "R14",
@@ -257,39 +395,10 @@
       "cita_fin": "Un aplauso para Colo.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R15",
-      "inicio": 2890.0,
-      "fin": 2977.0,
-      "nucleo_inicio": 2895.0,
-      "nucleo_fin": 2973.0,
-      "tipo": "cruce con el público",
-      "calidad": "A",
-      "titulo": "Preguntas íntimas a Pachu: eutanasia, edad y pastillas",
-      "por_que": "Batería de preguntas rápidas con respuestas honestas y divertidas, ritmo ideal para clip corto.",
-      "cita_inicio": "Pachu, eutanasia, ¿sí o no?",
-      "cita_fin": "Tim vacío.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R16",
-      "inicio": 3069.0,
-      "fin": 3111.0,
-      "nucleo_inicio": 3075.0,
-      "nucleo_fin": 3105.0,
-      "tipo": "frase citable",
-      "calidad": "B",
-      "titulo": "Pachu quiere reencarnarse en gaviota",
-      "por_que": "Respuesta tierna y original sobre la muerte y la reencarnación, con humor liviano.",
-      "cita_inicio": "en un ave en una gaviota",
-      "cita_fin": "En un velmo",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "es flujo y corto"
     },
     {
       "id": "R17",
@@ -305,7 +414,10 @@
       "cita_fin": "Sí, sí, sí, sí.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "no tiene remate"
     },
     {
       "id": "R18",
@@ -321,39 +433,10 @@
       "cita_fin": "cree que es el mejor.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R19",
-      "inicio": 3628.0,
-      "fin": 3671.0,
-      "nucleo_inicio": 3636.0,
-      "nucleo_fin": 3668.0,
-      "tipo": "anécdota",
-      "calidad": "B",
-      "titulo": "La sillita de plástico de Luis Ventura",
-      "por_que": "Detalle insólito y visual contado con gracia sobre una figura conocida.",
-      "cita_inicio": "¿Sabés lo que hace Luis Ventura, no?",
-      "cita_fin": "no puede estar parado.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R20",
-      "inicio": 3715.0,
-      "fin": 3810.0,
-      "nucleo_inicio": 3774.0,
-      "nucleo_fin": 3801.0,
-      "tipo": "anécdota",
-      "calidad": "B",
-      "titulo": "Bailé folclore con Mariano Martínez a los 13",
-      "por_que": "Anécdota curiosa y con dato inesperado sobre un actor conocido.",
-      "cita_inicio": "Yo bailé folclore con Mariano Martínez",
-      "cita_fin": "para hacer una nena.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "quedo muy largo y hay un tema en medio"
     },
     {
       "id": "R21",
@@ -369,7 +452,10 @@
       "cita_fin": "hay que hacerla de nuevo.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "no hay anecdota graciosa es corta"
     },
     {
       "id": "R22",
@@ -385,7 +471,10 @@
       "cita_fin": "Se lo hizo al revés.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "muy corto no se entiende."
     },
     {
       "id": "R23",
@@ -401,7 +490,10 @@
       "cita_fin": "un voto a Pachu.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "no se entiende."
     },
     {
       "id": "R24",
@@ -417,58 +509,12 @@
       "cita_fin": "Está pidiendo sushi.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R25",
-      "inicio": 4585.0,
-      "fin": 4634.0,
-      "nucleo_inicio": 4601.0,
-      "nucleo_fin": 4629.0,
-      "tipo": "frase citable",
-      "calidad": "B",
-      "titulo": "Me río de nervios: el gol anulado de Newell's",
-      "por_que": "Reacción cómica en vivo a una mala noticia deportiva mientras debe seguir trabajando.",
-      "cita_inicio": "¡Es limitado! Me ríe de nervios,",
-      "cita_fin": "Y así te pagan.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R26",
-      "inicio": 4700.0,
-      "fin": 4855.0,
-      "nucleo_inicio": 4794.0,
-      "nucleo_fin": 4848.0,
-      "tipo": "opinión",
-      "calidad": "B",
-      "titulo": "¿Se puede hacer humor político hoy?",
-      "por_que": "Reflexión filosa sobre la autocensura de los comediantes con remate optimista sobre la tele.",
-      "cita_inicio": "Amarillo. ¿Por qué?",
-      "cita_fin": "La tele todavía tiene futuro.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R27",
-      "inicio": 4950.0,
-      "fin": 5040.0,
-      "nucleo_inicio": 4961.0,
-      "nucleo_fin": 5020.0,
-      "tipo": "anécdota",
-      "calidad": "A",
-      "titulo": "El mozo que le insistía \"dale, maricón, comete un plato\"",
-      "por_que": "Anécdota fuerte y real con tensión creciente y remate contundente sobre el exceso de confianza.",
-      "cita_inicio": "Estamos haciendo una comedia con Pedro en Azul,",
-      "cita_fin": "No, me estaba sacando.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "no tiene remate son dos temas."
     }
   ],
-  "descartados": [],
   "transcript": {
     "source": "whisper_full",
     "model": "whisper-large-v3-turbo",

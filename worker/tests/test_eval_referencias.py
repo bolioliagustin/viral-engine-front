@@ -236,6 +236,43 @@ class TestMarkdown:
         assert d["excluir"] == [{"inicio": 180.0, "fin": 210.0, "motivo": "aviso"}]
         assert refs.estado_validacion(d)["validados"] == 2
 
+    @pytest.mark.parametrize("texto, esperado", [
+        # casos reales de la validación del 25–28-sep
+        ("si, pero el titulo no cuenta de que se habla. que virus?", ("si", "pero el titulo no cuenta de que se habla. que virus?", False)),
+        ("no, no tiene remate ", ("no", "no tiene remate", False)),
+        ("Si", ("si", None, False)),
+        ("si pero muy flojo", ("si", "pero muy flojo", False)),
+        ("sí", ("si", None, False)),
+        ("si y no, muestra la extencion pero no da contexto", ("si", "(si y no) muestra la extencion pero no da contexto", True)),
+        ("pendiente", ("pendiente", None, False)),
+        ("borrar", ("no", None, False)),
+        ("arranca muy temprano, pero es bueno\xa0 asi que si.", ("si", "arranca muy temprano, pero es bueno", False)),
+        ("es corto, así que no", ("no", "es corto", False)),
+    ])
+    def test_decision_con_comentario(self, texto, esperado):
+        assert refs._parse_decision(texto, "R01") == esperado
+
+    @pytest.mark.parametrize("texto", ["tal vez", "sino", "nop", "", "es bueno pero no"])
+    def test_decision_invalida(self, texto):
+        with pytest.raises(ValueError, match="R01"):
+            refs._parse_decision(texto or "   ", "R01")
+
+    def test_comentarios_se_guardan_y_no_cuentan_como_correccion(self):
+        d = _doc([_ref("R01", 100, 160), _ref("R02", 300, 330), _ref("R03", 500, 520)])
+        md = refs.generar_markdown(d)
+        bloques = md.split("\n### ")
+        bloques[1] = bloques[1].replace("- decision: pendiente", "- decision: si, pero arranca muy antes")
+        bloques[2] = bloques[2].replace("- decision: pendiente", "- decision: no, muy corto y no hay conclusion")
+        bloques[3] = bloques[3].replace("- decision: pendiente", "- decision: si y no, falta contexto")
+        conteo = refs.aplicar_validacion(d, "\n### ".join(bloques), validador="agustin", fecha="2026-09-28")
+        assert conteo["validados"] == 2 and conteo["borrados"] == 1 and conteo["corregidos"] == 0
+        por_id = {m["id"]: m for m in d["momentos"]}
+        assert por_id["R01"]["comentario_validacion"] == "pero arranca muy antes"
+        assert "decision_ambigua" not in por_id["R01"]
+        assert por_id["R03"]["decision_ambigua"] is True
+        descartado = d["descartados"][0]
+        assert descartado["id"] == "R02" and descartado["motivo_descarte"] == "muy corto y no hay conclusion"
+
     def test_bloque_borrado_es_error(self):
         d = _doc([_ref("R01", 100, 160), _ref("R02", 300, 330)])
         md = refs.generar_markdown(d).split("### R02")[0]

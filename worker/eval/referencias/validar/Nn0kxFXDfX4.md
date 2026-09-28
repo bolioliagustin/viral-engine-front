@@ -1,15 +1,15 @@
-# Referencias — charla\_humor\_02 (Nn0kxFXDfX4)
+# Referencias — charla_humor_02 (Nn0kxFXDfX4)
 
-Video: [https://youtu.be/Nn0kxFXDfX4](https://youtu.be/Nn0kxFXDfX4) · duración 1:26:11 · 27 momentos (0 validados, 27 pendientes)
+Video: https://youtu.be/Nn0kxFXDfX4 · duración 1:26:11 · 19 momentos (19 validados, 0 pendientes)
 
 Cómo validar (una pasada, sin apuro):
 
 1. Mirá cada momento desde el link. El **núcleo** es lo mínimo que el clip tiene
- que contener: del planteo al remate. El **tramo** es el clip ideal completo.
+   que contener: del planteo al remate. El **tramo** es el clip ideal completo.
 2. En `decision:` poné `si` (lo publicarías: queda validado), `no` (se borra) o
- dejá `pendiente`.
+   dejá `pendiente`.
 3. Corregí lo que haga falta: `tramo`, `nucleo` (segundos o m:ss, **absolutos**),
- `calidad` (A = lo publicaría seguro; B = probablemente), `tipo`, `por_que`.
+   `calidad` (A = lo publicaría seguro; B = probablemente), `tipo`, `por_que`.
 4. Para agregar un momento, copiá un bloque al final con `### NUEVO` como título.
 5. Tramos a excluir (publicidad): una línea `- EXCLUIR <inicio>–<fin> | motivo`.
 
@@ -32,7 +32,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: frase citable
 - titulo: ¿Cuánto me amás? 9 y medio
-- por\_que: Autoburla divertida con remate numérico gracioso sobre Coscu.
+- por_que: Autoburla divertida con remate numérico gracioso sobre Coscu.
 
 > ¿Viste lo que dijo Coscu de mí? ¿Vos viste lo que dijo Coscu? Sí, sí ¿Y vos me amás también? Sí ¿Cuánto? ¿1 a 10 cuánto? 9 y medio Uy, qué conchuga Qué exigente Qué tal, sopa ¡Sopa! Basta Vos si me querés Felicitaciones Un programa No hicimos Hicimos Bueno hice yo Si si ¿Viste?
 
@@ -46,7 +46,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: A
 - tipo: anécdota
 - titulo: Pergolini le debe sueldo desde 1993
-- por\_que: Anécdota real y sorprendente con remate cómico sobre inflación en dólares y trabajo en negro.
+- por_que: Anécdota real y sorprendente con remate cómico sobre inflación en dólares y trabajo en negro.
 
 > Para, cuando te debe algún mes No, no, no, no, te estoy a ti ¿Alguna queja para hacer? Yo, cuando fui a Papa de Mario el año pasado, … lucrita? Un poquito más también ¿Ah, sí? Sí, 20.000. Mario, poquito más, más de 20 mil, 30 mil. Hay que pagar las costas, los años de resarcimiento, todo.
 
@@ -60,7 +60,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: A
 - tipo: dato
 - titulo: El notición: fue el primer invitado que nunca salió al aire
-- por\_que: Revelación sorprendente contada como notición, genera intriga y remate satisfactorio.
+- por_que: Revelación sorprendente contada como notición, genera intriga y remate satisfactorio.
 
 > Nadie nunca supo eso Es imposible Un momento, esto es un notición Yo fui el primer invitado Del programa que tiene actualmente Mario Pero que nunca salió al … sabía que era un ensayo Porque a mí me llegó la información. Lo dijo Croso. Cristian Sancho, Cristian fue el siguiente día. Yo fui el primero de todos.
 
@@ -74,23 +74,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: A
 - tipo: frase citable
 - titulo: Oficina o camarín, elegí
-- por\_que: Frase ingeniosa y memorable dirigida a un compañero, con rima incluida.
+- por_que: Frase ingeniosa y memorable dirigida a un compañero, con rima incluida.
 
 > Increíble. Sopa, esta frase se la dije una vez a Pedro Alfonso. Pedro Alfonso era productor, ustedes saben. Sí. Y en un momento seguía siendo productor y también … Claro, casi que rimó Se lo voy a decir a Sopa Mirálo en los ojos Sopa, vas a tener que elegir ¿Qué querés, tener oficina o tener camarín?
-
-### R05 · A · ¿Quién bailó pogo con Macri?
-
-[▶ tramo 12:21](https://youtu.be/Nn0kxFXDfX4?t=741) · [▶ núcleo 13:38](https://youtu.be/Nn0kxFXDfX4?t=818) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, demora mucho en llegar al nucleo
-- tramo: 741 – 880
-- nucleo: 818 – 867   (13:38–14:27, 49 s)
-- calidad: A
-- tipo: anécdota
-- titulo: ¿Quién bailó pogo con Macri?
-- por\_que: Juego de adivinanza con remate sorpresa muy divertido sobre quién bailó con el expresidente.
-
-> Señoras y señores, el que estuvo en el casamiento y estuvo bailando podo con el señor Mauricio Macri, codo a codo, en un momento le preguntó por Aguada, … Y Bueno, me invitaron al casamiento. ¿Aparecí? ¿Y Mauricio qué es del novio? Es el tío Es el sobrino Es el sobrino Claro Exacto ¿Bailaste Pogo con él?
 
 ### R06 · B · El desodorante que usó Macri en el baño
 
@@ -102,7 +88,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: anécdota
 - titulo: El desodorante que usó Macri en el baño
-- por\_que: Detalle absurdo y gracioso de la anécdota del casamiento, remata con chiste de auspicio.
+- por_que: Detalle absurdo y gracioso de la anécdota del casamiento, remata con chiste de auspicio.
 
 > en el baño, viste que a veces en los baños de boliches o bueno, fiestas así de este estilo te ponen desodorantes, la respiración y demás. Se echó … es mejor perder un amigo y no un remate. Olvidaba. Olvidaba. No entiendo cómo los desodorantes no lo llamaron como para auspiciarlo. Porque habría que ser un desodorulo.
 
@@ -116,7 +102,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: dato
 - titulo: "Nos saludamos correctamente": la ironía de Macri con Kicillof
-- por\_que: Dato de actualidad con remate irónico sobre la relación entre rivales políticos.
+- por_que: Dato de actualidad con remate irónico sobre la relación entre rivales políticos.
 
 > Ahí está, ahí está, Ahí está, Mirá, ¿Viste cómo se estiran los dos? Ahí lo tenés Para mí alguien le afaró el reloj a otro Después Mauricio le … Mauricio... Ah, lo escuché eso. Lo escuché, lo escuché, Lo escuché. Sí, sí, lo dijo, Yo lo quiero. Claro, cuál, Yo lo quiero. Pero bueno, rivales, no enemigos.
 
@@ -124,13 +110,13 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 
 [▶ tramo 23:15](https://youtu.be/Nn0kxFXDfX4?t=1395) · [▶ núcleo 23:31](https://youtu.be/Nn0kxFXDfX4?t=1411) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: si, es flojo pero sirve como contenido extra
+- decision: si
 - tramo: 1395 – 1450
 - nucleo: 1411 – 1446   (23:31–24:06, 35 s)
 - calidad: B
 - tipo: explicación
 - titulo: ¿Qué significa "pete"?
-- por\_que: Explicación de jerga con timing cómico y aprendizaje de una palabra nueva para el público.
+- por_que: Explicación de jerga con timing cómico y aprendizaje de una palabra nueva para el público.
 
 > Y yo tengo el pensamiento De que los petes jugaban a esto Y los pros jugábamos al Dota 2. Muy fuerte Mariana acaba de decir petes. ¿Qué es … pete esto. Para mí es como que no sos cool, Medio bobas, viste. Che, lo voy a empezar a usar. La confamera de la luna. Mirá que pete.
 
@@ -138,13 +124,13 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 
 [▶ tramo 24:16](https://youtu.be/Nn0kxFXDfX4?t=1456) · [▶ núcleo 24:26](https://youtu.be/Nn0kxFXDfX4?t=1466) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: si, es flojo pero sirve como extra
+- decision: si
 - tramo: 1456 – 1516
 - nucleo: 1466 – 1511   (24:26–25:11, 45 s)
 - calidad: A
 - tipo: dato
 - titulo: La grieta del invocador y la falta de sexo
-- por\_que: Referencia viral de Coscu explicada con humor, incluye clip dentro del clip que sorprende.
+- por_que: Referencia viral de Coscu explicada con humor, incluye clip dentro del clip que sorprende.
 
 > A ver lo que decía Coscu en nuestro programa. Mirámoslo. No estoy teniendo relaciones. ¿Pero por qué? ¿No tenés novia? ¿Por qué está sobrevalorado del sexo? No. ¿Qué? … en el jueguito, te metes en la grieta del invocador, porque estás jugando ahí adentro. Pero en realidad el juego es el Dios Legend, que es el LOL.
 
@@ -158,7 +144,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: A
 - tipo: anécdota
 - titulo: Conocí a mis dos novios jugando al Counter
-- por\_que: Anécdota personal entrañable y graciosa sobre encontrar pareja en videojuegos.
+- por_que: Anécdota personal entrañable y graciosa sobre encontrar pareja en videojuegos.
 
 > Tuve dos novios en mi vida. A los dos los conocí jugando al Counter. Sí, sí, ¿cuándo iba a ser? Es el nuevo Tinder. Pero escúchame, tiene 2000 … como ahora no tengo un tercer novio, Yo digo que a mi tercer novio lo voy a conocer jugando al Counter 2, que es el último que salió.
 
@@ -172,7 +158,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: A
 - tipo: cruce con el público
 - titulo: ¿Te masturbás mientras jugás?
-- por\_que: Pregunta atrevida con respuesta ingeniosa y contundente, genera reacción inmediata.
+- por_que: Pregunta atrevida con respuesta ingeniosa y contundente, genera reacción inmediata.
 
 > Pregunto, digo Mientras juegan, ¿hubo alguna vez una masturbación? Por favor ¿Cómo? ¿Pero no te dan las manos? Si vos tenés que jugar con las dos manos ¿En … yo priorizo el juego siempre Yo ni en pedo pierdo Yo soy muy competitiva, no hay chance que deje el mouse ni el AWS para moverme. Para nada.
 
@@ -186,7 +172,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: frase citable
 - titulo: El calzoncillo con la toallita
-- por\_que: Recuerdo nostálgico absurdo con remate visual descriptivo muy gracioso.
+- por_que: Recuerdo nostálgico absurdo con remate visual descriptivo muy gracioso.
 
 > y estamos claramente en un contexto donde, bueno, entre gente que no usa forro y además la situación económica, Tulipan es una de las empresas afectadas. Hay que … te lo pensás, Mirás para abajo. No te quejes, No te quejes. ¿Cómo qué? Si te dicen Gagá en el chal No, no Es un pedo mal puesto.
 
@@ -200,23 +186,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: frase citable
 - titulo: No se usa más el dedo, chicos
-- por\_que: Chiste rápido y filoso sobre la colonoscopía que cierra con la marca del programa.
+- por_que: Chiste rápido y filoso sobre la colonoscopía que cierra con la marca del programa.
 
 > Claro. Bueno, eso es difícil, creo que históricamente. Pero pará, pará, pará. Yo cuando era joven tampoco me hacía un estudio. Por eso te digo, pero ahora no … No, no, no. No, te pueden bañar. Te pueden bañar. No, yo estoy acá. Yo me bañé. No, te pueden bañar. Eso era próstata, no es lo mismo.
-
-### R14 · B · Estafadores y chorros: el remate a la explicación económica
-
-[▶ tramo 43:08](https://youtu.be/Nn0kxFXDfX4?t=2588) · [▶ núcleo 43:18](https://youtu.be/Nn0kxFXDfX4?t=2598) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, es flujo y corto
-- tramo: 2588 – 2627
-- nucleo: 2598 – 2627   (43:18–43:47, 29 s)
-- calidad: B
-- tipo: opinión
-- titulo: Estafadores y chorros: el remate a la explicación económica
-- por\_que: Cierre filoso y con humor a una explicación económica compleja, aplaudido en vivo.
-
-> Planchó el tipo de cambio y los costos argentinos quedaron muy altos porque al principio. O sea, no tenemos solución, chicos. No sé, hay que poner una copa … me paraste nada Bueno, si te interrumpo porque si te interrumpo Gracias, en serio. Muy didáctica. Me gustó para la próxima. Está la otra. Un aplauso para Colo.
 
 ### R15 · A · Preguntas íntimas a Pachu: eutanasia, edad y pastillas
 
@@ -228,7 +200,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: A
 - tipo: cruce con el público
 - titulo: Preguntas íntimas a Pachu: eutanasia, edad y pastillas
-- por\_que: Batería de preguntas rápidas con respuestas honestas y divertidas, ritmo ideal para clip corto.
+- por_que: Batería de preguntas rápidas con respuestas honestas y divertidas, ritmo ideal para clip corto.
 
 > sí edad de imputería a los 8 años ¿sí o no? no es mucho 8 años es mucho 14 está bien Es mucho ¿Cómo te gustaría morir? Volviendo … Morocha, Morocha Pastilla Azul, ¿sí o no? DRF DRF De anís. De anís, que es la azul. ¿Tim vacío o timbano? ¿Cómo? ¿Tim vacío o timbano? Tim vacío.
 
@@ -242,37 +214,9 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: frase citable
 - titulo: Pachu quiere reencarnarse en gaviota
-- por\_que: Respuesta tierna y original sobre la muerte y la reencarnación, con humor liviano.
+- por_que: Respuesta tierna y original sobre la muerte y la reencarnación, con humor liviano.
 
 > en un ave en una gaviota me gusta el mar me gusta que me den galletitas así que lindo comerme la masita que lindo que lindo Paloma de … después de la muerte? Hay algo muy lindo ¿Qué es? Más allá es de reencontrarte con tus seres queridos La paz, la eternidad El descanso En un velmo
-
-### R17 · B · Reírse en un velorio
-
-[▶ tramo 52:25](https://youtu.be/Nn0kxFXDfX4?t=3145) · [▶ núcleo 52:36](https://youtu.be/Nn0kxFXDfX4?t=3156) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, no tiene remate 
-- tramo: 3145 – 3189
-- nucleo: 3156 – 3184   (52:36–53:04, 28 s)
-- calidad: B
-- tipo: anécdota
-- titulo: Reírse en un velorio
-- por\_que: Anécdota corta y universal sobre tentarse de risa en el peor momento posible.
-
-> Es un chiste que hacíamos siempre cuando lo íbamos invitados, siempre te piden una anécdota. Entonces nos hacían grabar la anécdota y decíamos, acorate cuando te reíste en … de joda? Me ha pasado de tentarme Y tuve que salir. Me fui, me fui obviamente Porque no te podés quedar ahí. No me acuerdo que había pasado.
-
-### R18 · A · El cuestionario de Luis Ventura sobre técnicos de fútbol
-
-[▶ tramo 57:17](https://youtu.be/Nn0kxFXDfX4?t=3437) · [▶ núcleo 59:12](https://youtu.be/Nn0kxFXDfX4?t=3552) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, quedo muy largo y hay un tema en medio
-- tramo: 3437 – 3620
-- nucleo: 3552 – 3613   (59:12–1:00:13, 61 s)
-- calidad: A
-- tipo: imitación
-- titulo: El cuestionario de Luis Ventura sobre técnicos de fútbol
-- por\_que: Juego de ego con video incluido, muy gracioso por lo que revela sin querer.
-
-> A ver, veamos el video. Disfrutémoslo. Luis Ventura. Habla cuando un entrenador es mejor que vos. Huevo Rondina. Zapito Collioni. Matías Modoro. Caruso Lombardi. Caruso. Zinedine Zidane. No, … técnico de Brasil, El más ganador es como el Bianchi de Europa, pero Diego, él se cree que es el mejor, Dejalo, aventurita, cree que es el mejor.
 
 ### R19 · B · La sillita de plástico de Luis Ventura
 
@@ -284,7 +228,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: anécdota
 - titulo: La sillita de plástico de Luis Ventura
-- por\_que: Detalle insólito y visual contado con gracia sobre una figura conocida.
+- por_que: Detalle insólito y visual contado con gracia sobre una figura conocida.
 
 > ¿Sabés lo que hace Luis Ventura, no? Cuando está en la cancha de Victoriano Arenas. Porque él lleva una sillita porque no puede estar mucho tiempo parado porque … la cancha o cuando está haciendo... Como viene la ladera. ¿Viste como la ladrita? Como en el café caliente. Se lleva la sillita de plástico para todos lados.
 
@@ -292,71 +236,15 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 
 [▶ tramo 1:01:55](https://youtu.be/Nn0kxFXDfX4?t=3715) · [▶ núcleo 1:02:54](https://youtu.be/Nn0kxFXDfX4?t=3774) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: si, es moy acorado igual.
+- decision: si
 - tramo: 3715 – 3810
 - nucleo: 3774 – 3801   (1:02:54–1:03:21, 27 s)
 - calidad: B
 - tipo: anécdota
 - titulo: Bailé folclore con Mariano Martínez a los 13
-- por\_que: Anécdota curiosa y con dato inesperado sobre un actor conocido.
+- por_que: Anécdota curiosa y con dato inesperado sobre un actor conocido.
 
 > No, pero escuchá, anécdota que nos suma. Yo bailé folclore con Mariano Martínez cuando tenía 13 años. ¡Aplausos! ¡Ah, la anécdota que nos suma! Bueno, está bien, chicos. … un acto escolar. Él estaba haciendo la nena en esa época. Anécdotas que nos suman. No, no, no, no. Muy chico. Estaba muy chico para hacer una nena.
-
-### R21 · A · La publicidad del Machu Bus que se cayó
-
-[▶ tramo 1:07:10](https://youtu.be/Nn0kxFXDfX4?t=4030) · [▶ núcleo 1:07:29](https://youtu.be/Nn0kxFXDfX4?t=4049) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, no hay anecdota graciosa es corta
-- tramo: 4030 – 4107
-- nucleo: 4049 – 4097   (1:07:29–1:08:17, 48 s)
-- calidad: A
-- tipo: anécdota
-- titulo: La publicidad del Machu Bus que se cayó
-- por\_que: Anécdota meta sobre la propia carrera con un remate emotivo sobre envejecer.
-
-> Pongan la foto de Pachu Me da vergüenza, me llamó Gerardo Rosín, que era productor, me dice, esto es posta, me tenés que hacer un favor, decime que … Lindo mal. Es el chino de Aril. No, lindo, lindo. Pero, bravo. Me dejó la bola, Pachu. Che, tan mal la hice que hay que hacerla de nuevo.
-
-### R22 · B · El truco de la prenda barata en cámara oculta
-
-[▶ tramo 1:09:35](https://youtu.be/Nn0kxFXDfX4?t=4175) · [▶ núcleo 1:09:43](https://youtu.be/Nn0kxFXDfX4?t=4183) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, muy corto no se entiende.
-- tramo: 4175 – 4215
-- nucleo: 4183 – 4211   (1:09:43–1:10:11, 28 s)
-- calidad: B
-- tipo: anécdota
-- titulo: El truco de la prenda barata en cámara oculta
-- por\_que: Anécdota de detrás de escena de un formato clásico de TV, con dato curioso.
-
-> No, eso sí. Vos sabés que a veces se me aparecía gente mayor a tocarme la prenda, que era muy barata. ese era el gancho, ¿no? Claro. Se … planta. Y Se hizo el muertito, el tipo que asustó, y el tipo se asustó todo. Ah, no. Es el bait del bait. Se lo hizo al revés.
-
-### R23 · B · Nominación al confesionario por spoiler de Casi Ángeles
-
-[▶ tramo 1:12:38](https://youtu.be/Nn0kxFXDfX4?t=4358) · [▶ núcleo 1:12:53](https://youtu.be/Nn0kxFXDfX4?t=4373) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, no se entiende.
-- tramo: 4358 – 4420
-- nucleo: 4373 – 4416   (1:12:53–1:13:36, 43 s)
-- calidad: B
-- tipo: frase citable
-- titulo: Nominación al confesionario por spoiler de Casi Ángeles
-- por\_que: Gag de Gran Hermano bien ejecutado en vivo que genera risa y complicidad.
-
-> Nos trajo la gerencia. Mariana fue dato, no fue opinión. Claro. ¿Quién trabajaba, Patito Feo? Entonces, ¿por qué se van? No es paraquilón. Yo no quiero estar en … Sí, es la opinión, acá lo están diciendo, mirá, acá me avalan. Y le voy a dar un voto a Pachu. Gracias. Las cosas pasan, hay que decirlo.
-
-### R24 · A · Pachu, gran oleador de tangas
-
-[▶ tramo 1:14:55](https://youtu.be/Nn0kxFXDfX4?t=4495) · [▶ núcleo 1:14:59](https://youtu.be/Nn0kxFXDfX4?t=4499) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: no, no tiene remate son dos temas.
-- tramo: 4495 – 4560
-- nucleo: 4499 – 4552   (1:14:59–1:15:52, 53 s)
-- calidad: A
-- tipo: frase citable
-- titulo: Pachu, gran oleador de tangas
-- por\_que: Absurdo total con confusión de idiomas que escala hasta lo ridículo, muy compartible.
-
-> Pachu, un gran goleador de tangas. Me tengo que ir. Me tengo que ir al lado de él. Me está incomodando un poco. ¿Por qué te incomoda? Y … bien, Pachi. Huele bien, Pachi. Qué pregunta, Pachi. Isi Miyaki. Ah, Isi Miyaki. Ese no habla español, amigo. Está pidiendo sushi. ¿Es un rol? No quiere news, ese.
 
 ### R25 · B · Me río de nervios: el gol anulado de Newell's
 
@@ -368,7 +256,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: B
 - tipo: frase citable
 - titulo: Me río de nervios: el gol anulado de Newell's
-- por\_que: Reacción cómica en vivo a una mala noticia deportiva mientras debe seguir trabajando.
+- por_que: Reacción cómica en vivo a una mala noticia deportiva mientras debe seguir trabajando.
 
 > ¡Es limitado! Me ríe de nervios, le anularon un gol sobre la hora. El Lovar, no sé, el árbitro se confabularon y lo privaron. No te rías, Tenés que ser profesional. No fui a la cancha para venir acá. Y así lo trae tan hijo de puta. Y así te pagan.
 
@@ -376,13 +264,13 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 
 [▶ tramo 1:18:20](https://youtu.be/Nn0kxFXDfX4?t=4700) · [▶ núcleo 1:19:54](https://youtu.be/Nn0kxFXDfX4?t=4794) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: arranca muy temprano, pero es bueno  asi que si.
+- decision: si
 - tramo: 4700 – 4855
 - nucleo: 4794 – 4848   (1:19:54–1:20:48, 54 s)
 - calidad: B
 - tipo: opinión
 - titulo: ¿Se puede hacer humor político hoy?
-- por\_que: Reflexión filosa sobre la autocensura de los comediantes con remate optimista sobre la tele.
+- por_que: Reflexión filosa sobre la autocensura de los comediantes con remate optimista sobre la tele.
 
 > Amarillo. Amarillo. ¿Por qué? Porque sinceramente no me causa mucha gracia ¡Sos cuca! ¡No! ¡Sos libertario! ¡Sos Morila! ¡Nada! ¡Troco! ¡Partido Verde! ¡Entonces Ocribio! Hemos hecho humor político, … bien todo por donde tiene que ser El respeto ante todo Por eso manga de... Dale, decilo, Son dos ideas. Dale, dale, Pacho, ya está. Manga de forro.
 
@@ -396,7 +284,6 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Nn0kx
 - calidad: A
 - tipo: anécdota
 - titulo: El mozo que le insistía "dale, maricón, comete un plato"
-- por\_que: Anécdota fuerte y real con tensión creciente y remate contundente sobre el exceso de confianza.
+- por_que: Anécdota fuerte y real con tensión creciente y remate contundente sobre el exceso de confianza.
 
 > Después, la del dedo. Estamos haciendo una comedia con Pedro en Azul, provincia de Buenos Aires, y luego nos llevan a comer a un lugar ahí con toda … Dale, maricón, comete un plato. Dale, maricón, dale, maricón. Esto fue hace poco, ¿eh? Y yo le dije, me tocas una vez más y te rompo la gente.
-

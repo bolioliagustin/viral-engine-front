@@ -340,6 +340,42 @@ def _parse_rango(txt: str, campo: str, mid: str) -> tuple[float, float]:
     return parse_tiempo(m.group(1)), parse_tiempo(m.group(2))
 
 
+# `decision:` acepta un comentario libre después de la palabra clave
+# ("si, pero el título no cuenta de qué se habla", "no, no tiene remate"):
+# el comentario es el porqué de la decisión y es el dato más valioso de la
+# validación (25-sep-2026, Agustín). "si y no, …" cuenta como `si` y queda
+# marcada como ambigua para revisarla.
+_RE_DECISION = re.compile(
+    r"^\s*(s[ií]|no|pendiente|mantener|borrar)\b(\s+y\s+no\b)?[\s,.;:\-–—]*(.*)$",
+    re.I | re.S,
+)
+_SINONIMOS_DECISION = {"sí": "si", "mantener": "si", "borrar": "no"}
+# Decisión al final, con conector explícito: "arranca muy temprano, pero es
+# bueno así que sí." (caso real de la validación de Nn0kxFXDfX4). Solo con
+# "así que": un "no" suelto al final ("…pero no") sería ambiguo.
+_RE_DECISION_AL_FINAL = re.compile(r"^(.*?)[\s,;]*\bas[ií]\s+que\s+(s[ií]|no)\s*[.!]*\s*$", re.I | re.S)
+
+
+def _parse_decision(texto: str, mid: str) -> tuple[str, str | None, bool]:
+    """(decision, comentario o None, ambigua) de la línea `decision:`."""
+    m = _RE_DECISION.match(texto or "")
+    if not m:
+        final = _RE_DECISION_AL_FINAL.match(texto or "")
+        if final:
+            dec = _SINONIMOS_DECISION.get(final.group(2).lower(), final.group(2).lower())
+            return dec, (final.group(1).strip() or None), False
+        raise ValueError(f"{mid}: decision {texto!r} no empieza con si / no / pendiente")
+    palabra = m.group(1).lower()
+    dec = _SINONIMOS_DECISION.get(palabra, palabra)
+    if dec not in DECISIONES:
+        raise ValueError(f"{mid}: decision {texto!r} no es si / no / pendiente")
+    ambigua = bool(m.group(2)) and dec == "si"
+    comentario = m.group(3).strip()
+    if ambigua:
+        comentario = f"(si y no) {comentario}".strip()
+    return dec, (comentario or None), ambigua
+
+
 def parsear_markdown(md: str) -> dict[str, Any]:
     """Devuelve {'excluir': [...], 'bloques': [{id, decision, ...}]} del markdown editado."""
     excluir = [
@@ -353,11 +389,12 @@ def parsear_markdown(md: str) -> dict[str, Any]:
         cuerpo = md[pos:fin]
         campos = {k: v.strip() for k, v in _RE_CAMPO.findall(cuerpo)}
         b: dict[str, Any] = {"id": mid}
-        dec = (campos.get("decision") or "pendiente").lower()
-        dec = {"sí": "si", "mantener": "si", "borrar": "no"}.get(dec, dec)
-        if dec not in DECISIONES:
-            raise ValueError(f"{mid}: decision {dec!r} no es si / no / pendiente")
+        dec, comentario, ambigua = _parse_decision(campos.get("decision") or "pendiente", mid)
         b["decision"] = dec
+        if comentario:
+            b["comentario_validacion"] = comentario
+        if ambigua:
+            b["decision_ambigua"] = True
         if "tramo" in campos:
             b["inicio"], b["fin"] = _parse_rango(campos["tramo"], "tramo", mid)
         if "nucleo" in campos:
@@ -407,7 +444,13 @@ def aplicar_validacion(doc: dict, md: str, *, validador: str, fecha: str | None 
         if m is None:
             raise ValueError(f"{b['id']}: no existe en el JSON (para agregar usá '### NUEVO')")
         vistos.add(b["id"])
-        cambios = {k: v for k, v in b.items() if k not in ("id", "decision") and m.get(k) != v}
+        # El comentario y la marca de ambigüedad son el porqué de la
+        # decisión, no correcciones del momento: se guardan aparte.
+        notas = {k: b[k] for k in ("comentario_validacion", "decision_ambigua") if k in b}
+        cambios = {
+            k: v for k, v in b.items()
+            if k not in ("id", "decision", "comentario_validacion", "decision_ambigua") and m.get(k) != v
+        }
         # m:ss redondea a segundos: no contar como corrección un cambio < 1 s
         cambios = {
             k: v for k, v in cambios.items()
@@ -421,12 +464,14 @@ def aplicar_validacion(doc: dict, md: str, *, validador: str, fecha: str | None 
         if b["decision"] == "si":
             m["validado_por"] = validador
             m["fecha_validacion"] = fecha
+            m.update(notas)
             conteo["validados"] += 1
         elif b["decision"] == "no":
             doc["momentos"].remove(m)
-            doc.setdefault("descartados", []).append(
-                {**m, "descartado_por": validador, "fecha_descarte": fecha}
-            )
+            descarte = {**m, "descartado_por": validador, "fecha_descarte": fecha}
+            if "comentario_validacion" in notas:
+                descarte["motivo_descarte"] = notas["comentario_validacion"]
+            doc.setdefault("descartados", []).append(descarte)
             conteo["borrados"] += 1
         else:
             conteo["pendientes"] += 1

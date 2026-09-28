@@ -24,8 +24,7 @@
     {
       "inicio": 3706.0,
       "fin": 3722.0,
-      "motivo": "Publicidad/promoción del libro del entrevistado",
-      "autor": "borrador:anthropic/claude-sonnet-5"
+      "motivo": "Publicidad/promoción del libro del entrevistado"
     }
   ],
   "momentos": [
@@ -42,8 +41,9 @@
       "cita_inicio": "Lo más probable es que se queden en heces",
       "cita_fin": "en algunas ocasiones estos roedores han podido arañar o morder",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R02",
@@ -58,8 +58,9 @@
       "cita_inicio": "hay uno en Norteamérica muy curioso porque se le llamó",
       "cita_fin": "Esta mortalidad se calcula en un 30-40%",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R03",
@@ -74,8 +75,9 @@
       "cita_inicio": "dentro de estos americanos, la estrella",
       "cita_fin": "Y es el que nos ha tocado",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R04",
@@ -90,8 +92,10 @@
       "cita_inicio": "Pues mira, es que en la pandemia Jordi",
       "cita_fin": "tengo una colección de rotuladores de cristal fantásticos",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "pero es muy flojo por que cuenta que lo hizo pero no explica."
     },
     {
       "id": "R05",
@@ -106,8 +110,9 @@
       "cita_inicio": "vamos al resumen de las seis situaciones",
       "cita_fin": "y en poca distancia más de media hora",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R06",
@@ -122,8 +127,10 @@
       "cita_inicio": "y ahí vamos a la potencialidad de originar",
       "cita_fin": "Porque el cero en la ciencia muchas veces no existe",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "pero el titulo no cuenta de que se habla. que virus?"
     },
     {
       "id": "R07",
@@ -138,8 +145,9 @@
       "cita_inicio": "La enfermedad más contagiosa que se conoce",
       "cita_fin": "es un 96%",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R08",
@@ -154,8 +162,9 @@
       "cita_inicio": "¿Cuál es el número reproductivo máximo",
       "cita_fin": "cada persona puede contagiar a una o menos",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R09",
@@ -170,8 +179,10 @@
       "cita_inicio": "Había supercontagiadores, personas que tenían mucho virus",
       "cita_fin": "de estas 33 personas fallecieron 11",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "re ver títulos"
     },
     {
       "id": "R10",
@@ -186,8 +197,10 @@
       "cita_inicio": "el ultimísimo que ha habido en Argentina",
       "cita_fin": "Estamos hablando de nuevo de un 33% de letalidad",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "hay q ver el titulo para que de contexto de que trata"
     },
     {
       "id": "R11",
@@ -202,8 +215,10 @@
       "cita_inicio": "Si tú piensas que un barco de 150 personas",
       "cita_fin": "tiene muy mala capacidad de transmitirse entre personas",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "pero otra vez hay qser mas claro con el titulo por que no nombra con que compara."
     },
     {
       "id": "R12",
@@ -218,24 +233,9 @@
       "cita_inicio": "esto nos puede llevar a uno de los hipotéticos contactos",
       "cita_fin": "fuera el que lo introdujera en el barco",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R13",
-      "inicio": 1748.0,
-      "fin": 1857.0,
-      "nucleo_inicio": 1755.0,
-      "nucleo_fin": 1854.0,
-      "tipo": "anécdota",
-      "calidad": "A",
-      "titulo": "La azafata que ayudó a la enferma sin saberlo",
-      "por_que": "Anécdota con tensión (¿se contagió?) y resolución satisfactoria (salió negativa).",
-      "cita_inicio": "La señora holandesa se monta en el avión",
-      "cita_fin": "gracias a Dios la azafata ha salido negativa",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R14",
@@ -250,8 +250,9 @@
       "cita_inicio": "De hecho, yo creo que el único virus",
       "cita_fin": "es más cabrón el VIH que el jantavirus",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R15",
@@ -266,8 +267,9 @@
       "cita_inicio": "Es decir, los virus dentro de nuestras células",
       "cita_fin": "Porque si no, se quedan sin comida, sin sustento",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R16",
@@ -282,8 +284,9 @@
       "cita_inicio": "No tiene pinta de ser. Es capacidad cero de pandemia",
       "cita_fin": "eso le da cero probabilidad pandémica",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R17",
@@ -298,8 +301,10 @@
       "cita_inicio": "Hoy me he entrevistado con Radio Canarias",
       "cita_fin": "las ratas no van a llegar al puerto",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "flojo pero valido"
     },
     {
       "id": "R18",
@@ -314,8 +319,9 @@
       "cita_inicio": "la que más nos agobia a todos",
       "cita_fin": "hay que estar muy vigilante",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R19",
@@ -330,8 +336,9 @@
       "cita_inicio": "Y fíjate cosas tan bonitas como el sexo",
       "cita_fin": "mejora tu longevidad, tu felicidad, y tu sistema inmunitario",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R20",
@@ -346,8 +353,10 @@
       "cita_inicio": "Y de hecho, en el caso del alcohol",
       "cita_fin": "no puedes decir que es saludable",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "pero muy flojo"
     },
     {
       "id": "R21",
@@ -362,8 +371,9 @@
       "cita_inicio": "Desde hace muchos años hubo un inmunólogo",
       "cita_fin": "una mujer de 26-27 años, una mujer joven",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R22",
@@ -378,8 +388,9 @@
       "cita_inicio": "El abuso tecnológico deprime al sistema inmunitario",
       "cita_fin": "nos puede joder un poquito el sistema inmunitario",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R23",
@@ -394,11 +405,32 @@
       "cita_inicio": "cuando la azafata esta famosa, me llaman a un medio",
       "cita_fin": "está aislada, está aislada",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     }
   ],
-  "descartados": [],
+  "descartados": [
+    {
+      "id": "R13",
+      "inicio": 1748.0,
+      "fin": 1857.0,
+      "nucleo_inicio": 1755.0,
+      "nucleo_fin": 1854.0,
+      "tipo": "anécdota",
+      "calidad": "A",
+      "titulo": "La azafata que ayudó a la enferma sin saberlo",
+      "por_que": "Anécdota con tensión (¿se contagió?) y resolución satisfactoria (salió negativa).",
+      "cita_inicio": "La señora holandesa se monta en el avión",
+      "cita_fin": "gracias a Dios la azafata ha salido negativa",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": null,
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "es my flojo por que no hay remate"
+    }
+  ],
   "transcript": {
     "source": "whisper_full",
     "model": "whisper-large-v3-turbo",
