@@ -116,6 +116,10 @@ _Avoid_: tipo, género, nicho
 Selección de momentos sobre el transcript completo: timestamps, hook conceptual, overlay borrador y scores preliminares. No genera copy.
 _Avoid_: análisis, analysis
 
+**Ventana**:
+Tramo del transcript (20 min por defecto, con 3 min de solape con la Ventana vecina) que ve una sola llamada de la Pasada A cuando la selección corre por Ventanas (W21, `SELECCION_POR_VENTANAS`). Cada Ventana recibe un cupo de candidatos proporcional a sus minutos; las Ventanas corren en paralelo y sus candidatos se unen deduplicando y fusionando la misma historia partida en el borde. Los timestamps siguen siendo absolutos.
+_Avoid_: chunk, tramo (reservado para los pedazos de audio de Whisper), bloque, segmento
+
 **Pasada B**:
 Generación del copy definitivo (piezas de copy, hook y overlay finales) a partir de la transcripción del clip.
 _Avoid_: copy generation, regeneración de copy

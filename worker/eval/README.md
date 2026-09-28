@@ -166,6 +166,28 @@ python eval/run_golden_set.py --tier seleccion --recalcular eval/runs/<corrida>.
 - Baseline: `runs/2026-09-23-seleccion-baseline.json` (tabla en
   `runs/README.md`).
 
+### Medir la Pasada A por Ventanas (W21)
+
+```bash
+cd worker
+SELECCION_POR_VENTANAS=on python eval/run_golden_set.py --tier seleccion --reps 3 --workers 1 --json \
+  2>eval/runs/$(date +%F)-seleccion-ventanas.log >eval/runs/$(date +%F)-seleccion-ventanas.json
+# Tabla antes → después por video y criterios de G1 (gratis):
+python eval/g1_seleccion.py eval/runs/2026-09-28-seleccion-baseline-validado.json \
+  eval/runs/$(date +%F)-seleccion-ventanas.json
+```
+
+- `--workers 1`: cada Pasada A ya hace hasta 4 llamadas en paralelo; con 4
+  workers serían 16 a la vez y OpenRouter devuelve 402 con saldo bajo.
+- El lado "off" es el baseline validado del 28-sep: con el flag apagado, el
+  código de la Pasada A es el mismo (solo cambia `PROMPT_VERSION`, que el tier
+  no usa porque no lee la caché).
+- Cada candidato guarda `ventana` y, si se fusionó, `fusionado_de`; cada
+  repetición guarda `pasada_a` (modo, Ventanas, cupos, fallidas, costo y
+  segundos de la Pasada A sola). `metricas.sin_fusion` recalcula
+  `recall_completo` e `historias_partidas` deshaciendo las fusiones: una sola
+  corrida dice si la fusión ayuda (si no, `VENTANAS_FUSION=off`).
+
 ### No contaminar producción (PLAN_MEJORA §4.1)
 
 El `.env` de la raíz apunta a la base de la beta. En los tiers `seleccion` y
