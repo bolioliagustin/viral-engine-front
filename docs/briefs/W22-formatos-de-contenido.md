@@ -8,6 +8,15 @@ Leé [`../PLAN_MEJORA.md`](../PLAN_MEJORA.md) §1 (H8, H9), §2 (la fila del ton
 
 El clasificador lee los primeros 1500 caracteres y elige podcast o business. Un programa de humor con 5 panelistas y público salió "podcast", y el foco de podcast está pensado para entrevistas: pregunta → respuesta sorprendente, revelación del invitado. Además la Pasada A propone historias de 30–50 s aunque el prompt diga 40–90, y no excluye la publicidad (en `B60BHDNFNxM` hay un aviso de DiDi en 3100–3168 s).
 
+## Criterio de Agustín por formato (validación del 28-sep)
+
+Leé `worker/eval/runs/2026-09-28-analisis-validacion.md` §3 y §5. Resumen, que es la especificación del foco por Formato:
+- **clase:** impacto + automatismo + resultado + **cómo** se hace; contexto ANTES del resultado; "solo lo muestra" se descarta; importa la frescura.
+- **monólogo:** idea completa con conclusión; nada de frases sueltas (se descartaron casi todas las de 6–19 s).
+- **charla:** anécdota con remate, entendible sola, un solo tema, que llegue rápido al punto; sin rutinas del programa, sin publicidad, sin reacciones largas.
+- **entrevista:** acepta casi todo (96 %).
+- **Duración:** mediana del núcleo 43 s en los aceptados y 29 s en los descartados. Pedí ideas completas de ≥ ~30 s; una frase corta, solo si es excepcional.
+
 ## Comportamiento actual
 
 - `get_video_category(video_info, client, transcript_excerpt)` devuelve `podcast` o `business` (con `entertainment` detrás de un flag, pero `get_selection_prompt` solo distingue podcast del resto).

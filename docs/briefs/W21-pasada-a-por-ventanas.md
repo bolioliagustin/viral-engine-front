@@ -8,6 +8,16 @@ Leé [`../PLAN_MEJORA.md`](../PLAN_MEJORA.md) §1 (H6–H8), §5 (D4) y el Anexo
 
 Con el transcript correcto de un video de 111 min, la Pasada A devolvió 30 candidatos en orden cronológico, todos en los primeros 51 min (cuartos [17, 13, 0, 0]). Con el mismo prompt por ventanas de ~28 min, la segunda hora pasó de 0 a 16 candidatos, pero una historia se perdió en el borde entre dos ventanas.
 
+## Evidencia nueva (validación de Agustín, 28-sep)
+
+Leé `worker/eval/runs/2026-09-28-analisis-validacion.md`.
+- Baseline contra 121 Referencias validadas: `recall_completo` A **33 %** macro (~23 % en videos largos), `min_cuarto` **7 %**. Es la vara de esta línea.
+- Lo mejor está repartido en todo el video: en business_spanish_01, 8 de los 17 aceptados están en el último cuarto, donde la Pasada A pone 5 de 90 candidatos.
+- Los borradores de Sonnet 5, en UNA llamada, cubren parejo (cuarto mínimo 13–22 %). El sesgo viene del modelo y el prompt actuales.
+- Los "sí, pero…" piden fusionar momentos contiguos ("lo extendería con R10") y llegar al remate: la fusión de historias de esta línea importa.
+
+**Variable aparte (después de medir las Ventanas con el modelo actual):** una Pasada A de una sola llamada con un modelo más fuerte (p. ej. `anthropic/claude-sonnet-5` o un Gemini Pro), detrás de `MODEL_ANALYSIS`. **Circularidad:** las Referencias salieron de borradores de Sonnet, así que ese recall sale inflado. Evaluala por `min_cuarto`, `historias_partidas`, costo y latencia, y reportá el recall marcado como "circular". Tope de gasto de esa prueba: US$6.
+
 ## Comportamiento actual
 
 `select_moments` hace una sola llamada con el transcript completo y pide `candidate_count(duración)` candidatos (tope 30), "ordenados del mejor al peor". El modelo los devuelve cronológicos y agota el cupo antes del final. `rank_and_prune_candidates` ordena y anota `candidates_all`.
