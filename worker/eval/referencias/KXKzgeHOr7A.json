@@ -23,14 +23,12 @@
     {
       "inicio": 115.0,
       "fin": 131.0,
-      "motivo": "Pedido de like y mención del equipo del canal, sin contenido de valor.",
-      "autor": "borrador:anthropic/claude-sonnet-5"
+      "motivo": "Pedido de like y mención del equipo del canal, sin contenido de valor."
     },
     {
       "inicio": 1088.0,
       "fin": 1158.0,
-      "motivo": "Cierre del video con autopromoción de curso/comunidad y despedida, sin curva de contenido.",
-      "autor": "borrador:anthropic/claude-sonnet-5"
+      "motivo": "Cierre del video con autopromoción de curso/comunidad y despedida, sin curva de contenido."
     }
   ],
   "momentos": [
@@ -47,24 +45,9 @@
       "cita_inicio": "Cloud es como si nosotros tuviésemos a un experto en todo",
       "cita_fin": "uno tiene manos y el otro no.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R02",
-      "inicio": 133.0,
-      "fin": 153.0,
-      "nucleo_inicio": 138.0,
-      "nucleo_fin": 152.0,
-      "tipo": "dato",
-      "calidad": "B",
-      "titulo": "Un software financiero en 3 días sin programar",
-      "por_que": "Dato sorprendente y concreto que demuestra el potencial de la herramienta.",
-      "cita_inicio": "Este software financiero lo hemos creado en tres días",
-      "cita_fin": "únicamente utilizando Cloud Code.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R03",
@@ -79,8 +62,10 @@
       "cita_inicio": "Dicho esto, vamos a por el hack número uno",
       "cita_fin": "una página web u otra cosa con esa referencia.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "es flojo pero si"
     },
     {
       "id": "R04",
@@ -95,8 +80,9 @@
       "cita_inicio": "El hack número 2 consiste en que le vamos a pedir a Cloud Code",
       "cita_fin": "cuando Cloud necesita cierto permiso.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R05",
@@ -111,8 +97,10 @@
       "cita_inicio": "Para probar esta funcionalidad lo que hice",
       "cita_fin": "cuando necesita hacer algo.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "no es el mejor pero esta bien"
     },
     {
       "id": "R06",
@@ -127,8 +115,9 @@
       "cita_inicio": "Vamos ahora por el hack número 3",
       "cita_fin": "va a poder interactuar como si fuese un humano, entre comillas.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28"
     },
     {
       "id": "R07",
@@ -143,8 +132,10 @@
       "cita_inicio": "Os voy a poner un ejemplo de una tienda",
       "cita_fin": "conectado con Shopify.",
       "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "emprender o ecommerce vende"
     },
     {
       "id": "R08",
@@ -159,8 +150,67 @@
       "cita_inicio": "Una vez que tuvimos esto, fuimos a Cloud",
       "cita_fin": "creada por mi propio equipo.",
       "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "sirve la explicacion de la skill pero no es tan buen contenido,"
+    },
+    {
+      "id": "R11",
+      "inicio": 836.0,
+      "fin": 870.0,
+      "nucleo_inicio": 837.0,
+      "nucleo_fin": 867.0,
+      "tipo": "explicación",
+      "calidad": "B",
+      "titulo": "El archivo que es la memoria de tu proyecto",
+      "por_que": "Explica de forma sencilla un concepto técnico (cloud.md) que suele confundir a los usuarios nuevos.",
+      "cita_inicio": "Y esto ocurre por lo siguiente: nosotros, cuando abrimos un chat en cloud",
+      "cita_fin": "también va a tener una carpeta cloud.md",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "lo extenderia con R10"
+    },
+    {
+      "id": "R13",
+      "inicio": 990.0,
+      "fin": 1053.0,
+      "nucleo_inicio": 993.0,
+      "nucleo_fin": 1053.0,
+      "tipo": "explicación",
+      "calidad": "A",
+      "titulo": "La IA que se revisa a sí misma y encuentra 18 errores",
+      "por_que": "Metáfora fuerte (ojos y manos) más un ejemplo real y numérico que sorprende y cierra bien la idea.",
+      "cita_inicio": "Pasamos ahora al hack número 5 que consiste en que corrija las cosas de forma automática",
+      "cita_fin": "lo solucionó y ya nos entregó esta tienda online sin errores.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
+      "validado_por": "agustin",
+      "fecha": "2026-09-23",
+      "fecha_validacion": "2026-09-28",
+      "comentario_validacion": "de los mejores muestra automatizmo,ejemplos y resultados para emprender."
+    }
+  ],
+  "descartados": [
+    {
+      "id": "R02",
+      "inicio": 133.0,
+      "fin": 153.0,
+      "nucleo_inicio": 138.0,
+      "nucleo_fin": 152.0,
+      "tipo": "dato",
+      "calidad": "B",
+      "titulo": "Un software financiero en 3 días sin programar",
+      "por_que": "Dato sorprendente y concreto que demuestra el potencial de la herramienta.",
+      "cita_inicio": "Este software financiero lo hemos creado en tres días",
+      "cita_fin": "únicamente utilizando Cloud Code.",
+      "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "solo lo muestra y nada mas"
     },
     {
       "id": "R09",
@@ -176,7 +226,10 @@
       "cita_fin": "algo increíble, la verdad.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "es corto"
     },
     {
       "id": "R10",
@@ -192,23 +245,10 @@
       "cita_fin": "porque le tenemos que repetir constantemente lo mismo.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R11",
-      "inicio": 836.0,
-      "fin": 870.0,
-      "nucleo_inicio": 837.0,
-      "nucleo_fin": 867.0,
-      "tipo": "explicación",
-      "calidad": "B",
-      "titulo": "El archivo que es la memoria de tu proyecto",
-      "por_que": "Explica de forma sencilla un concepto técnico (cloud.md) que suele confundir a los usuarios nuevos.",
-      "cita_inicio": "Y esto ocurre por lo siguiente: nosotros, cuando abrimos un chat en cloud",
-      "cita_fin": "también va a tener una carpeta cloud.md",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "es corto lo extenderia con el R11"
     },
     {
       "id": "R12",
@@ -224,23 +264,10 @@
       "cita_fin": "sería totalmente imposible de llevar a cabo.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
-    },
-    {
-      "id": "R13",
-      "inicio": 990.0,
-      "fin": 1053.0,
-      "nucleo_inicio": 993.0,
-      "nucleo_fin": 1053.0,
-      "tipo": "explicación",
-      "calidad": "A",
-      "titulo": "La IA que se revisa a sí misma y encuentra 18 errores",
-      "por_que": "Metáfora fuerte (ojos y manos) más un ejemplo real y numérico que sorprende y cierra bien la idea.",
-      "cita_inicio": "Pasamos ahora al hack número 5 que consiste en que corrija las cosas de forma automática",
-      "cita_fin": "lo solucionó y ya nos entregó esta tienda online sin errores.",
-      "autor": "borrador:anthropic/claude-sonnet-5",
-      "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "no queda claro de que habla"
     },
     {
       "id": "R14",
@@ -256,10 +283,12 @@
       "cita_fin": "ya que ya lo va a hacer de forma automática.",
       "autor": "borrador:anthropic/claude-sonnet-5",
       "validado_por": null,
-      "fecha": "2026-09-23"
+      "fecha": "2026-09-23",
+      "descartado_por": "agustin",
+      "fecha_descarte": "2026-09-28",
+      "motivo_descarte": "es basico."
     }
   ],
-  "descartados": [],
   "transcript": {
     "source": "whisper_full",
     "model": "whisper-large-v3-turbo",

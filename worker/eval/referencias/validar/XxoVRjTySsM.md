@@ -1,6 +1,6 @@
 # Referencias — podcast_general_01 (XxoVRjTySsM)
 
-Video: https://youtu.be/XxoVRjTySsM · duración 1:17:20 · 23 momentos (0 validados, 23 pendientes)
+Video: https://youtu.be/XxoVRjTySsM · duración 1:17:20 · 22 momentos (22 validados, 0 pendientes)
 
 Cómo validar (una pasada, sin apuro):
 
@@ -25,7 +25,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 3:38](https://youtu.be/XxoVRjTySsM?t=218) · [▶ núcleo 3:50](https://youtu.be/XxoVRjTySsM?t=230) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 218 – 268
 - nucleo: 230 – 267   (3:50–4:27, 37 s)
 - calidad: A
@@ -39,7 +39,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 6:32](https://youtu.be/XxoVRjTySsM?t=392) · [▶ núcleo 6:53](https://youtu.be/XxoVRjTySsM?t=413) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 392 – 475
 - nucleo: 413 – 471   (6:53–7:51, 58 s)
 - calidad: A
@@ -53,7 +53,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 8:40](https://youtu.be/XxoVRjTySsM?t=520) · [▶ núcleo 8:47](https://youtu.be/XxoVRjTySsM?t=527) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 520 – 608
 - nucleo: 527 – 606   (8:47–10:06, 79 s)
 - calidad: A
@@ -67,7 +67,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 11:12](https://youtu.be/XxoVRjTySsM?t=672) · [▶ núcleo 11:19](https://youtu.be/XxoVRjTySsM?t=679) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 672 – 738
 - nucleo: 679 – 738   (11:19–12:18, 59 s)
 - calidad: A
@@ -81,7 +81,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 12:46](https://youtu.be/XxoVRjTySsM?t=766) · [▶ núcleo 12:52](https://youtu.be/XxoVRjTySsM?t=772) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 766 – 863
 - nucleo: 772 – 863   (12:52–14:23, 91 s)
 - calidad: A
@@ -95,7 +95,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 16:00](https://youtu.be/XxoVRjTySsM?t=960) · [▶ núcleo 16:20](https://youtu.be/XxoVRjTySsM?t=980) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 960 – 1006
 - nucleo: 980 – 1006   (16:20–16:46, 26 s)
 - calidad: A
@@ -109,7 +109,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 16:48](https://youtu.be/XxoVRjTySsM?t=1008) · [▶ núcleo 17:11](https://youtu.be/XxoVRjTySsM?t=1031) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1008 – 1121
 - nucleo: 1031 – 1121   (17:11–18:41, 90 s)
 - calidad: A
@@ -123,7 +123,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 18:41](https://youtu.be/XxoVRjTySsM?t=1121) · [▶ núcleo 18:46](https://youtu.be/XxoVRjTySsM?t=1126) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1121 – 1162
 - nucleo: 1126 – 1162   (18:46–19:22, 36 s)
 - calidad: B
@@ -137,7 +137,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 19:52](https://youtu.be/XxoVRjTySsM?t=1192) · [▶ núcleo 20:23](https://youtu.be/XxoVRjTySsM?t=1223) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1192 – 1263
 - nucleo: 1223 – 1263   (20:23–21:03, 40 s)
 - calidad: A
@@ -151,7 +151,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 21:03](https://youtu.be/XxoVRjTySsM?t=1263) · [▶ núcleo 21:10](https://youtu.be/XxoVRjTySsM?t=1270) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1263 – 1294
 - nucleo: 1270 – 1294   (21:10–21:34, 24 s)
 - calidad: A
@@ -165,7 +165,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 22:24](https://youtu.be/XxoVRjTySsM?t=1344) · [▶ núcleo 22:35](https://youtu.be/XxoVRjTySsM?t=1355) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1344 – 1403
 - nucleo: 1355 – 1397   (22:35–23:17, 42 s)
 - calidad: B
@@ -179,7 +179,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 24:53](https://youtu.be/XxoVRjTySsM?t=1493) · [▶ núcleo 25:05](https://youtu.be/XxoVRjTySsM?t=1505) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1493 – 1556
 - nucleo: 1505 – 1556   (25:05–25:56, 51 s)
 - calidad: B
@@ -189,25 +189,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 > De hecho, esto nos puede llevar a uno de los hipotéticos contactos, que fue la azafata. No sé si ha habido una de las mujeres... A ver, en … es muy probable que este varón hubiera cogido la infección en Argentina, que es donde es endémico este virus y donde hay rodedores que transmiten el virus Andes.
 
-### R13 · A · La azafata que ayudó a la enferma sin saberlo
-
-[▶ tramo 29:08](https://youtu.be/XxoVRjTySsM?t=1748) · [▶ núcleo 29:15](https://youtu.be/XxoVRjTySsM?t=1755) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 1748 – 1857
-- nucleo: 1755 – 1854   (29:15–30:54, 99 s)
-- calidad: A
-- tipo: anécdota
-- titulo: La azafata que ayudó a la enferma sin saberlo
-- por_que: Anécdota con tensión (¿se contagió?) y resolución satisfactoria (salió negativa).
-
-> Ese caso hubiera sido el de la azafata. ¿Qué pasa con la azafata? La señora holandesa se monta en el avión donde se lleva en el cadáver de … minutos, ha estado muy próximo la azafata. O sea, a mí aquello no me hubiera rasgado las vestiduras, pero bueno, gracias a Dios la azafata ha salido negativa.
-
 ### R14 · A · "El VIH es más cabrón que el hantavirus"
 
 [▶ tramo 36:39](https://youtu.be/XxoVRjTySsM?t=2199) · [▶ núcleo 36:50](https://youtu.be/XxoVRjTySsM?t=2210) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2199 – 2236
 - nucleo: 2210 – 2232   (36:50–37:12, 22 s)
 - calidad: A
@@ -221,7 +207,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 39:42](https://youtu.be/XxoVRjTySsM?t=2382) · [▶ núcleo 39:50](https://youtu.be/XxoVRjTySsM?t=2390) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2382 – 2466
 - nucleo: 2390 – 2461   (39:50–41:01, 71 s)
 - calidad: A
@@ -235,7 +221,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 42:10](https://youtu.be/XxoVRjTySsM?t=2530) · [▶ núcleo 42:20](https://youtu.be/XxoVRjTySsM?t=2540) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2530 – 2654
 - nucleo: 2540 – 2582   (42:20–43:02, 42 s)
 - calidad: A
@@ -249,7 +235,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 49:31](https://youtu.be/XxoVRjTySsM?t=2971) · [▶ núcleo 49:45](https://youtu.be/XxoVRjTySsM?t=2985) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2971 – 3013
 - nucleo: 2985 – 3009   (49:45–50:09, 24 s)
 - calidad: A
@@ -263,7 +249,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 59:11](https://youtu.be/XxoVRjTySsM?t=3551) · [▶ núcleo 59:16](https://youtu.be/XxoVRjTySsM?t=3556) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3551 – 3660
 - nucleo: 3556 – 3645   (59:16–1:00:45, 89 s)
 - calidad: A
@@ -277,7 +263,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 1:05:28](https://youtu.be/XxoVRjTySsM?t=3928) · [▶ núcleo 1:05:35](https://youtu.be/XxoVRjTySsM?t=3935) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3928 – 3985
 - nucleo: 3935 – 3985   (1:05:35–1:06:25, 50 s)
 - calidad: A
@@ -291,7 +277,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 1:06:49](https://youtu.be/XxoVRjTySsM?t=4009) · [▶ núcleo 1:07:03](https://youtu.be/XxoVRjTySsM?t=4023) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4009 – 4071
 - nucleo: 4023 – 4071   (1:07:03–1:07:51, 48 s)
 - calidad: A
@@ -305,7 +291,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 1:10:09](https://youtu.be/XxoVRjTySsM?t=4209) · [▶ núcleo 1:10:14](https://youtu.be/XxoVRjTySsM?t=4214) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4209 – 4268
 - nucleo: 4214 – 4268   (1:10:14–1:11:08, 54 s)
 - calidad: A
@@ -319,7 +305,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 1:11:46](https://youtu.be/XxoVRjTySsM?t=4306) · [▶ núcleo 1:11:58](https://youtu.be/XxoVRjTySsM?t=4318) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4306 – 4401
 - nucleo: 4318 – 4401   (1:11:58–1:13:21, 83 s)
 - calidad: A
@@ -333,7 +319,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/XxoVR
 
 [▶ tramo 1:14:20](https://youtu.be/XxoVRjTySsM?t=4460) · [▶ núcleo 1:14:27](https://youtu.be/XxoVRjTySsM?t=4467) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4460 – 4537
 - nucleo: 4467 – 4527   (1:14:27–1:15:27, 60 s)
 - calidad: A

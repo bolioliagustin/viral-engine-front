@@ -1,6 +1,6 @@
 # Referencias — user_recommended_01 (MaXgAEI4Vm8)
 
-Video: https://youtu.be/MaXgAEI4Vm8 · duración 1:48:28 · 22 momentos (0 validados, 22 pendientes)
+Video: https://youtu.be/MaXgAEI4Vm8 · duración 1:48:28 · 16 momentos (16 validados, 0 pendientes)
 
 Cómo validar (una pasada, sin apuro):
 
@@ -24,25 +24,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 ## Momentos
 
-### R01 · B · Presentación absurda del programa con apodos
-
-[▶ tramo 0:01](https://youtu.be/MaXgAEI4Vm8?t=1) · [▶ núcleo 0:27](https://youtu.be/MaXgAEI4Vm8?t=27) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 1 – 96
-- nucleo: 27 – 96   (0:27–1:36, 69 s)
-- calidad: B
-- tipo: cruce con el público
-- titulo: Presentación absurda del programa con apodos
-- por_que: La dinámica de presentación con nombres inventados y gritos genera energía inicial reconocible para fans.
-
-> ¿Se cortó el pelo? Sí. No. No. No. No ¡Es Alfredo Montella! ¡No! ¡No, viejo! ¡No, viejo! ¡Cómo está el entiendo, viejo! ¡Oh, oh, oh! A mi derecha … misma día manejando absolutamente todo. Estas manos. Está Harrison. De verdad es que está Maruyama. Está La Cueva, está Caper Estudio. Vas a mano, está Vas, está Cami.
-
 ### R02 · A · El enano Dupont y la teoría del diámetro
 
 [▶ tramo 2:18](https://youtu.be/MaXgAEI4Vm8?t=138) · [▶ núcleo 2:52](https://youtu.be/MaXgAEI4Vm8?t=172) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 138 – 246
 - nucleo: 172 – 246   (2:52–4:06, 74 s)
 - calidad: A
@@ -56,7 +42,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 5:38](https://youtu.be/MaXgAEI4Vm8?t=338) · [▶ núcleo 5:40](https://youtu.be/MaXgAEI4Vm8?t=340) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 338 – 472
 - nucleo: 340 – 420   (5:40–7:00, 80 s)
 - calidad: A
@@ -70,7 +56,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 10:39](https://youtu.be/MaXgAEI4Vm8?t=639) · [▶ núcleo 10:39](https://youtu.be/MaXgAEI4Vm8?t=639) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 639 – 668
 - nucleo: 639 – 665   (10:39–11:05, 26 s)
 - calidad: B
@@ -84,7 +70,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 12:54](https://youtu.be/MaXgAEI4Vm8?t=774) · [▶ núcleo 12:54](https://youtu.be/MaXgAEI4Vm8?t=774) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 774 – 827
 - nucleo: 774 – 827   (12:54–13:47, 53 s)
 - calidad: A
@@ -98,7 +84,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 18:08](https://youtu.be/MaXgAEI4Vm8?t=1088) · [▶ núcleo 18:22](https://youtu.be/MaXgAEI4Vm8?t=1102) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1088 – 1237
 - nucleo: 1102 – 1236   (18:22–20:36, 134 s)
 - calidad: A
@@ -108,25 +94,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 > Y aún así, Yo con Sánchez jugué torneo a futbol. Esa pelea. Bueno, pues hoy en el entrenamiento, hoy en el partidillo, Fede Valverde hace una entrada muy … pelea, ¿vale? Y se encuentran a Fede Valverde con una brecha en la cabeza. y semi-inconsciente. ¿Eh? En el suelo. En el suelo o ya levantado, pero sangrando.
 
-### R07 · A · Imitación de Edu Aguirre contando la pelea
-
-[▶ tramo 22:08](https://youtu.be/MaXgAEI4Vm8?t=1328) · [▶ núcleo 22:38](https://youtu.be/MaXgAEI4Vm8?t=1358) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 1328 – 1432
-- nucleo: 1358 – 1432   (22:38–23:52, 74 s)
-- calidad: A
-- tipo: imitación
-- titulo: Imitación de Edu Aguirre contando la pelea
-- por_que: Imitación exagerada y muy cómica de un periodista real, con remates constantes del panel.
-
-> Sí, sí, sí. Golpeó y evidentemente le llevan al centro. Está ahí estarreando. Hay que llamar a Edu para que diga la verdad. Este tipo miente. ¡Llamalo a … razón de ser. No están al aire, no están al aire. Qué lindo dormir a un tipo en un vestuario de fútbol. Sos el más poderoso del mundo.
-
 ### R08 · B · El comunicado 'perdedor' de Valverde
 
 [▶ tramo 26:49](https://youtu.be/MaXgAEI4Vm8?t=1609) · [▶ núcleo 26:49](https://youtu.be/MaXgAEI4Vm8?t=1609) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1609 – 1784
 - nucleo: 1609 – 1642   (26:49–27:22, 33 s)
 - calidad: B
@@ -140,7 +112,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 31:12](https://youtu.be/MaXgAEI4Vm8?t=1872) · [▶ núcleo 33:42](https://youtu.be/MaXgAEI4Vm8?t=2022) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1872 – 2048
 - nucleo: 2022 – 2048   (33:42–34:08, 26 s)
 - calidad: B
@@ -154,7 +126,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 35:43](https://youtu.be/MaXgAEI4Vm8?t=2143) · [▶ núcleo 36:32](https://youtu.be/MaXgAEI4Vm8?t=2192) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2143 – 2270
 - nucleo: 2192 – 2270   (36:32–37:50, 78 s)
 - calidad: A
@@ -168,7 +140,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 45:00](https://youtu.be/MaXgAEI4Vm8?t=2700) · [▶ núcleo 46:15](https://youtu.be/MaXgAEI4Vm8?t=2775) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2700 – 2849
 - nucleo: 2775 – 2849   (46:15–47:29, 74 s)
 - calidad: B
@@ -178,39 +150,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 > lo Pero no, porque vos ponés una canción de yaquira si Y sos un trolo. Me lo pones esto. Y si ponés la de Italia 90, sos machote, … haciendo referencia al Mundial 90. Y después las otras nos hicieron. El Mundial se lo comió a Pitbull, boludo. No existe más después del Mundial, lo desangeló, boludo.
 
-### R12 · B · El escándalo de la diputada libertaria
-
-[▶ tramo 52:47](https://youtu.be/MaXgAEI4Vm8?t=3167) · [▶ núcleo 52:47](https://youtu.be/MaXgAEI4Vm8?t=3167) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 3167 – 3197
-- nucleo: 3167 – 3190   (52:47–53:10, 23 s)
-- calidad: B
-- tipo: dato
-- titulo: El escándalo de la diputada libertaria
-- por_que: Chisme político-sexual con gancho de intriga fuerte, tema polémico que genera curiosidad.
-
-> Obvio, no, no Tengo Racing Y en verde lo otro que tengo es La graciada diputada libertaria Lilia Lemoyne publicó una... ¿Lo viste? ¿Por qué gracia, Danche? Una … sin prurito alguno. Aunque censuró al masculino que se encontraba debajo de ella, las redes no tardaron en descifrar de quién se trata. Dejen gozar del buen sexo.
-
-### R13 · B · Cambiar el apellido para el Mundial
-
-[▶ tramo 58:41](https://youtu.be/MaXgAEI4Vm8?t=3521) · [▶ núcleo 58:41](https://youtu.be/MaXgAEI4Vm8?t=3521) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 3521 – 3563
-- nucleo: 3521 – 3563   (58:41–59:23, 42 s)
-- calidad: B
-- tipo: frase citable
-- titulo: Cambiar el apellido para el Mundial
-- por_que: Bit absurdo y original sobre cambiarse el apellido para participar en un sorteo.
-
-> ¿Tenés la de Mandela? La de Mandela. Sí, ese soy yo. Ahí es el registro civil de la NU. Tengo... Está ordenado el registro civil de la NU, … Roberto Rodríguez Galati Porque Rodríguez Porque Rodríguez Tengo más chances Pero Robert, si tu apellido no está en la lista de 26 convocados Podés participar igual ¿En serio?
-
 ### R14 · A · Carmen Barbieri: 8 años sin sexo
 
 [▶ tramo 1:01:07](https://youtu.be/MaXgAEI4Vm8?t=3667) · [▶ núcleo 1:01:07](https://youtu.be/MaXgAEI4Vm8?t=3667) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3667 – 3839
 - nucleo: 3667 – 3826   (1:01:07–1:03:46, 159 s)
 - calidad: A
@@ -224,7 +168,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 1:04:34](https://youtu.be/MaXgAEI4Vm8?t=3874) · [▶ núcleo 1:05:09](https://youtu.be/MaXgAEI4Vm8?t=3909) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3874 – 4059
 - nucleo: 3909 – 4043   (1:05:09–1:07:23, 134 s)
 - calidad: B
@@ -238,7 +182,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 1:07:52](https://youtu.be/MaXgAEI4Vm8?t=4072) · [▶ núcleo 1:07:52](https://youtu.be/MaXgAEI4Vm8?t=4072) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4072 – 4238
 - nucleo: 4072 – 4238   (1:07:52–1:10:38, 166 s)
 - calidad: A
@@ -252,7 +196,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 1:10:38](https://youtu.be/MaXgAEI4Vm8?t=4238) · [▶ núcleo 1:11:33](https://youtu.be/MaXgAEI4Vm8?t=4293) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4238 – 4399
 - nucleo: 4293 – 4399   (1:11:33–1:13:19, 106 s)
 - calidad: B
@@ -266,7 +210,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 1:13:36](https://youtu.be/MaXgAEI4Vm8?t=4416) · [▶ núcleo 1:13:36](https://youtu.be/MaXgAEI4Vm8?t=4416) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4416 – 4507
 - nucleo: 4416 – 4507   (1:13:36–1:15:07, 91 s)
 - calidad: A
@@ -276,39 +220,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 > ¡Pagani! ¿Qué pasó? Había prometido que si Colapinto terminaba una carrera entre los primeros nueve, le daba un pico al integrante de su programa de Radio Mitre y … por un sueño Sí, es verdad ¿Por qué? Te ríes Increíble Bien, Horacio un pico cumplió que creó raciol por favor para totalmente que increíble la radio, boludo.
 
-### R19 · B · La remontada en el pool
-
-[▶ tramo 1:37:16](https://youtu.be/MaXgAEI4Vm8?t=5836) · [▶ núcleo 1:37:16](https://youtu.be/MaXgAEI4Vm8?t=5836) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 5836 – 5884
-- nucleo: 5836 – 5884   (1:37:16–1:38:04, 48 s)
-- calidad: B
-- tipo: cruce con el público
-- titulo: La remontada en el pool
-- por_que: Clímax de la partida de pool con celebración genuina y energía real de grupo.
-
-> Si metemos la blanca perdimos Perdimos, perdimos Fue la peor derrota, la peor victoria Dice metejo Compad, compad ¡Garamos! Ganaron, boludo Ganaron Estábamos mal, eh Estábamos mal Tres … Lo que es templanza. Porque nos recuperamos, eso es lo importante. Que estábamos en la ruina y dijimos: "Chuyo, ve cómo se sorprendiste, eh Juan, Bien, bien, bien.
-
-### R20 · B · El chat con el Peque Schwartzman
-
-[▶ tramo 1:39:05](https://youtu.be/MaXgAEI4Vm8?t=5945) · [▶ núcleo 1:39:51](https://youtu.be/MaXgAEI4Vm8?t=5991) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 5945 – 6031
-- nucleo: 5991 – 6031   (1:39:51–1:40:31, 40 s)
-- calidad: B
-- tipo: anécdota
-- titulo: El chat con el Peque Schwartzman
-- por_que: Anécdota divertida con nombre real de tenista, incluye imitación física del drive.
-
-> Y vos, ¿cuántos puntos le tenés que hacer Para ganar uno? Uno No, es terrible. Él me puede ganar, ¿sabes cómo? Si no me la tiras para la … además, ¿está bien? Al pecho, al pecho. El pecho, si se la avanza. Veo buen tenis ahí, ¿eh? Soy un fenómeno. ¿Y el revés? Porque hace la rodeada.
-
 ### R21 · B · Los videos de casas de barro falsos
 
 [▶ tramo 1:43:08](https://youtu.be/MaXgAEI4Vm8?t=6188) · [▶ núcleo 1:43:19](https://youtu.be/MaXgAEI4Vm8?t=6199) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 6188 – 6270
 - nucleo: 6199 – 6270   (1:43:19–1:44:30, 71 s)
 - calidad: B
@@ -322,7 +238,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/MaXgA
 
 [▶ tramo 1:44:22](https://youtu.be/MaXgAEI4Vm8?t=6262) · [▶ núcleo 1:44:26](https://youtu.be/MaXgAEI4Vm8?t=6266) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 6262 – 6276
 - nucleo: 6266 – 6276   (1:44:26–1:44:36, 10 s)
 - calidad: A

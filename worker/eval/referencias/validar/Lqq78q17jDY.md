@@ -1,6 +1,6 @@
 # Referencias — business_spanish_01 (Lqq78q17jDY)
 
-Video: https://youtu.be/Lqq78q17jDY · duración 1:28:50 · 19 momentos (0 validados, 19 pendientes)
+Video: https://youtu.be/Lqq78q17jDY · duración 1:28:50 · 17 momentos (17 validados, 0 pendientes)
 
 Cómo validar (una pasada, sin apuro):
 
@@ -30,7 +30,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 0:55](https://youtu.be/Lqq78q17jDY?t=55) · [▶ núcleo 0:58](https://youtu.be/Lqq78q17jDY?t=58) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 55 – 118
 - nucleo: 58 – 116   (0:58–1:56, 58 s)
 - calidad: A
@@ -44,7 +44,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 18:59](https://youtu.be/Lqq78q17jDY?t=1139) · [▶ núcleo 18:59](https://youtu.be/Lqq78q17jDY?t=1139) · autor: borrador:anthropic/claude-sonnet-5 · también lo propuso: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1139 – 1175
 - nucleo: 1139 – 1174   (18:59–19:34, 35 s)
 - calidad: A
@@ -54,25 +54,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 > Pero básicamente, quédate con la analogía. Es como si a un hombre que está muy fuerte, muy fuerte, muy fuerte, a un ser humano super fuerte, le pones … que tiene que llevar el modelo de Ferrari. Esto es un hombre fuerte culturista que si tiene un cerebro prodigioso ya es brutal, el hombre o la mujer.
 
-### R03 · B · La terminal es como abrirte el cuerpo
-
-[▶ tramo 21:19](https://youtu.be/Lqq78q17jDY?t=1279) · [▶ núcleo 21:19](https://youtu.be/Lqq78q17jDY?t=1279) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 1279 – 1345
-- nucleo: 1279 – 1337   (21:19–22:17, 58 s)
-- calidad: B
-- tipo: explicación
-- titulo: La terminal es como abrirte el cuerpo
-- por_que: Analogía extrema y llamativa (cirugía vs pastilla) que hace entendible algo intimidante como la terminal.
-
-> Esto el coste es el mismo, utilizarlo una u otra, esto es lo mismo todo. Luego tenemos el uso desde la terminal, Tú desde la terminal de tu … de tu ordenador, todo, desde abrir una carpeta, desde escribir un Word, desde entrar a Instagram, O sea, todo eso se puede hacer desde la terminal también, ¿vale?
-
 ### R04 · A · Controlando una lamparita con Claude Code desde la terminal
 
 [▶ tramo 22:56](https://youtu.be/Lqq78q17jDY?t=1376) · [▶ núcleo 22:59](https://youtu.be/Lqq78q17jDY?t=1379) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1376 – 1444
 - nucleo: 1379 – 1435   (22:59–23:55, 56 s)
 - calidad: A
@@ -86,7 +72,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 30:42](https://youtu.be/Lqq78q17jDY?t=1842) · [▶ núcleo 30:58](https://youtu.be/Lqq78q17jDY?t=1858) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 1842 – 1928
 - nucleo: 1858 – 1921   (30:58–32:01, 63 s)
 - calidad: A
@@ -100,7 +86,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 43:30](https://youtu.be/Lqq78q17jDY?t=2610) · [▶ núcleo 43:57](https://youtu.be/Lqq78q17jDY?t=2637) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2610 – 2679
 - nucleo: 2637 – 2679   (43:57–44:39, 42 s)
 - calidad: A
@@ -114,7 +100,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 46:47](https://youtu.be/Lqq78q17jDY?t=2807) · [▶ núcleo 48:16](https://youtu.be/Lqq78q17jDY?t=2896) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 2807 – 2984
 - nucleo: 2896 – 2984   (48:16–49:44, 88 s)
 - calidad: A
@@ -124,25 +110,11 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 > Header, fíjate hasta qué punto Llega Cloud Code Porque vamos a hacer lo mismo que hemos hecho con el mono Pero con la fachada, ¿vale? Que yo ya … que no estén creados con inteligencia artificial. Simplemente quiero que veas el potencial que tiene todo esto y todo lo que vas a aprender de aquí en adelante.
 
-### R08 · A · 7 minutos para crear una web con efecto scroll premium
-
-[▶ tramo 51:16](https://youtu.be/Lqq78q17jDY?t=3076) · [▶ núcleo 51:16](https://youtu.be/Lqq78q17jDY?t=3076) · autor: borrador:anthropic/claude-sonnet-5
-
-- decision: pendiente
-- tramo: 3076 – 3115
-- nucleo: 3076 – 3115   (51:16–51:55, 39 s)
-- calidad: A
-- tipo: dato
-- titulo: 7 minutos para crear una web con efecto scroll premium
-- por_que: Remate con resultado final impactante tras el proceso mostrado, dato de tiempo sorprendente.
-
-> Y ya tenemos el resultado final, Han pasado exactamente 7 minutos desde que le dimos la instrucción a CloudCode, Esta es la página que ha hecho, Fíjate que … header, sino lo puedes aplicar en un montón de secciones más. Y la verdad es que la página también ha quedado bastante, bastante bonita y bastante, bastante interesante.
-
 ### R09 · B · Una web de marca personal creada solo con el Instagram
 
 [▶ tramo 55:27](https://youtu.be/Lqq78q17jDY?t=3327) · [▶ núcleo 57:37](https://youtu.be/Lqq78q17jDY?t=3457) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3327 – 3507
 - nucleo: 3457 – 3507   (57:37–58:27, 50 s)
 - calidad: B
@@ -156,7 +128,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:00:36](https://youtu.be/Lqq78q17jDY?t=3636) · [▶ núcleo 1:00:36](https://youtu.be/Lqq78q17jDY?t=3636) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3636 – 3727
 - nucleo: 3636 – 3727   (1:00:36–1:02:07, 91 s)
 - calidad: A
@@ -170,7 +142,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:03:20](https://youtu.be/Lqq78q17jDY?t=3800) · [▶ núcleo 1:03:20](https://youtu.be/Lqq78q17jDY?t=3800) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3800 – 3854
 - nucleo: 3800 – 3854   (1:03:20–1:04:14, 54 s)
 - calidad: B
@@ -184,7 +156,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:06:16](https://youtu.be/Lqq78q17jDY?t=3976) · [▶ núcleo 1:06:30](https://youtu.be/Lqq78q17jDY?t=3990) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 3976 – 4032
 - nucleo: 3990 – 4032   (1:06:30–1:07:12, 42 s)
 - calidad: B
@@ -198,7 +170,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:07:41](https://youtu.be/Lqq78q17jDY?t=4061) · [▶ núcleo 1:08:02](https://youtu.be/Lqq78q17jDY?t=4082) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4061 – 4103
 - nucleo: 4082 – 4103   (1:08:02–1:08:23, 21 s)
 - calidad: B
@@ -212,7 +184,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:08:26](https://youtu.be/Lqq78q17jDY?t=4106) · [▶ núcleo 1:08:26](https://youtu.be/Lqq78q17jDY?t=4106) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4106 – 4200
 - nucleo: 4106 – 4200   (1:08:26–1:10:00, 94 s)
 - calidad: A
@@ -226,7 +198,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:11:44](https://youtu.be/Lqq78q17jDY?t=4304) · [▶ núcleo 1:11:56](https://youtu.be/Lqq78q17jDY?t=4316) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4304 – 4353
 - nucleo: 4316 – 4353   (1:11:56–1:12:33, 37 s)
 - calidad: B
@@ -240,7 +212,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:13:25](https://youtu.be/Lqq78q17jDY?t=4405) · [▶ núcleo 1:13:39](https://youtu.be/Lqq78q17jDY?t=4419) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4405 – 4497
 - nucleo: 4419 – 4497   (1:13:39–1:14:57, 78 s)
 - calidad: B
@@ -254,7 +226,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:17:52](https://youtu.be/Lqq78q17jDY?t=4672) · [▶ núcleo 1:18:11](https://youtu.be/Lqq78q17jDY?t=4691) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4672 – 4766
 - nucleo: 4691 – 4766   (1:18:11–1:19:26, 75 s)
 - calidad: A
@@ -268,7 +240,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:23:11](https://youtu.be/Lqq78q17jDY?t=4991) · [▶ núcleo 1:23:30](https://youtu.be/Lqq78q17jDY?t=5010) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 4991 – 5061
 - nucleo: 5010 – 5061   (1:23:30–1:24:21, 51 s)
 - calidad: A
@@ -282,7 +254,7 @@ Después: `python eval/referencias_cli.py aplicar eval/referencias/validar/Lqq78
 
 [▶ tramo 1:24:42](https://youtu.be/Lqq78q17jDY?t=5082) · [▶ núcleo 1:24:59](https://youtu.be/Lqq78q17jDY?t=5099) · autor: borrador:anthropic/claude-sonnet-5
 
-- decision: pendiente
+- decision: si
 - tramo: 5082 – 5171
 - nucleo: 5099 – 5163   (1:24:59–1:26:03, 64 s)
 - calidad: A
