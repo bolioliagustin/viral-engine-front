@@ -117,12 +117,13 @@ class TestGapBSubtitleStyleDefault:
 class TestGapEPromptVersion:
     """(e) PROMPT_VERSION sube a v7 una sola vez (W4 agregó una línea al
     prompt de la Pasada A sin subirla, por acuerdo con el coordinador).
-    Subió de nuevo a v8 en W9-B (candidate_count hasta 30, no 12) — ver
+    Subió de nuevo a v8 en W9-B (candidate_count hasta 30, no 12) y a v10 en
+    W21 (Ventanas; v9 ya tiene filas de un experimento) — ver
     services/analysis_cache.py."""
 
-    def test_prompt_version_es_v8(self):
+    def test_prompt_version_es_v10(self):
         from services.analysis_cache import PROMPT_VERSION
-        assert PROMPT_VERSION == "v8"
+        assert PROMPT_VERSION == "v10"
 
 
 class TestGapDReframeModeDefaultOff:
