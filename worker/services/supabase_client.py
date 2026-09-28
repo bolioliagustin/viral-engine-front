@@ -32,6 +32,8 @@ def reset_dry_run() -> None:
     """Vacía los acumuladores en memoria (llamar antes de cada job del eval)."""
     DRY_RUN_RESULTS.clear()
     DRY_RUN_JOBS.clear()
+    from services.registro_candidatos import reset_dry_run as _reset_registro
+    _reset_registro()
 
 
 def _dry_run_job(job_id: str) -> dict:
