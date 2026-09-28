@@ -395,12 +395,35 @@ genérica por diseño: `--score-field` elige qué campo del clip usar como
 puntaje (`score_judge_sum` por defecto), así que el mismo cálculo aplica a
 cualquier rankeador futuro sin tocar el script.
 
-Limitación conocida: el puntaje crudo de Jev por candidato **no se persiste**
-fuera de la corrida en memoria (`main.py` solo guarda `judge_scores`,
-`w2_score` y `w2_selected`/`w2_discard_reason` en `candidates_all`), así que
-hoy `calibracion.py` solo puede evaluar retroactivamente al Juez sobre jobs
-históricos; evaluar Jev "de verdad" requeriría correr el pipeline de nuevo o
-tocar `main.py` para persistir su score — ninguna de las dos entra en W12.
+Limitación conocida: en los jobs **anteriores a W30** el puntaje crudo de Jev
+por candidato no se persistió (`candidates_all` solo guarda `judge_scores`,
+`w2_score` y `w2_selected`/`w2_discard_reason`), así que sobre esos jobs
+`calibracion.py` solo puede evaluar al Juez. Desde W30 cada job guarda la nota
+de Jev por Candidato en `candidate_evals` (ver "Registro de candidatos").
+
+---
+
+## Registro de candidatos y exportador (W30)
+
+Cada job de producción inserta una fila por Candidato evaluado en
+`candidate_evals` (`services/registro_candidatos.py`; esquema en
+`docs/PROYECTO.md` §7). En dry-run no escribe: las filas quedan en
+`registro_candidatos.DRY_RUN_CANDIDATE_EVALS`.
+
+`eval/exportar_candidatos.py` las lee en solo lectura y arma un JSONL
+versionado (`esquema`, una línea por Candidato) con los rasgos (`juez_suma`,
+`jev_rank_score`, `rank_score`, `w2_score`, `pos_rel`, `duracion`, flags) y
+las etiquetas disponibles: `toca_referencia` (cubre ≥ 50 % del Núcleo de una
+Referencia validada, con el tramo final si existe), `toca_borrador`,
+`en_exclusion` y `posteable` (solo elegidos: `clip_feedback` vía
+`content_results(job_id, moment_index)`). Si un job se reprocesó, queda la
+fila más reciente de cada Candidato. Los nombres de los rasgos son los de
+`experimentos/ml_factibilidad.py`, para evaluar por video.
+
+```bash
+python eval/exportar_candidatos.py                          # → eval/datasets/candidatos-<fecha>.jsonl (gitignored)
+python eval/exportar_candidatos.py --video B60BHDNFNxM --salida /tmp/b60.jsonl
+```
 
 ---
 
@@ -420,6 +443,7 @@ tocar `main.py` para persistir su score — ninguna de las dos entra en W12.
 | `compare_runs.py` | Delta entre dos corridas e2e, incluidas las métricas `posteable` y `motivos_rechazo` |
 | `etiquetas.py` | Lee `clip_feedback` (posteable/motivo) por `content_result_id` y por `(job_id, moment_index)` (W12) |
 | `calibracion.py` | Compara cualquier rankeador contra las etiquetas reales: precision@k, correlación, peores errores (W12) |
+| `exportar_candidatos.py` | Registro de candidatos (`candidate_evals`) + Referencias + Posteable → JSONL versionado, solo lectura (W30) |
 | `runs/` | Corridas e2e versionadas + `README.md` con el historial |
 | `services/validation.py` | `phrase_anchor_in_clip`, `evaluate_moment_phrase_metrics` |
 

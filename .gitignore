@@ -20,6 +20,7 @@ Thumbs.db
 worker/cookies.txt
 proxies.txt
 proxies-raw.txt
+worker/eval/datasets/
 supabase/.temp/
 supabase/.branches/
 
