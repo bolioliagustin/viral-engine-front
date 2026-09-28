@@ -465,59 +465,30 @@ def rank_and_prune_candidates(
     return result_dict
 
 
-def select_moments(
-    transcript_text: str,
-    video_info: dict,
-    duration: float,
-    category: str,
-    language: str,
-    client,
-    model: str,
-    max_retries: int = 3,
-    transcript: dict | None = None,
-) -> dict:
-    """
-    Ejecuta la pasada A: selección de momentos con sobre-generación + ranking.
-
-    Returns:
-        result_dict con shape de AnalysisResult (momentos sin copy).
-
-    Raises:
-        Exception si el LLM falla tras los retries (el caller cae al mega-prompt).
-    """
-    target = target_moment_count(duration)
-    num_candidates = candidate_count(duration)
-
-    prompt = get_selection_prompt(
-        duration=int(duration),
-        num_candidates=num_candidates,
-        category=category,
-        language=language,
+def _costo_respuesta(model: str, response) -> float:
+    """Costo estimado de una llamada, con la misma cuenta que usage_tracker."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return 0.0
+    from config.pricing import estimate_llm_cost_usd
+    details = getattr(usage, "completion_tokens_details", None)
+    reasoning = (getattr(details, "reasoning_tokens", None) or 0) if details is not None else 0
+    return estimate_llm_cost_usd(
+        model,
+        getattr(usage, "prompt_tokens", None) or 0,
+        getattr(usage, "completion_tokens", None) or 0,
+        reasoning,
     )
 
-    context = f"""VIDEO INFO:
-- Título original: {video_info.get('title', 'Desconocido')}
-- Duración: {int(duration)} segundos
-- Canal: {video_info.get('uploader', 'Desconocido')}
-- Idioma: {language or 'es'}
 
-📜 TRANSCRIPCIÓN OFICIAL CON TIMESTAMPS:
-{transcript_text}
-
-🎯 INSTRUCCIÓN CRÍTICA:
-- Los timestamps son EXACTOS — COPIA los valores, no los adivines.
-- Cita first/last_phrase_in_audio LITERALMENTE desde la transcripción."""
-
-    messages = [
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": f"{context}\n\nSelecciona los {num_candidates} mejores momentos. Responde SOLO con JSON válido."},
-    ]
-
-    print(f"🎯 Pasada A: seleccionando momentos con {model} "
-          f"({num_candidates} candidatos → top {target})...")
-
+def _llamar_pasada_a(messages: list[dict], client, model: str, max_retries: int, etiqueta: str = "Pasada A") -> tuple[dict, float]:
+    """
+    Una llamada de la Pasada A con reintentos: devuelve (result_dict, costo).
+    Lanza si el LLM falla tras los reintentos o no devuelve `viral_moments`.
+    """
     response_text = None
     last_error = None
+    costo = 0.0
     for attempt in range(max_retries + 1):
         try:
             response = client.chat.completions.create(
@@ -529,6 +500,7 @@ def select_moments(
                 )
             )
             log_llm_usage("analysis", model, response)
+            costo += _costo_respuesta(model, response)
             raw = response.choices[0].message.content if response.choices else None
             if not raw or not raw.strip():
                 finish = response.choices[0].finish_reason if response.choices else "no_choices"
@@ -539,7 +511,7 @@ def select_moments(
             last_error = e
             if attempt < max_retries:
                 wait = 2 ** (attempt + 1)
-                print(f"⚠️ Pasada A intento {attempt + 1} falló: {str(e)[:120]} — retry en {wait}s")
+                print(f"⚠️ {etiqueta} intento {attempt + 1} falló: {str(e)[:120]} — retry en {wait}s")
                 time.sleep(wait)
             else:
                 raise last_error
@@ -558,17 +530,246 @@ def select_moments(
     except json.JSONDecodeError:
         from json_repair import repair_json
         result_dict = json.loads(repair_json(response_text))
-        print("   ✅ JSON de pasada A reparado")
+        print(f"   ✅ JSON de {etiqueta} reparado")
 
     if isinstance(result_dict, list):
         if len(result_dict) == 1 and isinstance(result_dict[0], dict):
             result_dict = result_dict[0]
         else:
-            raise ValueError(f"Pasada A devolvió array de {len(result_dict)} elementos")
+            raise ValueError(f"{etiqueta} devolvió array de {len(result_dict)} elementos")
 
-    moments = result_dict.get("viral_moments")
+    moments = result_dict.get("viral_moments") if isinstance(result_dict, dict) else None
     if not isinstance(moments, list) or not moments:
-        raise ValueError("Pasada A no devolvió viral_moments")
+        raise ValueError(f"{etiqueta} no devolvió viral_moments")
+    return result_dict, costo
+
+
+def _contexto_video(video_info: dict, duration: float, language: str) -> str:
+    return f"""VIDEO INFO:
+- Título original: {video_info.get('title', 'Desconocido')}
+- Duración: {int(duration)} segundos
+- Canal: {video_info.get('uploader', 'Desconocido')}
+- Idioma: {language or 'es'}"""
+
+
+_INSTRUCCION_TIMESTAMPS = """🎯 INSTRUCCIÓN CRÍTICA:
+- Los timestamps son EXACTOS — COPIA los valores, no los adivines.
+- Cita first/last_phrase_in_audio LITERALMENTE desde la transcripción."""
+
+
+def _pasada_unica(
+    transcript_text: str,
+    video_info: dict,
+    duration: float,
+    category: str,
+    language: str,
+    client,
+    model: str,
+    max_retries: int,
+    num_candidates: int,
+) -> tuple[dict, float]:
+    """La Pasada A de siempre: una llamada con el transcript completo."""
+    prompt = get_selection_prompt(
+        duration=int(duration),
+        num_candidates=num_candidates,
+        category=category,
+        language=language,
+    )
+    context = f"""{_contexto_video(video_info, duration, language)}
+
+📜 TRANSCRIPCIÓN OFICIAL CON TIMESTAMPS:
+{transcript_text}
+
+{_INSTRUCCION_TIMESTAMPS}"""
+
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": f"{context}\n\nSelecciona los {num_candidates} mejores momentos. Responde SOLO con JSON válido."},
+    ]
+    return _llamar_pasada_a(messages, client, model, max_retries)
+
+
+def _mmss(seg: float) -> str:
+    total = int(round(max(0.0, float(seg))))
+    return f"{total // 60}:{total % 60:02d}"
+
+
+# Un candidato cuyo centro cae a más de esto fuera de su Ventana se descarta:
+# el modelo inventó o convirtió mal el timestamp (ver format_lines_for_prompt).
+VENTANA_TOLERANCIA_SEG = 30.0
+
+
+def _pasada_por_ventanas(
+    ventanas,
+    cupos: list[int],
+    video_info: dict,
+    duration: float,
+    category: str,
+    language: str,
+    client,
+    model: str,
+    max_retries: int,
+) -> tuple[dict | None, float, list[int]]:
+    """
+    Una llamada por Ventana, en paralelo (≤ VENTANAS_CONCURRENCIA_MAX), con
+    el mismo `get_selection_prompt`. Cada llamada ve solo las Líneas de su
+    Ventana, con timestamps absolutos, y sabe la duración total del video y
+    el rango que está mirando. Devuelve (unión o None si fallaron todas,
+    costo, índices de Ventanas fallidas).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from context.job_context import in_current_context
+    from services import ventanas as vt
+    from services.transcript_lines import format_lines_for_prompt
+
+    n = len(ventanas)
+    estilo = os.getenv("TRANSCRIPT_LINE_STYLE", "seconds")
+
+    def _una(par):
+        v, cupo = par
+        prompt = get_selection_prompt(
+            duration=int(duration), num_candidates=cupo, category=category, language=language,
+        )
+        texto = format_lines_for_prompt(v.lineas, style=estilo)
+        context = f"""{_contexto_video(video_info, duration, language)}
+
+🪟 VENTANA {v.indice + 1} DE {n}: esta llamada ve SOLO el tramo del segundo {int(v.inicio)} al {int(v.fin)} ({_mmss(v.inicio)}–{_mmss(v.fin)}) de un video de {int(duration)} segundos. Otras llamadas revisan el resto del video.
+- Elegí momentos que ocurran dentro de este tramo.
+- start_time y end_time son segundos ABSOLUTOS desde el inicio del video (los mismos números de la transcripción), NO relativos a la Ventana.
+
+📜 TRANSCRIPCIÓN OFICIAL CON TIMESTAMPS (tramo {_mmss(v.inicio)}–{_mmss(v.fin)}):
+{texto}
+
+{_INSTRUCCION_TIMESTAMPS}"""
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"{context}\n\nSelecciona los {cupo} mejores momentos de este tramo. Responde SOLO con JSON válido."},
+        ]
+        try:
+            r, costo = _llamar_pasada_a(messages, client, model, max_retries, etiqueta=f"Pasada A ventana {v.indice + 1}/{n}")
+            return v, r, costo, None
+        except Exception as e:
+            # El costo de los intentos fallidos igual queda en usage_tracker.
+            return v, None, 0.0, e
+
+    concurrencia = max(1, min(vt.VENTANAS_CONCURRENCIA_MAX, n))
+    with ThreadPoolExecutor(max_workers=concurrencia) as pool:
+        resultados = list(pool.map(in_current_context(_una), list(zip(ventanas, cupos))))
+
+    costo_total = 0.0
+    fallidas: list[int] = []
+    base: dict | None = None
+    union: list[dict] = []
+    for v, r, costo, err in resultados:
+        costo_total += costo
+        if r is None:
+            fallidas.append(v.indice)
+            print(f"⚠️ Pasada A ventana {v.indice + 1}/{n} ({_mmss(v.inicio)}–{_mmss(v.fin)}) "
+                  f"falló tras los reintentos: {str(err)[:150]} — sigo con las demás")
+            continue
+        if base is None:
+            base = r
+        fuera = 0
+        for puesto, m in enumerate(r.get("viral_moments") or []):
+            if not isinstance(m, dict):
+                continue
+            iv = vt._intervalo(m)
+            if iv is None:
+                continue
+            centro = (iv[0] + iv[1]) / 2
+            if not (v.inicio - VENTANA_TOLERANCIA_SEG <= centro <= v.fin + VENTANA_TOLERANCIA_SEG):
+                fuera += 1
+                continue
+            union.append({**m, "ventana": v.indice, "puesto_en_ventana": puesto})
+        if fuera:
+            print(f"   ⚠️ ventana {v.indice + 1}: {fuera} candidatos fuera de su tramo, descartados")
+
+    if base is None or not union:
+        return None, costo_total, fallidas
+
+    antes = len(union)
+    union, duplicados = vt.deduplicar(union)
+    fusiones = 0
+    if vt.fusion_enabled():
+        union, fusiones = vt.fusionar_historias(union, ventanas, CLIP_MAX_DURATION_SEC)
+    union = vt.ordenar_union(union)
+    print(f"   🪟 Unión de Ventanas: {antes} candidatos → {len(duplicados)} duplicados, "
+          f"{fusiones} fusiones → {len(union)}")
+
+    result = dict(base)
+    result["viral_moments"] = union
+    return result, costo_total, fallidas
+
+
+def select_moments(
+    transcript_text: str,
+    video_info: dict,
+    duration: float,
+    category: str,
+    language: str,
+    client,
+    model: str,
+    max_retries: int = 3,
+    transcript: dict | None = None,
+) -> dict:
+    """
+    Ejecuta la pasada A: selección de momentos con sobre-generación + ranking.
+
+    W21: con `SELECCION_POR_VENTANAS=on` y un transcript con Líneas, parte
+    el video en Ventanas (services/ventanas.py) y hace una llamada por
+    Ventana en paralelo; si una Ventana falla sigue con las demás, y si
+    fallan todas cae a la pasada única de siempre.
+
+    Returns:
+        result_dict con shape de AnalysisResult (momentos sin copy). Trae
+        además `_pasada_a` (modo, Ventanas, costo y segundos) para medir.
+
+    Raises:
+        Exception si el LLM falla tras los retries (el caller cae al mega-prompt).
+    """
+    from services import ventanas as vt
+
+    t0 = time.time()
+    target = target_moment_count(duration)
+    num_candidates = candidate_count(duration)
+
+    ventanas = None
+    if vt.seleccion_por_ventanas_enabled() and transcript and transcript.get("lines"):
+        ventanas = vt.armar_ventanas(transcript["lines"], duration)
+        if len(ventanas) < 2:
+            ventanas = None
+
+    result_dict = None
+    meta: dict = {"modo": "unica", "candidatos_pedidos": num_candidates}
+    costo = 0.0
+    if ventanas:
+        cupos = vt.repartir_cupo(ventanas, num_candidates)
+        print(f"🎯 Pasada A por Ventanas con {model}: {len(ventanas)} Ventanas, "
+              f"cupos {cupos} ({sum(cupos)} candidatos) → top {target}...")
+        result_dict, costo, fallidas = _pasada_por_ventanas(
+            ventanas, cupos, video_info, duration, category, language, client, model, max_retries,
+        )
+        meta.update({
+            "modo": "ventanas",
+            "ventanas": [[round(v.inicio), round(v.fin)] for v in ventanas],
+            "cupos": cupos,
+            "candidatos_pedidos": sum(cupos),
+            "ventanas_fallidas": fallidas,
+        })
+        if result_dict is None:
+            print("⚠️ Pasada A: fallaron todas las Ventanas — respaldo con la pasada única")
+            meta["modo"] = "unica_respaldo"
+
+    if result_dict is None:
+        if not ventanas:
+            print(f"🎯 Pasada A: seleccionando momentos con {model} "
+                  f"({num_candidates} candidatos → top {target})...")
+        result_dict, costo_unica = _pasada_unica(
+            transcript_text, video_info, duration, category, language,
+            client, model, max_retries, num_candidates,
+        )
+        costo += costo_unica
 
     result_dict = rank_and_prune_candidates(result_dict, target, transcript=transcript)
 
@@ -577,5 +778,9 @@ def select_moments(
         if isinstance(m, dict) and not isinstance(m.get("content_pieces"), dict):
             m["content_pieces"] = {}
 
-    print(f"✅ Pasada A: {len(result_dict['viral_moments'])} momentos seleccionados")
+    segundos = round(time.time() - t0, 1)
+    meta.update({"costo_usd": round(costo, 6), "segundos": segundos})
+    result_dict["_pasada_a"] = meta
+    print(f"✅ Pasada A ({meta['modo']}): {len(result_dict['viral_moments'])} momentos seleccionados "
+          f"· costo ${costo:.4f} · {segundos:.1f}s")
     return result_dict

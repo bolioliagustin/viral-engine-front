@@ -84,13 +84,36 @@ def _metadata(yt: str, transcript: dict) -> dict:
 
 
 def _candidato(m: dict, orden: int) -> dict:
-    return {
+    c = {
         "orden": orden,
         "start_time": m.get("start_time"),
         "end_time": m.get("end_time"),
         "rank_score": m.get("rank_score"),
         "hook": (m.get("hook") or "")[:120],
     }
+    # W21: de qué Ventana salió y, si se fusionó, de qué intervalos.
+    if m.get("ventana") is not None:
+        c["ventana"] = m.get("ventana")
+    if m.get("fusionado_de"):
+        c["fusionado_de"] = m.get("fusionado_de")
+    return c
+
+
+def candidatos_sin_fusion(candidatos: list[dict]) -> list[dict]:
+    """
+    W21: deshace las fusiones de la unión de Ventanas (cada fusionado vuelve
+    a sus intervalos originales), para medir con una sola corrida si la
+    fusión ayuda (`historias_partidas`, `recall_completo`).
+    """
+    out = []
+    for c in candidatos:
+        partes = c.get("fusionado_de")
+        if not partes:
+            out.append(c)
+            continue
+        for ini, fin in partes:
+            out.append({**{k: v for k, v in c.items() if k != "fusionado_de"}, "start_time": ini, "end_time": fin})
+    return out
 
 
 def correr_pasada_a(transcript: dict, video_info: dict) -> dict[str, Any]:
@@ -131,6 +154,8 @@ def correr_pasada_a(transcript: dict, video_info: dict) -> dict[str, Any]:
         "costo_usd": round(float(rollup.get("total_cost_usd") or 0), 6),
         "costo_por_tarea": rollup.get("by_task"),
         "segundos": segundos,
+        # W21: modo (única / Ventanas), Ventanas, cupos, costo y segundos de la Pasada A sola.
+        "pasada_a": raw.get("_pasada_a"),
     }
 
 
@@ -164,10 +189,18 @@ def metricas_de_rep(rep: dict, doc: dict, *, incluir_borradores: bool, duracion:
     if rep.get("error"):
         return None
     momentos = refs.momentos_validados(doc, incluir_borradores=incluir_borradores)
-    return em.metricas_referencias(
-        rep.get("candidatos") or [], momentos,
+    candidatos = rep.get("candidatos") or []
+    metricas = em.metricas_referencias(
+        candidatos, momentos,
         duracion_sec=duracion, excluir=doc.get("excluir") or [],
     )
+    if any(c.get("fusionado_de") for c in candidatos):
+        sin = em.metricas_referencias(
+            candidatos_sin_fusion(candidatos), momentos,
+            duracion_sec=duracion, excluir=doc.get("excluir") or [],
+        )
+        metricas["sin_fusion"] = {k: sin[k] for k in ("recall_completo", "historias_partidas", "min_cuarto", "n_candidatos")}
+    return metricas
 
 
 def correr_seleccion(

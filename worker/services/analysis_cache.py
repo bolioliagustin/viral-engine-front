@@ -48,7 +48,13 @@ from services.supabase_client import get_supabase
 #     cacheado sí (hasta 30 `viral_moments` en vez de hasta 12), igual que
 #     el bump v4→v5 de W2: sin esto, un cache hit devolvería el pool viejo
 #     y chico, y W9-B (evaluar TODOS los candidatos) nunca se ejercitaría.
-PROMPT_VERSION = "v8"
+# v9: NO usar — `analysis_cache` ya tiene filas `v9` de un experimento del
+#     20-sep-2026 (PLAN_MEJORA §6, W21).
+# v10: W21 (docs/briefs/W21-pasada-a-por-ventanas.md, ADR 0009) — la Pasada
+#     A puede correr por Ventanas (contexto nuevo por llamada, cupo repartido,
+#     unión con deduplicación y fusión, campo `ventana` por candidato). Con
+#     `SELECCION_POR_VENTANAS=on` además la versión efectiva suma `+ventanas`.
+PROMPT_VERSION = "v10"
 
 
 # W18: valor de la columna `tone` para un análisis de la Pasada A (dos
@@ -60,9 +66,22 @@ PASADA_A_TONE = "_pasada_a"
 FINGERPRINT_KEY = "_transcript_fingerprint"
 
 
+def pasada_a_flags() -> list[str]:
+    """
+    Flags prendidos que cambian la Pasada A y entran en la versión efectiva
+    del cache (PLAN_MEJORA §4.1). W21: `SELECCION_POR_VENTANAS` → `ventanas`.
+    """
+    from services.ventanas import seleccion_por_ventanas_enabled
+
+    flags = []
+    if seleccion_por_ventanas_enabled():
+        flags.append("ventanas")
+    return flags
+
+
 def effective_prompt_version(
     transcript_source: str | None = None,
-    flags: Iterable[str] = (),
+    flags: Iterable[str] | None = None,
 ) -> str:
     """
     Versión de prompt con la que se lee/escribe el cache. W4: la Pasada A
@@ -75,12 +94,15 @@ def effective_prompt_version(
     Pasada A (W21 ventanas, W22 formatos, …). Van ordenados y sin repetir
     después de la fuente (`v8+whisper_full+formatos+ventanas`), así un
     análisis calculado con un flag prendido nunca se sirve con el flag
-    apagado, ni al revés. Hoy ningún flag se pasa.
+    apagado, ni al revés. Sin `flags` explícitos se usan los del entorno
+    (`pasada_a_flags`: W21 `SELECCION_POR_VENTANAS`); `flags=()` no suma ninguno.
     """
     source = (transcript_source or os.getenv("TRANSCRIPT_SOURCE") or "supadata").strip().lower()
     version = PROMPT_VERSION
     if source in ("whisper_full", "hybrid"):
         version = f"{version}+{source}"
+    if flags is None:
+        flags = pasada_a_flags()
     for flag in sorted({(f or "").strip().lower() for f in flags} - {""}):
         version = f"{version}+{flag}"
     return version

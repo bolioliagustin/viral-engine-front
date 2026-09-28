@@ -842,7 +842,10 @@ def _main_seleccion(videos, tier_cfg, *, json_mode, reps, workers, incluir_borra
     corrida["prompt_version"] = PROMPT_VERSION
     corrida["run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     corrida["git_commit"] = _git_commit()
-    corrida["env"] = {k: os.getenv(k) for k in ("TRANSCRIPT_SOURCE", "RANKER", "MODEL_ANALYSIS_REASONING") if os.getenv(k)}
+    corrida["env"] = {k: os.getenv(k) for k in (
+        "TRANSCRIPT_SOURCE", "RANKER", "MODEL_ANALYSIS_REASONING", "MODEL_ANALYSIS",
+        "SELECCION_POR_VENTANAS", "VENTANA_MIN", "VENTANA_SOLAPE_SEG", "VENTANAS_FUSION",  # W21
+    ) if os.getenv(k)}
     if json_mode:
         _emit_json(corrida, real_stdout)
     for linea in seleccion.resumen_legible(corrida):
