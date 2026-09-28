@@ -30,6 +30,14 @@ def get_video_category(video_info: dict, client=None, transcript_excerpt: str = 
     Returns:
         Category string: 'podcast', 'business' (or 'entertainment' if enabled)
     """
+    # W22: con FORMATOS=on la categoría sale del Formato (mapeo
+    # entrevista|charla → podcast, monologo|clase → business).
+    from services.formatos import formatos_enabled, formato_a_categoria
+    if formatos_enabled():
+        return formato_a_categoria(
+            clasificar_formato(video_info, client, transcript_excerpt=transcript_excerpt)
+        )
+
     title = video_info.get('title', '')
     description = video_info.get('description', '')[:300]
 
@@ -116,6 +124,87 @@ Descripción: {description}
         print(f"⚠️ LLM classification falló ({str(e)[:60]}), usando keyword fallback")
         return _keyword_classify()
 
+
+
+def _clasificar_por_palabras(video_info: dict) -> str:
+    """Respaldo sin cliente: las palabras de siempre, llevadas a Formato."""
+    texto = (video_info.get('title', '') + ' ' + (video_info.get('description') or '')[:300]).lower()
+    if any(k in texto for k in ('clase', 'tutorial', 'curso', 'cómo ', 'como hacer', 'how to', 'aprende')):
+        return 'clase'
+    if any(k in texto for k in ('podcast', 'entrevista', 'interview', 'invitado', 'invitada', 'guest', 'episodio')):
+        return 'entrevista'
+    if any(k in texto for k in ('stream', 'mesa', 'panel', 'en vivo', 'charla')):
+        return 'charla'
+    return 'monologo'
+
+
+def clasificar_formato(video_info: dict, client=None, transcript: dict | None = None,
+                       transcript_excerpt: str | None = None) -> str:
+    """
+    W22 (docs/briefs/W22-formatos-de-contenido.md, ADR 0010): Formato del
+    video — `entrevista`, `charla`, `monologo` o `clase` — con el modelo
+    barato (`classifier`) sobre título, canal y tres extractos del transcript
+    (inicio, mitad y final, ~800 caracteres cada uno). Un valor inválido o
+    una falla del modelo caen a `entrevista` con log. Sin cliente, respaldo
+    por palabras clave del título.
+
+    `transcript_excerpt` sirve a consumidores que solo tienen un extracto
+    (la envoltura `get_video_category`).
+    """
+    from services.formatos import extractos_para_clasificar, parsear_formato, FORMATO_POR_DEFECTO
+
+    if not client:
+        return _clasificar_por_palabras(video_info)
+
+    if transcript:
+        ex = extractos_para_clasificar(transcript)
+    else:
+        ex = {"inicio": (transcript_excerpt or "")[:2400], "mitad": "", "final": ""}
+    bloques = [f"Inicio del transcript:\n{ex['inicio']}"]
+    if ex["mitad"]:
+        bloques.append(f"Mitad del transcript:\n{ex['mitad']}")
+    if ex["final"]:
+        bloques.append(f"Final del transcript:\n{ex['final']}")
+    extractos = "\n\n".join(bloques)
+
+    prompt = f"""Clasificá el FORMATO de este video en uno de cuatro valores.
+
+Título: {video_info.get('title', '')}
+Canal: {video_info.get('uploader', '') or video_info.get('channel', '')}
+
+{extractos}
+
+Formatos:
+- entrevista: un host y UN invitado (o dos), preguntas y respuestas; el invitado cuenta su historia o su saber.
+- charla: mesa, panel, stream o programa de humor con 3 o más voces que se cruzan, chistes, cargadas, público o chat.
+- monologo: una sola persona habla a cámara o a un público (coach, keynote, opinión, vlog, motivación).
+- clase: tutorial o explicación de cómo hacer algo o de un tema técnico (aunque haya dos personas, si el centro es enseñar).
+
+REGLAS:
+- Mirá los tres extractos, no solo el inicio: los programas arrancan distinto de como siguen.
+- Si hay 3+ voces con cruces y risas, es charla aunque haya un invitado.
+
+Respondé con UNA SOLA PALABRA: entrevista, charla, monologo o clase."""
+
+    try:
+        model = get_model("classifier")
+        response = client.chat.completions.create(
+            **build_chat_kwargs(
+                "classifier",
+                model,
+                [
+                    {"role": "system", "content": "Clasificador de formato de video. Respondés con una sola palabra."},
+                    {"role": "user", "content": prompt},
+                ],
+                timeout=15,
+            )
+        )
+        log_llm_usage("classifier", model, response)
+        content = response.choices[0].message.content if response.choices else None
+        return parsear_formato(content)
+    except Exception as e:
+        print(f"⚠️ Clasificador de Formato falló ({str(e)[:60]}) — uso '{FORMATO_POR_DEFECTO}'")
+        return FORMATO_POR_DEFECTO
 
 
 def get_dynamic_prompt(duration: int, tone: str = "profesional", category: str = "business", transcript: dict = None, user_name: str = "Creador", user_title: str = "Experto", language: str = None) -> str:
@@ -457,8 +546,27 @@ def analyze_with_openrouter(
                 break
         return " ".join(parts)[:max_chars]
 
+    # W22: con FORMATOS=on se clasifica el Formato (cacheado en
+    # category_cache con la clave de modelo `formato:<modelo>`) y la
+    # categoría vieja sale del mapeo, para no romper consumidores.
+    from services.formatos import formatos_enabled, formato_a_categoria, normalizar_formato
+    formato = None
     category = None
-    if video_id:
+    if formatos_enabled():
+        clave_formato = f"formato:{model}"
+        if video_id:
+            formato = normalizar_formato(get_cached_category(video_id, clave_formato))
+            if formato:
+                print(f"✅ Formato cacheado: {formato.upper()}")
+        if not formato:
+            print("📂 Detectando el Formato...")
+            formato = clasificar_formato(video_info, client, transcript=transcript)
+            print(f"✅ Formato detectado: {formato.upper()}")
+            if video_id:
+                save_category(video_id, clave_formato, formato)
+        category = formato_a_categoria(formato)
+
+    if video_id and not category:
         category = get_cached_category(video_id, model)
         if category:
             print(f"✅ Category cached: {category.upper()}")
@@ -533,6 +641,7 @@ def analyze_with_openrouter(
                 client=client,
                 model=model,
                 transcript=transcript,
+                formato=formato,
             )
             analysis_mode = "two_pass"
         except Exception as e:

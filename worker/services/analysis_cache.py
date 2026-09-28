@@ -54,7 +54,11 @@ from services.supabase_client import get_supabase
 #     A puede correr por Ventanas (contexto nuevo por llamada, cupo repartido,
 #     unión con deduplicación y fusión, campo `ventana` por candidato). Con
 #     `SELECCION_POR_VENTANAS=on` además la versión efectiva suma `+ventanas`.
-PROMPT_VERSION = "v10"
+# v11: W22 (docs/briefs/W22-formatos-de-contenido.md, ADR 0010) — Formato
+#     de contenido: clasificador de cuatro valores, foco por Formato,
+#     historia completa y exclusión de publicidad en la Pasada A. Con
+#     `FORMATOS=on` la versión efectiva suma `+formatos`.
+PROMPT_VERSION = "v11"
 
 
 # W18: valor de la columna `tone` para un análisis de la Pasada A (dos
@@ -70,10 +74,14 @@ def pasada_a_flags() -> list[str]:
     """
     Flags prendidos que cambian la Pasada A y entran en la versión efectiva
     del cache (PLAN_MEJORA §4.1). W21: `SELECCION_POR_VENTANAS` → `ventanas`.
+    W22: `FORMATOS` → `formatos`.
     """
+    from services.formatos import formatos_enabled
     from services.ventanas import seleccion_por_ventanas_enabled
 
     flags = []
+    if formatos_enabled():
+        flags.append("formatos")
     if seleccion_por_ventanas_enabled():
         flags.append("ventanas")
     return flags

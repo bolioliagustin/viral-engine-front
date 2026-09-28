@@ -313,14 +313,85 @@ def select_finalists(
     return selected, discarded
 
 
+# ─── W22: foco por Formato ───────────────────────────────────────────────────
+# docs/briefs/W22-formatos-de-contenido.md y el criterio de Agustín de la
+# validación del 28-sep (worker/eval/runs/2026-09-28-analisis-validacion.md
+# §3 y §5). Solo se usa con FORMATOS=on; con off el prompt es el de siempre.
+
+FOCO_POR_FORMATO = {
+    "charla": """PRIORIZA (charla: mesa, panel, stream o humor con varias voces):
+1. Anécdota con remate: planteo → desarrollo → remate → reacción. Tiene que entenderse sola, tratar UN solo tema y llegar rápido al punto.
+2. Imitación o personaje que funciona sin haber visto el resto del programa.
+3. Cruce o chicana entre panelistas o con el público, con remate claro.
+4. Frase citable que funciona sola (con el contexto mínimo para entenderla).
+5. Discusión con posturas claras y un cierre.
+6. Confesión inesperada.
+DESCARTÁ: rutinas o secciones fijas del programa, saludos, lecturas del chat sin remate, reacciones largas sin contenido, chistes que dependen de otro momento.
+
+TIMING: start = inicio del planteo (sin preámbulo); end = fin de la reacción al remate (risas, "¡qué bueno!") + 2 s. El clip INCLUYE la reacción, pero no una reacción larga.""",
+    "entrevista": """PRIORIZA (entrevista: host e invitado):
+1. Pregunta provocadora → respuesta sorprendente (ping-pong viral)
+2. Revelación personal inesperada del invitado
+3. Desacuerdo o tensión creativa entre host e invitado
+4. Frase memorable standalone que no necesita contexto
+5. Reacción genuina (risa, incomodidad, sorpresa)
+Siempre la RESPUESTA COMPLETA: no cortes al invitado antes de que cierre la idea.
+
+TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/reacción + 4s.""",
+    "monologo": """PRIORIZA (monólogo: una persona — coach, keynote, opinión):
+1. Contrarian truths: ideas que rompen creencias comunes
+2. High utility: valor accionable inmediato
+3. Deep vulnerability: admisión de errores humanos
+4. Curiosity gap: declaraciones que abren loops mentales
+Cada momento es una IDEA COMPLETA con su conclusión. Nada de frases sueltas ni de ideas que quedan abiertas.
+
+TIMING: start = inicio del setup de la idea; end = fin del remate/conclusión.""",
+    "clase": """PRIORIZA (clase: tutorial o explicación):
+1. Un concepto explicado ENTERO, con su ejemplo.
+2. El dato con su PORQUÉ (no solo el dato).
+3. Impacto + automatismo + resultado + CÓMO se hace: el truco o la herramienta que ahorra trabajo, explicada.
+4. Lo nuevo o actual (frescura): lo que el público todavía no sabe.
+El CONTEXTO va ANTES del resultado: primero qué problema resuelve, después qué logra. DESCARTÁ los tramos que solo MUESTRAN algo sin explicarlo, las promesas que no se muestran y los listados sin curva.
+
+TIMING: start = donde se plantea el problema o la pregunta; end = fin de la explicación o del resultado explicado.""",
+}
+
+# Duraciones objetivo por Formato (s): historias largas en charla y entrevista.
+DURACION_POR_FORMATO = {
+    "charla": (30, 120),
+    "entrevista": (30, 120),
+    "monologo": (20, 90),
+    "clase": (20, 90),
+}
+
+REGLA_HISTORIA_COMPLETA = """HISTORIA COMPLETA (OBLIGATORIO):
+- Cada candidato es UNA idea o historia completa: planteo, desarrollo y remate o conclusión. Pedí ideas de al menos ~30 s; una frase corta (< 25 s) solo si es excepcional y se entiende sola.
+- Una anécdota de 60–120 s se propone ENTERA en UN solo candidato. NUNCA la partas en dos.
+- Ejemplo de partir MAL una historia: "900–950 s: el invitado cuenta que lo echaron del club" + "950–1000 s: el remate de por qué lo echaron". Eso es UN candidato 900–1000 s.
+- Si el remate llega después, alargá el candidato hasta el remate; no lo cortes antes."""
+
+REGLA_PUBLICIDAD = """PUBLICIDAD (EXCLUIR):
+- NO propongas tramos de publicidad o auspicio: lectura de una marca, "chivo", menciones pagas, códigos de descuento, "descargá la app", promociones, autopromoción de cursos o productos.
+- Un candidato tampoco puede empezar ni terminar dentro de un aviso."""
+
+
 def get_selection_prompt(
     duration: int,
     num_candidates: int,
     category: str = "business",
     language: str = None,
+    formato: str | None = None,
 ) -> str:
-    """Prompt corto y estricto: solo selección de momentos, sin copy."""
+    """
+    Prompt corto y estricto: solo selección de momentos, sin copy.
+
+    W22: con `formato` (FORMATOS=on) el foco, la duración objetivo, la regla
+    de historia completa y la exclusión de publicidad salen del Formato; sin
+    `formato`, el prompt es el de siempre (podcast / business).
+    """
     lang_instruction = output_language_instruction(language)
+    if formato in FOCO_POR_FORMATO:
+        return _prompt_por_formato(num_candidates, category, lang_instruction, formato)
 
     if category == "podcast":
         focus = """PRIORIZA (contenido conversacional):
@@ -394,6 +465,72 @@ FORMATO JSON DE SALIDA (SOLO JSON, sin markdown):
 }}
 
 RECORDATORIO: genera {num_candidates} candidatos, ordenados del mejor al peor. SIN copy. SIN short_video_script. SOLO selección."""
+
+
+def _prompt_por_formato(num_candidates: int, category: str, lang_instruction: str, formato: str) -> str:
+    """W22: la variante por Formato de `get_selection_prompt`."""
+    dmin, dmax = DURACION_POR_FORMATO[formato]
+    dmax = min(dmax, int(CLIP_MAX_DURATION_SEC))
+    return f"""Eres un editor senior de clips virales. Tu ÚNICA tarea en esta pasada es SELECCIONAR los mejores momentos del video. NO generes copy, threads ni posts — eso ocurre en otra etapa.
+
+{lang_instruction}
+
+FORMATO DEL VIDEO: {formato.upper()}
+
+MISIÓN:
+Identifica los {num_candidates} MEJORES momentos candidatos del video. Sé exigente: cada momento debe funcionar como clip standalone sin contexto previo.
+
+{FOCO_POR_FORMATO[formato]}
+
+{REGLA_HISTORIA_COMPLETA}
+
+{REGLA_PUBLICIDAD}
+
+REGLAS DE TIMING (CRÍTICAS):
+- Usa EXACTAMENTE los timestamps de la transcripción (no los inventes).
+- start_time y end_time se devuelven SIEMPRE en segundos absolutos desde el inicio del video (un número, sin formato): las marcas del transcript son referencia de lectura, y si alguna viene como [mm:ss] hay que convertirla (mm × 60 + ss).
+- Duración objetivo en este formato: entre {dmin} y {dmax} segundos (máximo absoluto {CLIP_MAX_DURATION_SEC:.0f} s). Cortá siempre donde termina una oración.
+- El momento debe empezar donde empieza la IDEA (setup) y terminar donde termina (remate). No cortes a mitad de frase.
+- Momentos NO solapados (máximo 20% de overlap entre candidatos).
+
+VERIFICACIÓN ANTI-ALUCINACIÓN (OBLIGATORIA por momento):
+- first_phrase_in_audio: las primeras 5-8 palabras EXACTAS que se dicen en el clip (copiadas de la transcripción).
+- last_phrase_in_audio: las últimas 5-8 palabras EXACTAS del clip. DEBE terminar en . ? o ! (oración completa).
+- El end_time debe caer al final de un segmento de transcripción con oración completa, NO a mitad de frase.
+- Si no puedes citar las frases exactas con cierre de oración, NO incluyas ese momento.
+
+SCORES PRELIMINARES (1-10, sé honesto — la mayoría de los momentos son 5-7):
+- hook: ¿los primeros 3 segundos frenan el scroll?
+- retention: ¿mantiene atención hasta el final?
+- shareability: ¿alguien lo compartiría o etiquetaría a un amigo?
+
+FORMATO JSON DE SALIDA (SOLO JSON, sin markdown):
+{{
+  "video_title": "Título magnético del video",
+  "summary": "Resumen ejecutivo (max 200 chars)",
+  "main_topics": ["tema1", "tema2", "tema3"],
+  "viral_moments": [
+    {{
+      "start_time": 120,
+      "end_time": 175,
+      "clipping_reason": "Por qué este [start,end] exacto: qué setup captura y dónde remata",
+      "hook": "Frase gancho conceptual del momento (1-2 líneas, en el idioma del video)",
+      "viral_overlay": "HOOK CORTO MAX 4 PALABRAS UPPERCASE",
+      "emotional_trigger": "Curiosidad | Miedo | Sorpresa | Codicia | Altruismo",
+      "pillar_type": "authority",
+      "category": "{category}",
+      "sentiment_detected": "serious",
+      "scores": {{"hook": 7, "retention": 6, "shareability": 8}},
+      "verification": {{
+        "first_phrase_in_audio": "primeras 5-8 palabras exactas",
+        "last_phrase_in_audio": "últimas 5-8 palabras exactas",
+        "narrative_goal": "por qué es una idea completa sin contexto"
+      }}
+    }}
+  ]
+}}
+
+RECORDATORIO: genera {num_candidates} candidatos, ordenados del mejor al peor. Historias completas, sin publicidad. SIN copy. SIN short_video_script. SOLO selección."""
 
 
 def _segment_boundary_penalty(moment: dict, transcript: dict | None) -> float:
@@ -567,6 +704,7 @@ def _pasada_unica(
     model: str,
     max_retries: int,
     num_candidates: int,
+    formato: str | None = None,
 ) -> tuple[dict, float]:
     """La Pasada A de siempre: una llamada con el transcript completo."""
     prompt = get_selection_prompt(
@@ -574,6 +712,7 @@ def _pasada_unica(
         num_candidates=num_candidates,
         category=category,
         language=language,
+        formato=formato,
     )
     context = f"""{_contexto_video(video_info, duration, language)}
 
@@ -609,10 +748,11 @@ def _pasada_por_ventanas(
     client,
     model: str,
     max_retries: int,
+    formato: str | None = None,
 ) -> tuple[dict | None, float, list[int]]:
     """
     Una llamada por Ventana, en paralelo (≤ VENTANAS_CONCURRENCIA_MAX), con
-    el mismo `get_selection_prompt`. Cada llamada ve solo las Líneas de su
+    el mismo `get_selection_prompt` (W22: con el foco del Formato). Cada llamada ve solo las Líneas de su
     Ventana, con timestamps absolutos, y sabe la duración total del video y
     el rango que está mirando. Devuelve (unión o None si fallaron todas,
     costo, índices de Ventanas fallidas).
@@ -630,6 +770,7 @@ def _pasada_por_ventanas(
         v, cupo = par
         prompt = get_selection_prompt(
             duration=int(duration), num_candidates=cupo, category=category, language=language,
+            formato=formato,
         )
         texto = format_lines_for_prompt(v.lineas, style=estilo)
         context = f"""{_contexto_video(video_info, duration, language)}
@@ -712,6 +853,7 @@ def select_moments(
     model: str,
     max_retries: int = 3,
     transcript: dict | None = None,
+    formato: str | None = None,
 ) -> dict:
     """
     Ejecuta la pasada A: selección de momentos con sobre-generación + ranking.
@@ -720,6 +862,11 @@ def select_moments(
     el video en Ventanas (services/ventanas.py) y hace una llamada por
     Ventana en paralelo; si una Ventana falla sigue con las demás, y si
     fallan todas cae a la pasada única de siempre.
+
+    W22: con `formato` (FORMATOS=on) el prompt usa el foco del Formato, en
+    la pasada única y en cada Ventana, y después se descartan los candidatos
+    que caen > 50 % dentro de un aviso detectado por palabras clave
+    (`services.formatos.descartar_publicidad`).
 
     Returns:
         result_dict con shape de AnalysisResult (momentos sin copy). Trae
@@ -749,6 +896,7 @@ def select_moments(
               f"cupos {cupos} ({sum(cupos)} candidatos) → top {target}...")
         result_dict, costo, fallidas = _pasada_por_ventanas(
             ventanas, cupos, video_info, duration, category, language, client, model, max_retries,
+            formato=formato,
         )
         meta.update({
             "modo": "ventanas",
@@ -767,9 +915,23 @@ def select_moments(
                   f"({num_candidates} candidatos → top {target})...")
         result_dict, costo_unica = _pasada_unica(
             transcript_text, video_info, duration, category, language,
-            client, model, max_retries, num_candidates,
+            client, model, max_retries, num_candidates, formato=formato,
         )
         costo += costo_unica
+
+    if formato:
+        from services.formatos import descartar_publicidad
+        meta["formato"] = formato
+        conservados, descartados = descartar_publicidad(
+            [m for m in result_dict.get("viral_moments") or [] if isinstance(m, dict)], transcript,
+        )
+        meta["descartados_publicidad"] = [
+            [m.get("start_time"), m.get("end_time"), m.get("solape_publicidad")] for m in descartados
+        ]
+        if conservados:
+            result_dict["viral_moments"] = conservados
+        elif descartados:
+            print("⚠️ Publicidad: todos los candidatos caían en avisos — los conservo para no quedar sin momentos")
 
     result_dict = rank_and_prune_candidates(result_dict, target, transcript=transcript)
 

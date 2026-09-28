@@ -129,6 +129,7 @@ def correr_pasada_a(transcript: dict, video_info: dict) -> dict[str, Any]:
 
     job_id = f"eval-seleccion-{uuid.uuid4()}"
     _captura.categoria = None
+    _captura.formato = None
     _captura.result_dict = None
     set_job_context(job_id=job_id)
     t0 = time.time()
@@ -148,8 +149,15 @@ def correr_pasada_a(transcript: dict, video_info: dict) -> dict[str, Any]:
         )
     fuente = raw["candidates_all"]
     candidatos = [_candidato(m, i) for i, m in enumerate(fuente) if isinstance(m, dict)]
+    from services.formatos import formato_a_categoria
+
+    # W22: con FORMATOS=on la categoría sale del Formato, no de get_video_category.
+    formato = getattr(_captura, "formato", None) or (raw.get("_pasada_a") or {}).get("formato")
+    categoria = getattr(_captura, "categoria", None) or (formato_a_categoria(formato) if formato else None)
     return {
-        "categoria": getattr(_captura, "categoria", None),
+        "categoria": categoria,
+        # W22: Formato elegido por el clasificador (con FORMATOS=on).
+        "formato": formato,
         "candidatos": [c for c in candidatos if c["start_time"] is not None and c["end_time"] is not None],
         "costo_usd": round(float(rollup.get("total_cost_usd") or 0), 6),
         "costo_por_tarea": rollup.get("by_task"),
@@ -164,6 +172,7 @@ def _instalar_capturas():
     from services import moment_selector, processor
 
     cat_original = processor.get_video_category
+    fmt_original = processor.clasificar_formato
     sel_original = moment_selector.select_moments
 
     def _cat(*a, **k):
@@ -171,16 +180,23 @@ def _instalar_capturas():
         _captura.categoria = c
         return c
 
+    def _fmt(*a, **k):
+        f = fmt_original(*a, **k)
+        _captura.formato = f
+        return f
+
     def _sel(*a, **k):
         r = sel_original(*a, **k)
         _captura.result_dict = r
         return r
 
     processor.get_video_category = _cat
+    processor.clasificar_formato = _fmt
     moment_selector.select_moments = _sel
 
     def _restaurar():
         processor.get_video_category = cat_original
+        processor.clasificar_formato = fmt_original
         moment_selector.select_moments = sel_original
     return _restaurar
 
@@ -345,6 +361,7 @@ def calcular_metricas(corrida: dict, *, incluir_borradores: bool, docs: dict[str
         # Incluye lo pagado en repeticiones descartadas (fallback, reintentos)
         v["costo_usd"] = round(sum((r.get("costo_usd") or 0) + (r.get("costo_descartado_usd") or 0) for r in v["reps"]), 6)
         v["categorias"] = sorted({r.get("categoria") for r in v["reps"] if r.get("categoria")})
+        v["formatos_detectados"] = sorted({r.get("formato") for r in v["reps"] if r.get("formato")})
     corrida["incluir_borradores"] = incluir_borradores
     corrida["agregado"] = em.agregar_seleccion(corrida["videos"])
     corrida["costo_total_usd"] = round(sum(v.get("costo_usd") or 0 for v in corrida["videos"]), 6)
