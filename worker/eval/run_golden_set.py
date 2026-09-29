@@ -845,6 +845,7 @@ def _main_seleccion(videos, tier_cfg, *, json_mode, reps, workers, incluir_borra
     corrida["env"] = {k: os.getenv(k) for k in (
         "TRANSCRIPT_SOURCE", "RANKER", "MODEL_ANALYSIS_REASONING", "MODEL_ANALYSIS",
         "SELECCION_POR_VENTANAS", "VENTANA_MIN", "VENTANA_SOLAPE_SEG", "VENTANAS_FUSION",  # W21
+        "FORMATOS",  # W22
     ) if os.getenv(k)}
     if json_mode:
         _emit_json(corrida, real_stdout)

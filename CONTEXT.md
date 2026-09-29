@@ -108,9 +108,13 @@ _Avoid_: pausa (cuando se habla del token), gap
 Texto palabra por palabra con timestamps obtenido por reconocimiento de voz sobre el audio del clip ya cortado. Es la fuente de verdad para subtítulos, copy y juez.
 _Avoid_: transcript, whisper words
 
-**Categoría**:
-Tipo de contenido del video que decide la estrategia de selección: podcast (conversación entre 2+ personas) o business (todo lo demás).
-_Avoid_: tipo, género, nicho
+**Formato**:
+Tipo de contenido del video que decide qué momentos busca la Pasada A: **entrevista** (host e invitado, preguntas y respuestas), **charla** (mesa, panel, stream o humor con 3+ voces, cruces y público), **monólogo** (una persona: coach, keynote, opinión) o **clase** (tutorial o explicación). Lo elige el clasificador con título, canal y tres extractos del transcript (W22, `FORMATOS`, ADR 0010). En código se escribe sin tilde (`monologo`).
+_Avoid_: Categoría, tipo, género, nicho
+
+**Categoría** (obsoleta):
+Clasificación binaria anterior al Formato: podcast o business. Con `FORMATOS=on` se deriva del Formato (`entrevista|charla → podcast`, `monologo|clase → business`) solo para no romper consumidores (`category` del juez, `content_results`, eval). No la uses para conceptos nuevos: usá **Formato**.
+_Avoid_: como sinónimo de Formato
 
 **Pasada A**:
 Selección de momentos sobre el transcript completo: timestamps, hook conceptual, overlay borrador y scores preliminares. No genera copy.
@@ -145,7 +149,7 @@ Freno del job cuando el transcript no corresponde al audio: si 4 de los primeros
 _Avoid_: circuit breaker, kill switch
 
 **Tono**:
-Voz elegida por el usuario para las piezas de copy de un job: profesional, sarcástico, motivador o casual.
+Voz elegida por el usuario para las piezas de copy de un job: profesional, sarcástico, motivador o casual. Vive solo en el copy (Pasada B): no influye en qué momentos se eligen.
 _Avoid_: estilo, voz de marca
 
 ### Cuenta y facturación
