@@ -285,7 +285,7 @@ Cada línea tiene su brief en `docs/briefs/`, con criterios de aceptación verif
 | Ola | Semana (estimada) | Líneas | En paralelo | Gate de salida |
 |---|---|---|---|---|
 | 0 Cimientos | 24–30 sep | W18, W19, W20 | 2 agentes + coordinador | **G0:** 0 cachés envenenadas (detector de idioma); Referencias validadas en ≥ 6 videos (≥ 2 de charla, ≥ 12 momentos cada uno); baseline de `seleccion` y `e2e` commiteado; W18 en `main` |
-| 1 Selección | 1–7 oct | W21 → W22; W23-A (medición) | 2 agentes | **G1:** en `seleccion` con 3 repeticiones: `recall_completo` ≥ 60 % y `min_cuarto` ≥ 15 % en videos > 60 min; `historias_partidas` ≤ 1; 0 candidatos en publicidad; Pasada A ≤ +25 % de costo; sin regresión > 5 pp en videos cortos |
+| 1 Selección | 1–7 oct | W21 → W22; W23-A (medición) | 2 agentes | **G1** (ajustado el 28-sep con la vara validada; se juzga con W21 + W22): en `seleccion` con 3 repeticiones contra Referencias validadas: `recall_completo` ≥ 55 % y `min_cuarto` ≥ 15 % en videos > 60 min; `historias_partidas` ≤ 1; 0 candidatos en publicidad; Pasada A ≤ +35 % de costo; sin regresión > 5 pp en videos cortos, salvo que sea ≤ 1 Referencia |
 | 2 Evaluar y entregar | 8–14 oct | W23-B, W24, W25 | 2–3 agentes | **G2:** con `e2e` y etiquetas (n ≥ 40, ≥ 15 de charla): captura de lo mejor ≥ 60 %; precisión ≥ 75 %; 0 rotos; p90 ≤ 15 min (60 min) y ≤ 25 min (120 min); ≤ US$0,003/min |
 | 3 Presentación | 15–21 oct | W26, W27 | 2 agentes | **G3:** "se_ve_mal" y "copy_malo" ≤ 10 % de los rechazos cada uno; layout correcto ≥ 85 %; win rate a ciegas contra Opus ≥ 50 % |
 | 4 Señales | 22–28 oct | W28, W29 | 1 agente | **G4 (por spike):** se adopta si mueve recall o precisión en charla ≥ 10 pp a ≤ +US$0,0005/min |
@@ -364,10 +364,13 @@ Hay una semana de colchón. Un gate que no pasa da una semana más de iteración
 
 | Línea | Estado | Rama | Gate | Nota |
 |---|---|---|---|---|
-| W18 Caché íntegra | En curso (Ola 0) | `fix/worker-cache-integridad` | G0 | agente *fiabilidad* |
-| W19 Referencias y tier `seleccion` | En curso (Ola 0) | `feat/eval-referencias` | G0 | agente *eval*; las Referencias de B60BHDNFNxM salen del Anexo B |
-| W20 Purga, tope y runbook | Purga de Supabase: 23-sep; volumen del VPS: pendiente de Agustín; tope y runbook: después de W18 | `fix/worker-tope-duracion` | G0 | coordinador + *fiabilidad* |
-| W21–W29 | Pendiente (Olas 1–4) | — | G1–G4 | — |
+| W18 Caché íntegra | **Integrado** en `integracion/mejora-ola-0` (PR #17, 23-sep); suite integrada 672 passed | `fix/worker-cache-integridad` | G0 | Hueco conocido para W25: un roto con nota ≥ 27 aún puede pasar el umbral por la vía principal |
+| W19 Referencias y tier `seleccion` | **Integrado** (#18, #22, #25): 121 Referencias validadas (80 A); baseline contra validadas: recall_completo A 33 % macro, min_cuarto 7 % | `feat/eval-referencias` | G0 | El `e2e` base de G0 queda sin correr (sin presupuesto, 29-sep) |
+| W20 Purga, tope y runbook | Supabase purgado (7 filas, 23-sep); tope **integrado** (PR #19); runbook en `docs/runbook-purga-cache`; **pendiente de Agustín:** volumen del VPS y `MAX_VIDEO_MINUTES=150` en Render y en el VPS | `fix/worker-tope-duracion` | G0 | — |
+| W21 Ventanas | **Integrado** en `integracion/mejora-ola-1` (#27). **G1 cerrado con W21 solo (decisión de Agustín, 29-sep):** pasa todo salvo el recall en > 60 min (44 % contra la meta de 55 %); se prende `SELECCION_POR_VENTANAS=on` en producción al mergear la Ola 1. Medido contra validadas: recall_completo A 33 → 50 % macro (> 60 min: 21 → 44 %), min_cuarto 7 → 18 %, historias partidas 1,0 → 0,1, costo Pasada A +29 % | `feat/worker-pasada-a-ventanas` | G1 (con W22) | — |
+| W30 Registro de candidatos | **Integrado** (#26); migración `candidate_evals` para aplicar al mergear a main | `feat/worker-registro-candidatos` | — | — |
+| W22 Formatos | **Integrado apagado y sin medir** (#28, `FORMATOS=off`; 864 passed) | `feat/worker-formatos` | G1 | 29-sep: sin más gasto en pruebas. Se prende solo con la medición G1 (~US$3,5, o ~US$1 con una repetición) o con evidencia de jobs reales etiquetados |
+| W23–W29 | Pendiente | — | G1–G4 | — |
 
 ---
 

@@ -156,6 +156,13 @@ class CandidateEval:
     jev_confidence: float | None = None
 
 
+def is_broken(c: "CandidateEval") -> bool:
+    """Nivel FUERTE (W2-C): el clip no tiene lo que dice tener (Verificación
+    fallida o segmento sin habla). W18: no completa el piso ni suma para el
+    Cortacircuitos (este último cuenta solo hook/payoff, ver main.py)."""
+    return bool(c.hook_not_found or c.payoff_not_found or c.bad_segment)
+
+
 def _judge_sum(c: "CandidateEval") -> float:
     """Nota base del candidato, en la escala 0..30 del Juez.
 
@@ -243,6 +250,11 @@ def select_finalists(
     `usable=False` (sin `clip_text`, no hay nada que renderizar), ni
     siquiera para completar el piso.
 
+    W18 (hallazgo H4, job fb287cba): el piso tampoco se completa con
+    candidatos rotos (`is_broken`: `hook_not_found`, `payoff_not_found` o
+    `bad_segment`). Si hay menos entregables que el piso, se entregan menos;
+    con 0, el job falla y devuelve el crédito (`_finalize_job_outcome`).
+
     Diversidad: un candidato se descarta si solapa > MAX_OVERLAP_RATIO en
     tiempo con uno ya elegido, o si su hook es casi el mismo (Jaccard de
     palabras > MAX_HOOK_SIMILARITY) — igual que W2. El backfill del piso
@@ -288,6 +300,9 @@ def select_finalists(
                 break
             if cand.index in selected_idx or not cand.usable:
                 continue
+            if is_broken(cand):
+                cand.discard_reason = (cand.discard_reason or "") + " · piso: roto, no rellena (W18)"
+                continue
             cand.discard_reason = None
             selected.append(cand)
             selected_idx.add(cand.index)
@@ -298,14 +313,85 @@ def select_finalists(
     return selected, discarded
 
 
+# ─── W22: foco por Formato ───────────────────────────────────────────────────
+# docs/briefs/W22-formatos-de-contenido.md y el criterio de Agustín de la
+# validación del 28-sep (worker/eval/runs/2026-09-28-analisis-validacion.md
+# §3 y §5). Solo se usa con FORMATOS=on; con off el prompt es el de siempre.
+
+FOCO_POR_FORMATO = {
+    "charla": """PRIORIZA (charla: mesa, panel, stream o humor con varias voces):
+1. Anécdota con remate: planteo → desarrollo → remate → reacción. Tiene que entenderse sola, tratar UN solo tema y llegar rápido al punto.
+2. Imitación o personaje que funciona sin haber visto el resto del programa.
+3. Cruce o chicana entre panelistas o con el público, con remate claro.
+4. Frase citable que funciona sola (con el contexto mínimo para entenderla).
+5. Discusión con posturas claras y un cierre.
+6. Confesión inesperada.
+DESCARTÁ: rutinas o secciones fijas del programa, saludos, lecturas del chat sin remate, reacciones largas sin contenido, chistes que dependen de otro momento.
+
+TIMING: start = inicio del planteo (sin preámbulo); end = fin de la reacción al remate (risas, "¡qué bueno!") + 2 s. El clip INCLUYE la reacción, pero no una reacción larga.""",
+    "entrevista": """PRIORIZA (entrevista: host e invitado):
+1. Pregunta provocadora → respuesta sorprendente (ping-pong viral)
+2. Revelación personal inesperada del invitado
+3. Desacuerdo o tensión creativa entre host e invitado
+4. Frase memorable standalone que no necesita contexto
+5. Reacción genuina (risa, incomodidad, sorpresa)
+Siempre la RESPUESTA COMPLETA: no cortes al invitado antes de que cierre la idea.
+
+TIMING: start = inicio de la pregunta/premisa - 5s; end = fin de la respuesta/reacción + 4s.""",
+    "monologo": """PRIORIZA (monólogo: una persona — coach, keynote, opinión):
+1. Contrarian truths: ideas que rompen creencias comunes
+2. High utility: valor accionable inmediato
+3. Deep vulnerability: admisión de errores humanos
+4. Curiosity gap: declaraciones que abren loops mentales
+Cada momento es una IDEA COMPLETA con su conclusión. Nada de frases sueltas ni de ideas que quedan abiertas.
+
+TIMING: start = inicio del setup de la idea; end = fin del remate/conclusión.""",
+    "clase": """PRIORIZA (clase: tutorial o explicación):
+1. Un concepto explicado ENTERO, con su ejemplo.
+2. El dato con su PORQUÉ (no solo el dato).
+3. Impacto + automatismo + resultado + CÓMO se hace: el truco o la herramienta que ahorra trabajo, explicada.
+4. Lo nuevo o actual (frescura): lo que el público todavía no sabe.
+El CONTEXTO va ANTES del resultado: primero qué problema resuelve, después qué logra. DESCARTÁ los tramos que solo MUESTRAN algo sin explicarlo, las promesas que no se muestran y los listados sin curva.
+
+TIMING: start = donde se plantea el problema o la pregunta; end = fin de la explicación o del resultado explicado.""",
+}
+
+# Duraciones objetivo por Formato (s): historias largas en charla y entrevista.
+DURACION_POR_FORMATO = {
+    "charla": (30, 120),
+    "entrevista": (30, 120),
+    "monologo": (20, 90),
+    "clase": (20, 90),
+}
+
+REGLA_HISTORIA_COMPLETA = """HISTORIA COMPLETA (OBLIGATORIO):
+- Cada candidato es UNA idea o historia completa: planteo, desarrollo y remate o conclusión. Pedí ideas de al menos ~30 s; una frase corta (< 25 s) solo si es excepcional y se entiende sola.
+- Una anécdota de 60–120 s se propone ENTERA en UN solo candidato. NUNCA la partas en dos.
+- Ejemplo de partir MAL una historia: "900–950 s: el invitado cuenta que lo echaron del club" + "950–1000 s: el remate de por qué lo echaron". Eso es UN candidato 900–1000 s.
+- Si el remate llega después, alargá el candidato hasta el remate; no lo cortes antes."""
+
+REGLA_PUBLICIDAD = """PUBLICIDAD (EXCLUIR):
+- NO propongas tramos de publicidad o auspicio: lectura de una marca, "chivo", menciones pagas, códigos de descuento, "descargá la app", promociones, autopromoción de cursos o productos.
+- Un candidato tampoco puede empezar ni terminar dentro de un aviso."""
+
+
 def get_selection_prompt(
     duration: int,
     num_candidates: int,
     category: str = "business",
     language: str = None,
+    formato: str | None = None,
 ) -> str:
-    """Prompt corto y estricto: solo selección de momentos, sin copy."""
+    """
+    Prompt corto y estricto: solo selección de momentos, sin copy.
+
+    W22: con `formato` (FORMATOS=on) el foco, la duración objetivo, la regla
+    de historia completa y la exclusión de publicidad salen del Formato; sin
+    `formato`, el prompt es el de siempre (podcast / business).
+    """
     lang_instruction = output_language_instruction(language)
+    if formato in FOCO_POR_FORMATO:
+        return _prompt_por_formato(num_candidates, category, lang_instruction, formato)
 
     if category == "podcast":
         focus = """PRIORIZA (contenido conversacional):
@@ -381,6 +467,72 @@ FORMATO JSON DE SALIDA (SOLO JSON, sin markdown):
 RECORDATORIO: genera {num_candidates} candidatos, ordenados del mejor al peor. SIN copy. SIN short_video_script. SOLO selección."""
 
 
+def _prompt_por_formato(num_candidates: int, category: str, lang_instruction: str, formato: str) -> str:
+    """W22: la variante por Formato de `get_selection_prompt`."""
+    dmin, dmax = DURACION_POR_FORMATO[formato]
+    dmax = min(dmax, int(CLIP_MAX_DURATION_SEC))
+    return f"""Eres un editor senior de clips virales. Tu ÚNICA tarea en esta pasada es SELECCIONAR los mejores momentos del video. NO generes copy, threads ni posts — eso ocurre en otra etapa.
+
+{lang_instruction}
+
+FORMATO DEL VIDEO: {formato.upper()}
+
+MISIÓN:
+Identifica los {num_candidates} MEJORES momentos candidatos del video. Sé exigente: cada momento debe funcionar como clip standalone sin contexto previo.
+
+{FOCO_POR_FORMATO[formato]}
+
+{REGLA_HISTORIA_COMPLETA}
+
+{REGLA_PUBLICIDAD}
+
+REGLAS DE TIMING (CRÍTICAS):
+- Usa EXACTAMENTE los timestamps de la transcripción (no los inventes).
+- start_time y end_time se devuelven SIEMPRE en segundos absolutos desde el inicio del video (un número, sin formato): las marcas del transcript son referencia de lectura, y si alguna viene como [mm:ss] hay que convertirla (mm × 60 + ss).
+- Duración objetivo en este formato: entre {dmin} y {dmax} segundos (máximo absoluto {CLIP_MAX_DURATION_SEC:.0f} s). Cortá siempre donde termina una oración.
+- El momento debe empezar donde empieza la IDEA (setup) y terminar donde termina (remate). No cortes a mitad de frase.
+- Momentos NO solapados (máximo 20% de overlap entre candidatos).
+
+VERIFICACIÓN ANTI-ALUCINACIÓN (OBLIGATORIA por momento):
+- first_phrase_in_audio: las primeras 5-8 palabras EXACTAS que se dicen en el clip (copiadas de la transcripción).
+- last_phrase_in_audio: las últimas 5-8 palabras EXACTAS del clip. DEBE terminar en . ? o ! (oración completa).
+- El end_time debe caer al final de un segmento de transcripción con oración completa, NO a mitad de frase.
+- Si no puedes citar las frases exactas con cierre de oración, NO incluyas ese momento.
+
+SCORES PRELIMINARES (1-10, sé honesto — la mayoría de los momentos son 5-7):
+- hook: ¿los primeros 3 segundos frenan el scroll?
+- retention: ¿mantiene atención hasta el final?
+- shareability: ¿alguien lo compartiría o etiquetaría a un amigo?
+
+FORMATO JSON DE SALIDA (SOLO JSON, sin markdown):
+{{
+  "video_title": "Título magnético del video",
+  "summary": "Resumen ejecutivo (max 200 chars)",
+  "main_topics": ["tema1", "tema2", "tema3"],
+  "viral_moments": [
+    {{
+      "start_time": 120,
+      "end_time": 175,
+      "clipping_reason": "Por qué este [start,end] exacto: qué setup captura y dónde remata",
+      "hook": "Frase gancho conceptual del momento (1-2 líneas, en el idioma del video)",
+      "viral_overlay": "HOOK CORTO MAX 4 PALABRAS UPPERCASE",
+      "emotional_trigger": "Curiosidad | Miedo | Sorpresa | Codicia | Altruismo",
+      "pillar_type": "authority",
+      "category": "{category}",
+      "sentiment_detected": "serious",
+      "scores": {{"hook": 7, "retention": 6, "shareability": 8}},
+      "verification": {{
+        "first_phrase_in_audio": "primeras 5-8 palabras exactas",
+        "last_phrase_in_audio": "últimas 5-8 palabras exactas",
+        "narrative_goal": "por qué es una idea completa sin contexto"
+      }}
+    }}
+  ]
+}}
+
+RECORDATORIO: genera {num_candidates} candidatos, ordenados del mejor al peor. Historias completas, sin publicidad. SIN copy. SIN short_video_script. SOLO selección."""
+
+
 def _segment_boundary_penalty(moment: dict, transcript: dict | None) -> float:
     """Penaliza momentos cuyo end_time cae a mitad de segmento sin punct."""
     if not transcript:
@@ -450,59 +602,30 @@ def rank_and_prune_candidates(
     return result_dict
 
 
-def select_moments(
-    transcript_text: str,
-    video_info: dict,
-    duration: float,
-    category: str,
-    language: str,
-    client,
-    model: str,
-    max_retries: int = 3,
-    transcript: dict | None = None,
-) -> dict:
-    """
-    Ejecuta la pasada A: selección de momentos con sobre-generación + ranking.
-
-    Returns:
-        result_dict con shape de AnalysisResult (momentos sin copy).
-
-    Raises:
-        Exception si el LLM falla tras los retries (el caller cae al mega-prompt).
-    """
-    target = target_moment_count(duration)
-    num_candidates = candidate_count(duration)
-
-    prompt = get_selection_prompt(
-        duration=int(duration),
-        num_candidates=num_candidates,
-        category=category,
-        language=language,
+def _costo_respuesta(model: str, response) -> float:
+    """Costo estimado de una llamada, con la misma cuenta que usage_tracker."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return 0.0
+    from config.pricing import estimate_llm_cost_usd
+    details = getattr(usage, "completion_tokens_details", None)
+    reasoning = (getattr(details, "reasoning_tokens", None) or 0) if details is not None else 0
+    return estimate_llm_cost_usd(
+        model,
+        getattr(usage, "prompt_tokens", None) or 0,
+        getattr(usage, "completion_tokens", None) or 0,
+        reasoning,
     )
 
-    context = f"""VIDEO INFO:
-- Título original: {video_info.get('title', 'Desconocido')}
-- Duración: {int(duration)} segundos
-- Canal: {video_info.get('uploader', 'Desconocido')}
-- Idioma: {language or 'es'}
 
-📜 TRANSCRIPCIÓN OFICIAL CON TIMESTAMPS:
-{transcript_text}
-
-🎯 INSTRUCCIÓN CRÍTICA:
-- Los timestamps son EXACTOS — COPIA los valores, no los adivines.
-- Cita first/last_phrase_in_audio LITERALMENTE desde la transcripción."""
-
-    messages = [
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": f"{context}\n\nSelecciona los {num_candidates} mejores momentos. Responde SOLO con JSON válido."},
-    ]
-
-    print(f"🎯 Pasada A: seleccionando momentos con {model} "
-          f"({num_candidates} candidatos → top {target})...")
-
+def _llamar_pasada_a(messages: list[dict], client, model: str, max_retries: int, etiqueta: str = "Pasada A") -> tuple[dict, float]:
+    """
+    Una llamada de la Pasada A con reintentos: devuelve (result_dict, costo).
+    Lanza si el LLM falla tras los reintentos o no devuelve `viral_moments`.
+    """
     response_text = None
     last_error = None
+    costo = 0.0
     for attempt in range(max_retries + 1):
         try:
             response = client.chat.completions.create(
@@ -514,6 +637,7 @@ def select_moments(
                 )
             )
             log_llm_usage("analysis", model, response)
+            costo += _costo_respuesta(model, response)
             raw = response.choices[0].message.content if response.choices else None
             if not raw or not raw.strip():
                 finish = response.choices[0].finish_reason if response.choices else "no_choices"
@@ -524,7 +648,7 @@ def select_moments(
             last_error = e
             if attempt < max_retries:
                 wait = 2 ** (attempt + 1)
-                print(f"⚠️ Pasada A intento {attempt + 1} falló: {str(e)[:120]} — retry en {wait}s")
+                print(f"⚠️ {etiqueta} intento {attempt + 1} falló: {str(e)[:120]} — retry en {wait}s")
                 time.sleep(wait)
             else:
                 raise last_error
@@ -543,17 +667,271 @@ def select_moments(
     except json.JSONDecodeError:
         from json_repair import repair_json
         result_dict = json.loads(repair_json(response_text))
-        print("   ✅ JSON de pasada A reparado")
+        print(f"   ✅ JSON de {etiqueta} reparado")
 
     if isinstance(result_dict, list):
         if len(result_dict) == 1 and isinstance(result_dict[0], dict):
             result_dict = result_dict[0]
         else:
-            raise ValueError(f"Pasada A devolvió array de {len(result_dict)} elementos")
+            raise ValueError(f"{etiqueta} devolvió array de {len(result_dict)} elementos")
 
-    moments = result_dict.get("viral_moments")
+    moments = result_dict.get("viral_moments") if isinstance(result_dict, dict) else None
     if not isinstance(moments, list) or not moments:
-        raise ValueError("Pasada A no devolvió viral_moments")
+        raise ValueError(f"{etiqueta} no devolvió viral_moments")
+    return result_dict, costo
+
+
+def _contexto_video(video_info: dict, duration: float, language: str) -> str:
+    return f"""VIDEO INFO:
+- Título original: {video_info.get('title', 'Desconocido')}
+- Duración: {int(duration)} segundos
+- Canal: {video_info.get('uploader', 'Desconocido')}
+- Idioma: {language or 'es'}"""
+
+
+_INSTRUCCION_TIMESTAMPS = """🎯 INSTRUCCIÓN CRÍTICA:
+- Los timestamps son EXACTOS — COPIA los valores, no los adivines.
+- Cita first/last_phrase_in_audio LITERALMENTE desde la transcripción."""
+
+
+def _pasada_unica(
+    transcript_text: str,
+    video_info: dict,
+    duration: float,
+    category: str,
+    language: str,
+    client,
+    model: str,
+    max_retries: int,
+    num_candidates: int,
+    formato: str | None = None,
+) -> tuple[dict, float]:
+    """La Pasada A de siempre: una llamada con el transcript completo."""
+    prompt = get_selection_prompt(
+        duration=int(duration),
+        num_candidates=num_candidates,
+        category=category,
+        language=language,
+        formato=formato,
+    )
+    context = f"""{_contexto_video(video_info, duration, language)}
+
+📜 TRANSCRIPCIÓN OFICIAL CON TIMESTAMPS:
+{transcript_text}
+
+{_INSTRUCCION_TIMESTAMPS}"""
+
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": f"{context}\n\nSelecciona los {num_candidates} mejores momentos. Responde SOLO con JSON válido."},
+    ]
+    return _llamar_pasada_a(messages, client, model, max_retries)
+
+
+def _mmss(seg: float) -> str:
+    total = int(round(max(0.0, float(seg))))
+    return f"{total // 60}:{total % 60:02d}"
+
+
+# Un candidato cuyo centro cae a más de esto fuera de su Ventana se descarta:
+# el modelo inventó o convirtió mal el timestamp (ver format_lines_for_prompt).
+VENTANA_TOLERANCIA_SEG = 30.0
+
+
+def _pasada_por_ventanas(
+    ventanas,
+    cupos: list[int],
+    video_info: dict,
+    duration: float,
+    category: str,
+    language: str,
+    client,
+    model: str,
+    max_retries: int,
+    formato: str | None = None,
+) -> tuple[dict | None, float, list[int]]:
+    """
+    Una llamada por Ventana, en paralelo (≤ VENTANAS_CONCURRENCIA_MAX), con
+    el mismo `get_selection_prompt` (W22: con el foco del Formato). Cada llamada ve solo las Líneas de su
+    Ventana, con timestamps absolutos, y sabe la duración total del video y
+    el rango que está mirando. Devuelve (unión o None si fallaron todas,
+    costo, índices de Ventanas fallidas).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from context.job_context import in_current_context
+    from services import ventanas as vt
+    from services.transcript_lines import format_lines_for_prompt
+
+    n = len(ventanas)
+    estilo = os.getenv("TRANSCRIPT_LINE_STYLE", "seconds")
+
+    def _una(par):
+        v, cupo = par
+        prompt = get_selection_prompt(
+            duration=int(duration), num_candidates=cupo, category=category, language=language,
+            formato=formato,
+        )
+        texto = format_lines_for_prompt(v.lineas, style=estilo)
+        context = f"""{_contexto_video(video_info, duration, language)}
+
+🪟 VENTANA {v.indice + 1} DE {n}: esta llamada ve SOLO el tramo del segundo {int(v.inicio)} al {int(v.fin)} ({_mmss(v.inicio)}–{_mmss(v.fin)}) de un video de {int(duration)} segundos. Otras llamadas revisan el resto del video.
+- Elegí momentos que ocurran dentro de este tramo.
+- start_time y end_time son segundos ABSOLUTOS desde el inicio del video (los mismos números de la transcripción), NO relativos a la Ventana.
+
+📜 TRANSCRIPCIÓN OFICIAL CON TIMESTAMPS (tramo {_mmss(v.inicio)}–{_mmss(v.fin)}):
+{texto}
+
+{_INSTRUCCION_TIMESTAMPS}"""
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"{context}\n\nSelecciona los {cupo} mejores momentos de este tramo. Responde SOLO con JSON válido."},
+        ]
+        try:
+            r, costo = _llamar_pasada_a(messages, client, model, max_retries, etiqueta=f"Pasada A ventana {v.indice + 1}/{n}")
+            return v, r, costo, None
+        except Exception as e:
+            # El costo de los intentos fallidos igual queda en usage_tracker.
+            return v, None, 0.0, e
+
+    concurrencia = max(1, min(vt.VENTANAS_CONCURRENCIA_MAX, n))
+    with ThreadPoolExecutor(max_workers=concurrencia) as pool:
+        resultados = list(pool.map(in_current_context(_una), list(zip(ventanas, cupos))))
+
+    costo_total = 0.0
+    fallidas: list[int] = []
+    base: dict | None = None
+    union: list[dict] = []
+    for v, r, costo, err in resultados:
+        costo_total += costo
+        if r is None:
+            fallidas.append(v.indice)
+            print(f"⚠️ Pasada A ventana {v.indice + 1}/{n} ({_mmss(v.inicio)}–{_mmss(v.fin)}) "
+                  f"falló tras los reintentos: {str(err)[:150]} — sigo con las demás")
+            continue
+        if base is None:
+            base = r
+        fuera = 0
+        for puesto, m in enumerate(r.get("viral_moments") or []):
+            if not isinstance(m, dict):
+                continue
+            iv = vt._intervalo(m)
+            if iv is None:
+                continue
+            centro = (iv[0] + iv[1]) / 2
+            if not (v.inicio - VENTANA_TOLERANCIA_SEG <= centro <= v.fin + VENTANA_TOLERANCIA_SEG):
+                fuera += 1
+                continue
+            union.append({**m, "ventana": v.indice, "puesto_en_ventana": puesto})
+        if fuera:
+            print(f"   ⚠️ ventana {v.indice + 1}: {fuera} candidatos fuera de su tramo, descartados")
+
+    if base is None or not union:
+        return None, costo_total, fallidas
+
+    antes = len(union)
+    union, duplicados = vt.deduplicar(union)
+    fusiones = 0
+    if vt.fusion_enabled():
+        union, fusiones = vt.fusionar_historias(union, ventanas, CLIP_MAX_DURATION_SEC)
+    union = vt.ordenar_union(union)
+    print(f"   🪟 Unión de Ventanas: {antes} candidatos → {len(duplicados)} duplicados, "
+          f"{fusiones} fusiones → {len(union)}")
+
+    result = dict(base)
+    result["viral_moments"] = union
+    return result, costo_total, fallidas
+
+
+def select_moments(
+    transcript_text: str,
+    video_info: dict,
+    duration: float,
+    category: str,
+    language: str,
+    client,
+    model: str,
+    max_retries: int = 3,
+    transcript: dict | None = None,
+    formato: str | None = None,
+) -> dict:
+    """
+    Ejecuta la pasada A: selección de momentos con sobre-generación + ranking.
+
+    W21: con `SELECCION_POR_VENTANAS=on` y un transcript con Líneas, parte
+    el video en Ventanas (services/ventanas.py) y hace una llamada por
+    Ventana en paralelo; si una Ventana falla sigue con las demás, y si
+    fallan todas cae a la pasada única de siempre.
+
+    W22: con `formato` (FORMATOS=on) el prompt usa el foco del Formato, en
+    la pasada única y en cada Ventana, y después se descartan los candidatos
+    que caen > 50 % dentro de un aviso detectado por palabras clave
+    (`services.formatos.descartar_publicidad`).
+
+    Returns:
+        result_dict con shape de AnalysisResult (momentos sin copy). Trae
+        además `_pasada_a` (modo, Ventanas, costo y segundos) para medir.
+
+    Raises:
+        Exception si el LLM falla tras los retries (el caller cae al mega-prompt).
+    """
+    from services import ventanas as vt
+
+    t0 = time.time()
+    target = target_moment_count(duration)
+    num_candidates = candidate_count(duration)
+
+    ventanas = None
+    if vt.seleccion_por_ventanas_enabled() and transcript and transcript.get("lines"):
+        ventanas = vt.armar_ventanas(transcript["lines"], duration)
+        if len(ventanas) < 2:
+            ventanas = None
+
+    result_dict = None
+    meta: dict = {"modo": "unica", "candidatos_pedidos": num_candidates}
+    costo = 0.0
+    if ventanas:
+        cupos = vt.repartir_cupo(ventanas, num_candidates)
+        print(f"🎯 Pasada A por Ventanas con {model}: {len(ventanas)} Ventanas, "
+              f"cupos {cupos} ({sum(cupos)} candidatos) → top {target}...")
+        result_dict, costo, fallidas = _pasada_por_ventanas(
+            ventanas, cupos, video_info, duration, category, language, client, model, max_retries,
+            formato=formato,
+        )
+        meta.update({
+            "modo": "ventanas",
+            "ventanas": [[round(v.inicio), round(v.fin)] for v in ventanas],
+            "cupos": cupos,
+            "candidatos_pedidos": sum(cupos),
+            "ventanas_fallidas": fallidas,
+        })
+        if result_dict is None:
+            print("⚠️ Pasada A: fallaron todas las Ventanas — respaldo con la pasada única")
+            meta["modo"] = "unica_respaldo"
+
+    if result_dict is None:
+        if not ventanas:
+            print(f"🎯 Pasada A: seleccionando momentos con {model} "
+                  f"({num_candidates} candidatos → top {target})...")
+        result_dict, costo_unica = _pasada_unica(
+            transcript_text, video_info, duration, category, language,
+            client, model, max_retries, num_candidates, formato=formato,
+        )
+        costo += costo_unica
+
+    if formato:
+        from services.formatos import descartar_publicidad
+        meta["formato"] = formato
+        conservados, descartados = descartar_publicidad(
+            [m for m in result_dict.get("viral_moments") or [] if isinstance(m, dict)], transcript,
+        )
+        meta["descartados_publicidad"] = [
+            [m.get("start_time"), m.get("end_time"), m.get("solape_publicidad")] for m in descartados
+        ]
+        if conservados:
+            result_dict["viral_moments"] = conservados
+        elif descartados:
+            print("⚠️ Publicidad: todos los candidatos caían en avisos — los conservo para no quedar sin momentos")
 
     result_dict = rank_and_prune_candidates(result_dict, target, transcript=transcript)
 
@@ -562,5 +940,9 @@ def select_moments(
         if isinstance(m, dict) and not isinstance(m.get("content_pieces"), dict):
             m["content_pieces"] = {}
 
-    print(f"✅ Pasada A: {len(result_dict['viral_moments'])} momentos seleccionados")
+    segundos = round(time.time() - t0, 1)
+    meta.update({"costo_usd": round(costo, 6), "segundos": segundos})
+    result_dict["_pasada_a"] = meta
+    print(f"✅ Pasada A ({meta['modo']}): {len(result_dict['viral_moments'])} momentos seleccionados "
+          f"· costo ${costo:.4f} · {segundos:.1f}s")
     return result_dict

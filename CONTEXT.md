@@ -78,11 +78,23 @@ _Avoid_: score (a secas, para el visible), score curvado, curved score
 Etiqueta que pone una persona a un clip cuando lo publicaría tal cual, sin editar. Es la fuente de verdad de calidad; el score del Juez es su aproximación automática.
 _Avoid_: bueno, aprobado, viral, válido
 
+**Referencia**:
+Momento de un video del golden set que una persona publicaría, validado por un humano, con su Núcleo, tipo, calidad (A = lo publicaría seguro; B = probablemente) y por qué. Es la verdad humana contra la que se mide offline la selección (tier `seleccion`) y la entrega (tier `e2e`), sin renderizar ni etiquetar clips. Vive en `worker/eval/referencias/<youtube_id>.json`; un borrador sin validar no cuenta como Referencia.
+_Avoid_: ground truth, momento ideal, highlight
+
+**Núcleo**:
+Lo mínimo que un clip tiene que contener para que la Referencia funcione: del planteo al remate, en segundos absolutos. Un candidato o clip "contiene" la Referencia si arranca antes del inicio del Núcleo y termina después de su fin (±2 s).
+_Avoid_: core, centro, punchline
+
 ### Pipeline de IA
 
 **Transcript**:
 Texto con timestamps del video completo. Sale de los subtítulos de YouTube (captions en bloques de 3–30 s) o del reconocimiento de voz sobre el audio completo (`TRANSCRIPT_SOURCE=whisper_full`: palabras con puntuación, silencios y líneas). Es el insumo de la selección de momentos.
 _Avoid_: transcripción (reservado para el clip), subtítulos
+
+**Huella del transcript**:
+Resumen estable de un transcript: fuente, modelo, idioma, pista de audio y hash del texto de sus Líneas (`transcript_cache.transcript_fingerprint`). El análisis cacheado guarda la huella del transcript con el que se calculó y solo se reutiliza si coincide con la del transcript actual (W18). Así un fix de audio o de transcript invalida solo lo que cambió.
+_Avoid_: hash, checksum, versión del transcript
 
 **Línea**:
 Oración del transcript con su tiempo de inicio y fin, tal como la recibe la Pasada A cuando el transcript viene del audio completo (`[mm:ss] Oración.`). Termina en . ? ! … o en una pausa larga; es la unidad con la que se proponen los límites de un momento.
@@ -96,13 +108,21 @@ _Avoid_: pausa (cuando se habla del token), gap
 Texto palabra por palabra con timestamps obtenido por reconocimiento de voz sobre el audio del clip ya cortado. Es la fuente de verdad para subtítulos, copy y juez.
 _Avoid_: transcript, whisper words
 
-**Categoría**:
-Tipo de contenido del video que decide la estrategia de selección: podcast (conversación entre 2+ personas) o business (todo lo demás).
-_Avoid_: tipo, género, nicho
+**Formato**:
+Tipo de contenido del video que decide qué momentos busca la Pasada A: **entrevista** (host e invitado, preguntas y respuestas), **charla** (mesa, panel, stream o humor con 3+ voces, cruces y público), **monólogo** (una persona: coach, keynote, opinión) o **clase** (tutorial o explicación). Lo elige el clasificador con título, canal y tres extractos del transcript (W22, `FORMATOS`, ADR 0010). En código se escribe sin tilde (`monologo`).
+_Avoid_: Categoría, tipo, género, nicho
+
+**Categoría** (obsoleta):
+Clasificación binaria anterior al Formato: podcast o business. Con `FORMATOS=on` se deriva del Formato (`entrevista|charla → podcast`, `monologo|clase → business`) solo para no romper consumidores (`category` del juez, `content_results`, eval). No la uses para conceptos nuevos: usá **Formato**.
+_Avoid_: como sinónimo de Formato
 
 **Pasada A**:
 Selección de momentos sobre el transcript completo: timestamps, hook conceptual, overlay borrador y scores preliminares. No genera copy.
 _Avoid_: análisis, analysis
+
+**Ventana**:
+Tramo del transcript (20 min por defecto, con 3 min de solape con la Ventana vecina) que ve una sola llamada de la Pasada A cuando la selección corre por Ventanas (W21, `SELECCION_POR_VENTANAS`). Cada Ventana recibe un cupo de candidatos proporcional a sus minutos; las Ventanas corren en paralelo y sus candidatos se unen deduplicando y fusionando la misma historia partida en el borde. Los timestamps siguen siendo absolutos.
+_Avoid_: chunk, tramo (reservado para los pedazos de audio de Whisper), bloque, segmento
 
 **Pasada B**:
 Generación del copy definitivo (piezas de copy, hook y overlay finales) a partir de la transcripción del clip.
@@ -116,12 +136,20 @@ _Avoid_: scorer, evaluador
 Lo que decide el orden de los candidatos de un Momento en W2 (hoy el Juez o Jev, según `RANKER`). El Juez siempre corre y su Score se persiste; un rankeador puede reemplazarlo solo para el orden de selección, sin dejar de generar copy. `worker/eval/calibracion.py` compara cualquier rankeador contra las etiquetas de Posteable para decidir cuál usar.
 _Avoid_: ranker (en inglés), scorer
 
+**Registro de candidatos**:
+Lo que queda guardado de cada Candidato evaluado en un job, elegido o descartado: tiempos propuestos y finales, texto de sus Líneas, `rank_score` de la Pasada A, notas del Juez y de Jev, flags de calidad, nota de selección y motivo del descarte (tabla `candidate_evals`, W30). Una fila por Candidato y por job, nunca se pisa. Son los rasgos para aprender a elegir; las etiquetas (Referencias, Posteable) se le pegan después con `worker/eval/exportar_candidatos.py`.
+_Avoid_: log de candidatos, candidates_all (es la copia vieja dentro de `analysis_cache`, que sí se pisa por video)
+
 **Verificación**:
 Comprobación de que la primera y la última frase que la IA citó para un momento existen en la transcripción del clip (matching difuso); si alguna de las dos no se ancla, el corte queda marcado para revisar. Desde W2-C (docs/PLAN_CALIDAD.md §9) no incluye señales informativas como el hook tardío o la cola incompleta — esas quedan aparte en `clip_quality_issues`, porque el clip puede arrancar unas palabras antes del hook citado (misma oración) sin que la Verificación haya fallado.
 _Avoid_: validación (reservado para reglas de duración y solapamiento), anti-alucinación
 
+**Cortacircuitos**:
+Freno del job cuando el transcript no corresponde al audio: si 4 de los primeros 5 candidatos, o la mitad del total con un mínimo de 4, no anclan su Verificación, el job purga la caché del video, rehace el transcript y la Pasada A una sola vez y vuelve a evaluar. Si se dispara de nuevo, el job falla con "no pudimos alinear el audio del video con su transcript" y el crédito se devuelve (W18).
+_Avoid_: circuit breaker, kill switch
+
 **Tono**:
-Voz elegida por el usuario para las piezas de copy de un job: profesional, sarcástico, motivador o casual.
+Voz elegida por el usuario para las piezas de copy de un job: profesional, sarcástico, motivador o casual. Vive solo en el copy (Pasada B): no influye en qué momentos se eligen.
 _Avoid_: estilo, voz de marca
 
 ### Cuenta y facturación
