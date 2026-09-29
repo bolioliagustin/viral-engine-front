@@ -365,11 +365,11 @@ Hay una semana de colchón. Un gate que no pasa da una semana más de iteración
 | Línea | Estado | Rama | Gate | Nota |
 |---|---|---|---|---|
 | W18 Caché íntegra | **Integrado** en `integracion/mejora-ola-0` (PR #17, 23-sep); suite integrada 672 passed | `fix/worker-cache-integridad` | G0 | Hueco conocido para W25: un roto con nota ≥ 27 aún puede pasar el umbral por la vía principal |
-| W19 Referencias y tier `seleccion` | En curso: PR #18 en borrador, código y tests listos; **bloqueado** por falta de crédito en OpenRouter (borradores y baseline) | `feat/eval-referencias` | G0 | Semilla de B60BHDNFNxM lista para validar en `worker/eval/referencias/validar/B60BHDNFNxM.md` |
+| W19 Referencias y tier `seleccion` | **Integrado** (#18, #22, #25): 121 Referencias validadas (80 A); baseline contra validadas: recall_completo A 33 % macro, min_cuarto 7 % | `feat/eval-referencias` | G0 | El `e2e` base de G0 queda sin correr (sin presupuesto, 29-sep) |
 | W20 Purga, tope y runbook | Supabase purgado (7 filas, 23-sep); tope **integrado** (PR #19); runbook en `docs/runbook-purga-cache`; **pendiente de Agustín:** volumen del VPS y `MAX_VIDEO_MINUTES=150` en Render y en el VPS | `fix/worker-tope-duracion` | G0 | — |
-| W21 Ventanas | **Integrado** en `integracion/mejora-ola-1` (#27, flag apagado). Medido contra validadas: recall_completo A 33 → 50 % macro (> 60 min: 21 → 44 %), min_cuarto 7 → 18 %, historias partidas 1,0 → 0,1, costo Pasada A +29 % | `feat/worker-pasada-a-ventanas` | G1 (con W22) | — |
+| W21 Ventanas | **Integrado** en `integracion/mejora-ola-1` (#27). **G1 cerrado con W21 solo (decisión de Agustín, 29-sep):** pasa todo salvo el recall en > 60 min (44 % contra la meta de 55 %); se prende `SELECCION_POR_VENTANAS=on` en producción al mergear la Ola 1. Medido contra validadas: recall_completo A 33 → 50 % macro (> 60 min: 21 → 44 %), min_cuarto 7 → 18 %, historias partidas 1,0 → 0,1, costo Pasada A +29 % | `feat/worker-pasada-a-ventanas` | G1 (con W22) | — |
 | W30 Registro de candidatos | **Integrado** (#26); migración `candidate_evals` para aplicar al mergear a main | `feat/worker-registro-candidatos` | — | — |
-| W22 Formatos | En curso | `feat/worker-formatos` | G1 | — |
+| W22 Formatos | **Integrado apagado y sin medir** (#28, `FORMATOS=off`; 864 passed) | `feat/worker-formatos` | G1 | 29-sep: sin más gasto en pruebas. Se prende solo con la medición G1 (~US$3,5, o ~US$1 con una repetición) o con evidencia de jobs reales etiquetados |
 | W23–W29 | Pendiente | — | G1–G4 | — |
 
 ---
